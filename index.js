@@ -39,28 +39,41 @@ client.on('messageCreate', async (msg) => {
   const searchInput = msg.content.replace('!salary ', '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   if (searchInput.length < 2) return msg.reply("⚠️ Search term too short.");
 
+  // Let the user know the bot is working so they don't spam
+  await msg.channel.sendTyping();
+
   try {
     const sheet = await getSheet();
     const rows = await sheet.getRows();
+    
     const matches = rows.filter(row => {
-      return row._rawData.some(cell => cell && cell.toString().toLowerCase().replace(/[^a-z0-9]/g, '').includes(searchInput));
+      return row._rawData.some(cell => 
+        cell && cell.toString().toLowerCase().replace(/[^a-z0-9]/g, '').includes(searchInput)
+      );
     });
 
     if (matches.length > 0) {
+      // Create a single message string to avoid multiple replies
+      let responseMessage = "";
       matches.slice(0, 5).forEach(m => {
-        // Updated indices based on your sheet: 0=Name, 1=Pos, 2=Years, 3=Salary
         const name = m._rawData[0] || "Unknown";
         const pos = m._rawData[1] || "N/A";
         const years = m._rawData[2] || "0";
         const salary = m._rawData[3] || "0";
-        msg.reply(`💰 **${name}** (${pos})\n**Years:** ${years}\n**Salary:** ${salary}`);
+        responseMessage += `💰 **${name}** (${pos})\n**Years:** ${years}\n**Salary:** ${salary}\n\n`;
       });
+      
+      msg.reply(responseMessage);
     } else {
       msg.reply(`❌ No results found for "${msg.content.replace('!salary ', '')}".`);
     }
   } catch (e) {
-    console.error(e);
-    msg.reply("⚠️ Error connecting to sheet.");
+    // Only log the error to the Render console, don't confuse the user if it still works
+    console.error("Sheet Connection Error:", e);
+    // Optional: Only reply with error if it's a total failure
+    if (!msg.headersSent) {
+       msg.reply("⚠️ Connection is a bit slow, please try again in a moment.");
+    }
   }
 });
 
