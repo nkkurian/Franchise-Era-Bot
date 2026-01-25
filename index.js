@@ -15,50 +15,75 @@ const client = new Client({
 // --- CONFIG ---
 const LEAGUE_ID = process.env.LEAGUE_ID;
 let lastTradeId = null;
+let playerMap = {}; // Will store ID -> Name
+let userMap = {};   // Will store ID -> Username
 
-const serviceAccountAuth = new JWT({
-  email: process.env.GOOGLE_EMAIL,
-  key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'),
-  scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
-});
-const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
+// 1. Fetch Master Data (Players and Users)
+async function startupData() {
+    try {
+        // Get Usernames
+        const users = await axios.get(`https://api.sleeper.app/v1/league/${LEAGUE_ID}/users`);
+        users.data.forEach(u => { userMap[u.user_id] = u.display_name; });
 
-// --- SLEEPER TRADE TRACKER ---
+        // Get Player Names (This is a large file)
+        const players = await axios.get('https://api.sleeper.app/v1/players/nfl');
+        playerMap = players.data;
+        console.log("Sleeper Player Data Loaded");
+    } catch (e) { console.error("Startup Error:", e); }
+}
+
+// 2. Sleeper Trade Tracker with Details
 async function checkTrades() {
   try {
-    // Fetch the 5 most recent transactions to ensure we don't miss any during a restart
     const response = await axios.get(`https://api.sleeper.app/v1/league/${LEAGUE_ID}/transactions/1`);
     const trades = response.data.filter(t => t.type === 'trade' && t.status === 'complete');
     
     if (trades.length > 0) {
       const newestTrade = trades[0];
       
-      // If lastTradeId is null, it means the bot just started; we save the ID and wait for the NEXT one
       if (lastTradeId && newestTrade.transaction_id !== lastTradeId) {
-        // Updated to look for 'bot-log' specifically
         const channel = client.channels.cache.find(c => c.name === 'bot-log');
-        
         if (channel) {
           const embed = new EmbedBuilder()
-            .setTitle('🤝 NEW SLEEPER TRADE COMPLETED')
+            .setTitle('🤝 TRADE COMPLETED')
             .setColor(0x00ff00)
-            .setDescription('A new trade was just processed! Check the Sleeper app for full roster details.')
-            .setTimestamp()
-            .setFooter({ text: `Trade ID: ${newestTrade.transaction_id}` });
+            .setTimestamp();
+
+          let tradeSummary = "";
           
+          // Loop through each roster involved in the trade
+          for (const [rosterId, adds] of Object.entries(newestTrade.adds || {})) {
+            const userId = newestTrade.roster_ids.find(id => id === parseInt(rosterId));
+            const ownerName = userMap[newestTrade.consented_team_ids[newestTrade.roster_ids.indexOf(parseInt(rosterId))]] || `Team ${rosterId}`;
+            
+            tradeSummary += `**${ownerName} received:**\n`;
+            
+            // List Players
+            for (const [playerId, _] of Object.entries(adds)) {
+                const p = playerMap[playerId];
+                tradeSummary += `• ${p ? `${p.first_name} ${p.last_name} (${p.position})` : 'Unknown Player'}\n`;
+            }
+            
+            // List Draft Picks (if any)
+            const picks = newestTrade.draft_picks.filter(p => p.owner_id === parseInt(rosterId));
+            picks.forEach(p => {
+                tradeSummary += `• ${p.season} Round ${p.round} (via ${userMap[p.previous_owner_id] || 'Original Owner'})\n`;
+            });
+            tradeSummary += `\n`;
+          }
+
+          embed.setDescription(tradeSummary);
           channel.send({ embeds: [embed] });
         }
       }
       lastTradeId = newestTrade.transaction_id;
     }
-  } catch (e) {
-    console.error("Sleeper API Error:", e);
-  }
+  } catch (e) { console.error("Sleeper API Error:", e); }
 }
 
-// Check for trades every 60 seconds (1 minute)
 setInterval(checkTrades, 60000);
 
+// --- SALARY SEARCH ---
 client.on('messageCreate', async (msg) => {
   if (msg.author.bot || !msg.content.startsWith('!salary')) return;
   const searchInput = msg.content.replace('!salary ', '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -66,6 +91,12 @@ client.on('messageCreate', async (msg) => {
 
   try {
     await msg.channel.sendTyping();
+    const serviceAccountAuth = new JWT({
+        email: process.env.GOOGLE_EMAIL,
+        key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'),
+        scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+    });
+    const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle['PlayerList'];
     const rows = await sheet.getRows();
@@ -81,8 +112,9 @@ client.on('messageCreate', async (msg) => {
   } catch (e) { console.error(e); }
 });
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
+  await startupData();
   checkTrades(); 
 });
 
