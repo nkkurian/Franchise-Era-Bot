@@ -39,7 +39,6 @@ client.on('messageCreate', async (msg) => {
   const searchInput = msg.content.replace('!salary ', '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   if (searchInput.length < 2) return msg.reply("⚠️ Search term too short.");
 
-  // Let the user know the bot is working so they don't spam
   await msg.channel.sendTyping();
 
   try {
@@ -53,27 +52,24 @@ client.on('messageCreate', async (msg) => {
     });
 
     if (matches.length > 0) {
-      // Create a single message string to avoid multiple replies
       let responseMessage = "";
       matches.slice(0, 5).forEach(m => {
         const name = m._rawData[0] || "Unknown";
         const pos = m._rawData[1] || "N/A";
         const years = m._rawData[2] || "0";
-        const salary = m._rawData[3] || "0";
+        // Removed the extra "$" here since your sheet already provides it
+        const salary = m._rawData[3] || "0"; 
         responseMessage += `💰 **${name}** (${pos})\n**Years:** ${years}\n**Salary:** ${salary}\n\n`;
       });
       
-      msg.reply(responseMessage);
+      return msg.reply(responseMessage); // Added 'return' to stop execution here
     } else {
-      msg.reply(`❌ No results found for "${msg.content.replace('!salary ', '')}".`);
+      return msg.reply(`❌ No results found for "${msg.content.replace('!salary ', '')}".`);
     }
   } catch (e) {
-    // Only log the error to the Render console, don't confuse the user if it still works
     console.error("Sheet Connection Error:", e);
-    // Optional: Only reply with error if it's a total failure
-    if (!msg.headersSent) {
-       msg.reply("⚠️ Connection is a bit slow, please try again in a moment.");
-    }
+    // Only send an error message if the bot hasn't sent a success message yet
+    return msg.reply("⚠️ Error connecting to the sheet. Please wait a few seconds and try again.");
   }
 });
 
