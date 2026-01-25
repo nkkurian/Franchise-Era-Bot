@@ -22,10 +22,21 @@ const serviceAccountAuth = new JWT({
 });
 
 async function getSheetData() {
-  const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
-  await doc.loadInfo();
-  const sheet = doc.sheetsByTitle['PlayerList'];
-  return await sheet.getRows();
+  try {
+    const serviceAccountAuth = new JWT({
+      email: process.env.GOOGLE_EMAIL,
+      // This line below is the "magic" that fixes the \n issue if it persists
+      key: process.env.GOOGLE_KEY.split(String.raw`\n`).join('\n'), 
+      scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+    });
+    const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
+    await doc.loadInfo();
+    const sheet = doc.sheetsByTitle['PlayerList'];
+    return await sheet.getRows();
+  } catch (err) {
+    console.error("Internal Auth Error:", err);
+    throw err;
+  }
 }
 
 // 3. COMMAND HANDLER
