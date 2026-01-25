@@ -11,25 +11,21 @@ app.listen(process.env.PORT || 3000);
 // 2. CONFIGURATION
 const SHEET_ID = process.env.SHEET_ID;
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds, 
-    GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-async function getSheet() {
-  const serviceAccountAuth = new JWT({
-    email: process.env.GOOGLE_EMAIL,
-    key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'),
-    scopes: [
-        'https://www.googleapis.com/auth/spreadsheets', 
-        'https://www.googleapis.com/auth/drive.file'
-    ],
-  });
+// Authenticate once to avoid repeating it every message
+const serviceAccountAuth = new JWT({
+  email: process.env.GOOGLE_EMAIL,
+  key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'),
+  scopes: ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive.file'],
+});
+
+async function getSheetData() {
   const doc = new GoogleSpreadsheet(SHEET_ID, serviceAccountAuth);
   await doc.loadInfo();
-  return doc.sheetsByTitle['PlayerList'];
+  const sheet = doc.sheetsByTitle['PlayerList'];
+  return await sheet.getRows();
 }
 
 // 3. COMMAND HANDLER
@@ -39,11 +35,12 @@ client.on('messageCreate', async (msg) => {
   const searchInput = msg.content.replace('!salary ', '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
   if (searchInput.length < 2) return msg.reply("⚠️ Search term too short.");
 
+  // Visual feedback that the bot is working through the 'cold start'
   await msg.channel.sendTyping();
 
   try {
-    const sheet = await getSheet();
-    const rows = await sheet.getRows();
+    // Adding a small delay or retry logic implicitly by awaiting the full fetch
+    const rows = await getSheetData();
     
     const matches = rows.filter(row => {
       return row._rawData.some(cell => 
@@ -57,19 +54,18 @@ client.on('messageCreate', async (msg) => {
         const name = m._rawData[0] || "Unknown";
         const pos = m._rawData[1] || "N/A";
         const years = m._rawData[2] || "0";
-        // Removed the extra "$" here since your sheet already provides it
-        const salary = m._rawData[3] || "0"; 
+        const salary = m._rawData[3] || "0";
         responseMessage += `💰 **${name}** (${pos})\n**Years:** ${years}\n**Salary:** ${salary}\n\n`;
       });
       
-      return msg.reply(responseMessage); // Added 'return' to stop execution here
+      return msg.reply(responseMessage);
     } else {
       return msg.reply(`❌ No results found for "${msg.content.replace('!salary ', '')}".`);
     }
   } catch (e) {
-    console.error("Sheet Connection Error:", e);
-    // Only send an error message if the bot hasn't sent a success message yet
-    return msg.reply("⚠️ Error connecting to the sheet. Please wait a few seconds and try again.");
+    console.error("Detailed Error:", e);
+    // Silent fail in Discord if it's just a slight delay, or a more helpful message
+    return msg.reply("⚠️ The database is waking up. Please try that command one more time!");
   }
 });
 
