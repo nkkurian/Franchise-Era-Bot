@@ -5,7 +5,9 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds, 
     GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent 
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,   // Add this to match your screenshot
+    GatewayIntentBits.GuildPresences  // Add this to match your screenshot
   ]
 });
 
