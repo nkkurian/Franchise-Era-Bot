@@ -3,23 +3,23 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-console.log("--- BOT STARTING UP ---");
+console.log("--- BOT STARTING ---");
 
-// 1. SIMPLE WEB SERVER
+// 1. WEB SERVER (Prevents Render Port Errors)
 const app = express();
-app.get('/', (req, res) => res.send('Bot is running!'));
-app.listen(process.env.PORT || 3000, () => console.log("Web server is live."));
+app.get('/', (req, res) => res.send('Bot Status: Healthy'));
+app.listen(process.env.PORT || 3000, () => console.log("✅ Web Server Live"));
 
-// 2. DISCORD SETUP
+// 2. DISCORD CLIENT SETUP
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds, 
     GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.MessageContent // CRITICAL: Must be enabled in Discord Dev Portal
   ]
 });
 
-// 3. GOOGLE AUTH (Modern JWT Method)
+// 3. MODERN GOOGLE AUTH
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
   key: (process.env.GOOGLE_KEY || '').replace(/\\n/g, '\n'),
@@ -29,8 +29,8 @@ const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
 
 // 4. COMMAND HANDLER
 client.on('messageCreate', async (msg) => {
-  // Log every message the bot sees to the Render console
-  console.log(`Message seen: "${msg.content}" from ${msg.author.tag}`);
+  // Console logs help you debug in the Render 'Logs' tab
+  console.log(`Bot saw: "${msg.content}" from ${msg.author.tag}`);
 
   if (msg.author.bot || !msg.content.startsWith('!salary')) return;
 
@@ -38,14 +38,14 @@ client.on('messageCreate', async (msg) => {
   if (searchInput.length < 2) return; 
 
   try {
-    console.log(`Searching for: ${searchInput}`);
-    await msg.channel.sendTyping(); // This should now trigger!
+    console.log(`Triggering typing for: ${searchInput}`);
+    await msg.channel.sendTyping(); // If this works, the bot is alive!
     
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle['PlayerList'];
     if (!sheet) {
-        console.error("Error: Could not find sheet named 'PlayerList'");
-        return msg.reply("❌ Error: Could not find the 'PlayerList' sheet.");
+        console.error("❌ Sheet 'PlayerList' not found!");
+        return msg.reply("❌ Error: Could not find the 'PlayerList' tab.");
     }
 
     const rows = await sheet.getRows();
@@ -65,8 +65,8 @@ client.on('messageCreate', async (msg) => {
       return msg.reply("❌ No player found.");
     }
   } catch (e) {
-    console.error("CRITICAL ERROR:", e.message);
-    return msg.reply(`⚠️ Error: ${e.message}`);
+    console.error("CRITICAL ERROR:", e.message); //
+    return msg.reply(`⚠️ Sheet Error: ${e.message}`);
   }
 });
 
@@ -75,5 +75,5 @@ client.once('ready', () => {
 });
 
 client.login(process.env.DISCORD_TOKEN).catch(err => {
-    console.error("LOGIN FAILED:", err.message);
+    console.error("❌ LOGIN FAILED:", err.message);
 });
