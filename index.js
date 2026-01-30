@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 
-// 1. Log in immediately
+// Initialize the client
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds, 
@@ -10,21 +10,26 @@ const client = new Client({
   ]
 });
 
+// Move the login to the TOP
+console.log("--- ATTEMPTING DISCORD LOGIN ---");
+client.login(process.env.DISCORD_TOKEN).catch(err => {
+  console.error("❌ LOGIN FAILED:", err.message); //
+});
+
 client.once('ready', () => {
-  console.log(`✅ DISCORD IS LIVE: ${client.user.tag}`); // Check Render logs for this!
+  console.log(`✅ SUCCESS: Logged in as ${client.user.tag}`); //
+  
+  // Only start the web server AFTER the bot is ready
+  const app = express();
+  app.get('/', (req, res) => res.send('Bot is Online'));
+  app.listen(process.env.PORT || 10000, () => {
+    console.log("✅ Web Server is now listening.");
+  });
 });
 
 client.on('messageCreate', (msg) => {
+  console.log(`DEBUG: Saw message - ${msg.content}`); //
   if (msg.content === '!ping') {
-    msg.reply('Pong! I am back.');
+    msg.reply('Pong! I can hear you now.');
   }
 });
-
-client.login(process.env.DISCORD_TOKEN).catch(err => {
-  console.error("❌ TOKEN ERROR:", err.message); // This will tell us if the token is dead
-});
-
-// 2. Simple web server for Render
-const app = express();
-app.get('/', (req, res) => res.send('Bot Status: Testing Connection'));
-app.listen(process.env.PORT || 10000);
