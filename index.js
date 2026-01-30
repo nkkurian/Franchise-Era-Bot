@@ -3,23 +3,16 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-console.log("--- BOT STARTING ---");
-
-// 1. WEB SERVER (Prevents Render Port Errors)
-const app = express();
-app.get('/', (req, res) => res.send('Bot Status: Healthy'));
-app.listen(process.env.PORT || 3000, () => console.log("✅ Web Server Live"));
-
-// 2. DISCORD CLIENT SETUP
+// 1. DISCORD LOGIN FIRST (Priority)
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds, 
     GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent // CRITICAL: Must be enabled in Discord Dev Portal
+    GatewayIntentBits.MessageContent
   ]
 });
 
-// 3. MODERN GOOGLE AUTH
+// 2. GOOGLE AUTH SETUP
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
   key: (process.env.GOOGLE_KEY || '').replace(/\\n/g, '\n'),
@@ -27,33 +20,26 @@ const serviceAccountAuth = new JWT({
 });
 const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
 
-// 4. COMMAND HANDLER
+// 3. COMMAND HANDLER
 client.on('messageCreate', async (msg) => {
-  // Console logs help you debug in the Render 'Logs' tab
-  console.log(`Bot saw: "${msg.content}" from ${msg.author.tag}`);
+  // Use this to check if the bot is alive in Render Logs
+  console.log(`Bot received: ${msg.content}`);
 
   if (msg.author.bot || !msg.content.startsWith('!salary')) return;
 
-  const searchInput = msg.content.replace('!salary ', '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (searchInput.length < 2) return; 
+  const searchInput = msg.content.replace('!salary ', '').trim().toLowerCase();
 
   try {
-    console.log(`Triggering typing for: ${searchInput}`);
-    await msg.channel.sendTyping(); // If this works, the bot is alive!
+    await msg.channel.sendTyping();
     
     await doc.loadInfo();
     const sheet = doc.sheetsByTitle['PlayerList'];
-    if (!sheet) {
-        console.error("❌ Sheet 'PlayerList' not found!");
-        return msg.reply("❌ Error: Could not find the 'PlayerList' tab.");
-    }
-
     const rows = await sheet.getRows();
-    const matches = rows.filter(row => {
-      return row._rawData.some(cell => 
-        cell && cell.toString().toLowerCase().replace(/[^a-z0-9]/g, '').includes(searchInput)
-      );
-    });
+    
+    // Fuzzy search that checks all columns for "Puka"
+    const matches = rows.filter(row => 
+      row._rawData.some(cell => cell && cell.toString().toLowerCase().includes(searchInput))
+    );
 
     if (matches.length > 0) {
       let response = "";
@@ -62,18 +48,22 @@ client.on('messageCreate', async (msg) => {
       });
       return msg.reply(response);
     } else {
-      return msg.reply("❌ No player found.");
+      return msg.reply(`❌ No results found for "${searchInput}".`);
     }
   } catch (e) {
-    console.error("CRITICAL ERROR:", e.message); //
-    return msg.reply(`⚠️ Sheet Error: ${e.message}`);
+    console.error("SHEET ERROR:", e.message);
+    return msg.reply("⚠️ Error connecting to the sheet. Check the logs!");
   }
 });
 
 client.once('ready', () => {
-  console.log(`✅ SUCCESS: Logged in as ${client.user.tag}`);
+  console.log(`✅ DISCORD READY: ${client.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN).catch(err => {
-    console.error("❌ LOGIN FAILED:", err.message);
-});
+// Start everything
+client.login(process.env.DISCORD_TOKEN);
+
+// Keep-alive server
+const app = express();
+app.get('/', (req, res) => res.send('Bot is online'));
+app.listen(process.env.PORT || 10000);
