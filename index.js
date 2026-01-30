@@ -1,14 +1,14 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 
-// 1. START WEB SERVER IMMEDIATELY (Fixes Render Port Timeout)
+// 1. START WEB SERVER IMMEDIATELY
 const app = express();
 app.get('/', (req, res) => res.send('Bot is active!'));
-const server = app.listen(process.env.PORT || 10000, () => {
-  console.log(`✅ Web Server live on port ${server.address().port}`);
+app.listen(process.env.PORT || 10000, () => {
+  console.log(`✅ Web Server live on port 10000`);
 });
 
-// 2. INITIALIZE DISCORD BOT
+// 2. INITIALIZE DISCORD
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds, 
@@ -21,15 +21,6 @@ client.once('ready', () => {
   console.log(`🚀 DISCORD IS ONLINE: ${client.user.tag}`); //
 });
 
-client.on('messageCreate', (msg) => {
-  console.log(`Saw message: ${msg.content}`); //
-  if (msg.content === '!ping') {
-    msg.reply('Pong! The connection is fixed.');
-  }
-});
-
-// 3. LOGIN
-console.log("--- Connecting to Discord ---");
 client.login(process.env.DISCORD_TOKEN).catch(err => {
-  console.error("❌ LOGIN ERROR:", err.message); //
+  console.error("❌ LOGIN ERROR:", err.message); // This will show in Render if the token is wrong
 });
