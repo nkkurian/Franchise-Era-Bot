@@ -1,32 +1,27 @@
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
 
-// Start web server first so Render is happy
+// 1. Render Requirement: Open the port immediately
 const app = express();
-app.get('/', (req, res) => res.send('Bot is active!'));
-app.listen(process.env.PORT || 10000, () => {
-  console.log("✅ Web Port Open and Listening");
-});
+app.get('/', (req, res) => res.send('Bot is waking up...'));
+app.listen(process.env.PORT || 10000, () => console.log("✅ Render Port 10000 Open"));
 
-// Initialize Discord with ALL intents you have enabled in the portal
+// 2. Barebones Client: Only ask for what is absolutely necessary
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds, 
     GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,   // Matches your 'Server Members' toggle
-    GatewayIntentBits.GuildPresences  // Matches your 'Presence Intent' toggle
+    GatewayIntentBits.MessageContent
   ]
 });
 
+// 3. Status Check
 client.once('ready', () => {
-  console.log(`🚀 SUCCESS: Online as ${client.user.tag}`); //
+  console.log(`🚀 SUCCESS! Bot is online as: ${client.user.tag}`);
 });
 
-// Catch errors to see if Discord sends a rejection code
-client.on('error', (err) => console.error("❌ DISCORD ERROR:", err.message));
-
-console.log("--- ATTEMPTING FINAL LOGIN ---");
+// 4. Detailed Login Error Catching
+console.log("--- STARTING LOGIN ---");
 client.login(process.env.DISCORD_TOKEN).catch(err => {
-  console.error("❌ LOGIN FAILED:", err.message); //
+  console.error("❌ DISCORD REJECTED LOGIN:", err.message);
 });
