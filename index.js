@@ -51,7 +51,7 @@ client.on('messageCreate', async (message) => {
         const salary = playerRow.get('Yearly Salary') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
         const extended = playerRow.get('Extended') === 'TRUE';
-        message.reply(`📊 **Player Report: ${playerRow.get('Player Name')}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`);
+        message.reply(`📊 **Player Report: ${playerRow.get('Player Name')}**\n **Yearly Salary:** ${salary}\n **Cap Hit:** ${capHit}\n **Extended:** ${extended ? "✅ Yes" : "❌ No"}`);
       } else {
         message.reply(`❌ I couldn't find anyone matching **${playerNameInput}**.`);
       }
@@ -79,9 +79,9 @@ client.on('messageCreate', async (message) => {
         const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
         const extensionsUsed = sheet.getCellByA1('J2').formattedValue || "0";
 
-        let response = `🏟️ **Team Report: ${sheet.title}**\n`;
-        response += `💸 **Cap Space:** ${capSpace}\n`;
-        response += `📝 **Extensions Used:** ${extensionsUsed}`;
+        let response = ` **Team Report: ${sheet.title}**\n`;
+        response += ` **Cap Space:** ${capSpace}\n`;
+        response += ` **Extensions Used:** ${extensionsUsed}`;
 
         message.reply(response);
       } else {
