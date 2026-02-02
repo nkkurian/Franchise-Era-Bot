@@ -3,13 +3,13 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-// 1. RENDER WEB SERVER & MONITORING ENDPOINT
+// 1. WEB SERVER & MONITORING
 const app = express();
 app.get('/', (req, res) => {
-  console.log("💓 Heartbeat received from Monitor"); // Tells you the monitor is working
-  res.send('Salary Tracker: Active & Monitored');
+  console.log("💓 Heartbeat received from Monitor");
+  res.send('Franchise Bot: Advanced Salary Mode Active');
 });
-app.listen(process.env.PORT || 10000, () => console.log("✅ Web Port Linked"));
+app.listen(process.env.PORT || 10000);
 
 // 2. GOOGLE SHEETS AUTH
 const serviceAccountAuth = new JWT({
@@ -29,7 +29,7 @@ const client = new Client({
   ]
 });
 
-// 4. THE SALARY COMMAND
+// 4. ADVANCED SALARY COMMAND
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -37,10 +37,10 @@ client.on('messageCreate', async (message) => {
   const command = args[0].toLowerCase();
 
   if (command === '!salary') {
-    const playerName = args.slice(1).join(' ');
+    const playerNameInput = args.slice(1).join(' ');
 
-    if (!playerName) {
-      return message.reply("Please provide a name! Example: `!salary LeBron James`");
+    if (!playerNameInput) {
+      return message.reply("Who are we looking for? Try `!salary Cobie Durant`");
     }
 
     try {
@@ -48,26 +48,37 @@ client.on('messageCreate', async (message) => {
       const sheet = doc.sheetsByIndex[0]; 
       const rows = await sheet.getRows();
 
-      const playerRow = rows.find(r => r.get('Name').toLowerCase() === playerName.toLowerCase());
+      // Finding the player based on the "Player Name" column from your screenshot
+      const playerRow = rows.find(r => 
+        r.get('Player Name') && r.get('Player Name').toLowerCase() === playerNameInput.toLowerCase()
+      );
 
       if (playerRow) {
-        const salary = playerRow.get('Salary');
-        message.reply(`💰 **${playerName}** | Current Salary: **$${salary}**`);
+        // Pulling the specific columns you requested
+        const salary = playerRow.get('Yearly Sala') || "N/A";
+        const capHit = playerRow.get('Cap Hit') || "N/A";
+        const isExtended = playerRow.get('Extended') === "TRUE"; // Checkbox logic
+
+        // Build a nice looking response
+        let response = `📊 **Player Report: ${playerRow.get('Player Name')}**\n`;
+        response += `💰 **Yearly Salary:** ${salary}\n`;
+        response += `🧢 **Cap Hit:** ${capHit}\n`;
+        response += `📝 **Extended:** ${isExtended ? "✅ Yes" : "❌ No"}`;
+
+        message.reply(response);
       } else {
-        message.reply(`❌ Player "${playerName}" not found.`);
+        message.reply(`❌ I couldn't find **${playerNameInput}** in the roster.`);
       }
     } catch (err) {
       console.error("Sheets Error:", err);
-      message.reply("⚠️ Error connecting to the salary database.");
+      message.reply("⚠️ Error accessing the database. Check your column headers!");
     }
   }
 });
 
 // 5. LOGIN
 client.once('ready', () => {
-  console.log(`🚀 SALARY TRACKER ONLINE: ${client.user.tag}`);
+  console.log(`🚀 FRANCHISE BOT READY: ${client.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN).catch(err => {
-  console.error("❌ LOGIN FAILED:", err.message);
-});
+client.login(process.env.DISCORD_TOKEN);
