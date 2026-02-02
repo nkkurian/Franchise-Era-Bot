@@ -3,15 +3,17 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-// 1. RENDER WEB SERVER
+// 1. RENDER WEB SERVER & MONITORING ENDPOINT
 const app = express();
-app.get('/', (req, res) => res.send('Salary Tracker: Active'));
-app.listen(process.env.PORT || 10000);
+app.get('/', (req, res) => {
+  console.log("💓 Heartbeat received from Monitor"); // Tells you the monitor is working
+  res.send('Salary Tracker: Active & Monitored');
+});
+app.listen(process.env.PORT || 10000, () => console.log("✅ Web Port Linked"));
 
 // 2. GOOGLE SHEETS AUTH
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
-  // Key fix: Render handles newlines specifically, so we replace them back
   key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'), 
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
@@ -43,17 +45,16 @@ client.on('messageCreate', async (message) => {
 
     try {
       await doc.loadInfo();
-      const sheet = doc.sheetsByIndex[0]; // Accesses the first tab
+      const sheet = doc.sheetsByIndex[0]; 
       const rows = await sheet.getRows();
 
-      // Case-insensitive search for the player name
       const playerRow = rows.find(r => r.get('Name').toLowerCase() === playerName.toLowerCase());
 
       if (playerRow) {
         const salary = playerRow.get('Salary');
         message.reply(`💰 **${playerName}** | Current Salary: **$${salary}**`);
       } else {
-        message.reply(`❌ Player "${playerName}" not found. Check your spelling!`);
+        message.reply(`❌ Player "${playerName}" not found.`);
       }
     } catch (err) {
       console.error("Sheets Error:", err);
@@ -67,4 +68,6 @@ client.once('ready', () => {
   console.log(`🚀 SALARY TRACKER ONLINE: ${client.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN).catch(err => {
+  console.error("❌ LOGIN FAILED:", err.message);
+});
