@@ -81,7 +81,7 @@ client.on('messageCreate', async (message) => {
 
         let response = ` **Team Report: ${sheet.title}**\n`;
         response += ` **Cap Space:** ${capSpace}\n`;
-        response += ` **Extensions Used:** ${extensionsUsed}`;
+        response += ` **Extensions Left:** ${extensionsUsed}`;
 
         message.reply(response);
       } else {
