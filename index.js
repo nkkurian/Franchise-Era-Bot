@@ -6,8 +6,8 @@ const express = require('express');
 // 1. WEB SERVER & MONITORING
 const app = express();
 app.get('/', (req, res) => {
-  console.log("💓 Heartbeat received from Monitor");
-  res.send('Franchise Bot: Advanced Salary Mode Active');
+  console.log("💓 Heartbeat received");
+  res.send('Franchise Bot: Active');
 });
 app.listen(process.env.PORT || 10000);
 
@@ -29,7 +29,7 @@ const client = new Client({
   ]
 });
 
-// 4. ADVANCED SALARY COMMAND
+// 4. THE UPDATED SALARY COMMAND
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -48,37 +48,34 @@ client.on('messageCreate', async (message) => {
       const sheet = doc.sheetsByIndex[0]; 
       const rows = await sheet.getRows();
 
-      // Finding the player based on the "Player Name" column from your screenshot
+      // MATCHING HEADERS FROM image_474f8c.png
       const playerRow = rows.find(r => 
         r.get('Player Name') && r.get('Player Name').toLowerCase() === playerNameInput.toLowerCase()
       );
 
       if (playerRow) {
-        // Pulling the specific columns you requested
+        // We use the exact headers seen in your screenshot
         const salary = playerRow.get('Yearly Sala') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
-        const isExtended = playerRow.get('Extended') === "TRUE"; // Checkbox logic
+        const extended = playerRow.get('Extended') === 'TRUE'; // Checkbox logic
 
-        // Build a nice looking response
         let response = `📊 **Player Report: ${playerRow.get('Player Name')}**\n`;
         response += `💰 **Yearly Salary:** ${salary}\n`;
         response += `🧢 **Cap Hit:** ${capHit}\n`;
-        response += `📝 **Extended:** ${isExtended ? "✅ Yes" : "❌ No"}`;
+        response += `📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`;
 
         message.reply(response);
       } else {
         message.reply(`❌ I couldn't find **${playerNameInput}** in the roster.`);
       }
     } catch (err) {
-      console.error("Sheets Error:", err);
-      message.reply("⚠️ Error accessing the database. Check your column headers!");
+      // This prints the REAL error to your Render logs so we can fix it
+      console.error("DETAILED DATABASE ERROR:", err.message);
+      message.reply(`⚠️ Error: ${err.message}. Make sure the Service Account is invited to the sheet!`);
     }
   }
 });
 
 // 5. LOGIN
-client.once('ready', () => {
-  console.log(`🚀 FRANCHISE BOT READY: ${client.user.tag}`);
-});
-
+client.once('ready', () => console.log(`🚀 FRANCHISE BOT READY: ${client.user.tag}`));
 client.login(process.env.DISCORD_TOKEN);
