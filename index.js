@@ -32,7 +32,7 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
-  // --- EXISTING SALARY COMMAND (WITH PARTIAL SEARCH) ---
+  // --- SALARY COMMAND (PARTIAL SEARCH) ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
@@ -58,32 +58,35 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error(err); }
   }
 
-  // --- NEW TEAM COMMAND ---
+  // --- TEAM COMMAND (SMART PARTIAL TAB SEARCH) ---
   if (command === '!team') {
-    const teamNameInput = args.slice(1).join(' ').trim();
-    if (!teamNameInput) return message.reply("Please provide a team name! (e.g., `!team Grand Rapids Grizz`)");
+    const teamNameInput = args.slice(1).join(' ').trim().toLowerCase();
+    if (!teamNameInput) return message.reply("Please provide a team name! (e.g., `!team Grand`)");
 
     try {
       await doc.loadInfo();
-      // Look for the tab by the exact name provided
-      const sheet = doc.sheetsByTitle[teamNameInput];
+      
+      // SEARCH ALL TABS: Find a tab where the title contains our input
+      const sheet = doc.sheetsByIndex.find(s => 
+        s.title.toLowerCase().includes(teamNameInput)
+      );
 
       if (sheet) {
-        // Load the specific cells in the top area (F2, I2, G2)
+        // Load the specific cells (F2, I2, G2)
         await sheet.loadCells('A1:J5'); 
         
         const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
         const extensionsUsed = sheet.getCellByA1('I2').formattedValue || "0";
         const deadCap = sheet.getCellByA1('G2').formattedValue || "$0.00";
 
-        let response = `🏟️ **Team Report: ${teamNameInput}**\n`;
+        let response = `🏟️ **Team Report: ${sheet.title}**\n`; // Uses the real tab title
         response += `💸 **Cap Space:** ${capSpace}\n`;
         response += `📝 **Extensions Used:** ${extensionsUsed}\n`;
         response += `💀 **Dead Cap:** ${deadCap}`;
 
         message.reply(response);
       } else {
-        message.reply(`❌ I couldn't find a team tab named "**${teamNameInput}**". Make sure the spelling matches the tab exactly!`);
+        message.reply(`❌ I couldn't find a team matching "**${teamNameInput}**".`);
       }
     } catch (err) {
       console.error("TEAM SEARCH ERROR:", err.message);
