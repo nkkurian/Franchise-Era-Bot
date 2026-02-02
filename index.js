@@ -26,36 +26,40 @@ const client = new Client({
   ]
 });
 
-// 4. THE SALARY COMMAND
+// 4. THE SALARY COMMAND (WITH PARTIAL SEARCH)
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   const args = message.content.split(' ');
   if (args[0].toLowerCase() === '!salary') {
-    const playerNameInput = args.slice(1).join(' ').trim();
+    const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
 
     if (!playerNameInput) return message.reply("Please provide a name!");
 
     try {
       await doc.loadInfo();
-      const sheet = doc.sheetsByTitle['PlayerList']; // Targeted tab
+      const sheet = doc.sheetsByTitle['PlayerList']; 
       const rows = await sheet.getRows();
 
-      const playerRow = rows.find(r => 
-        r.get('Player Name') && r.get('Player Name').toLowerCase().trim() === playerNameInput.toLowerCase()
-      );
+      // PARTIAL SEARCH LOGIC
+      // This checks if the user's input is PART of the player's name
+      const playerRow = rows.find(r => {
+        const fullName = r.get('Player Name') ? r.get('Player Name').toLowerCase() : "";
+        return fullName.includes(playerNameInput); 
+      });
 
       if (playerRow) {
         const salary = playerRow.get('Yearly Salary') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
         const extended = playerRow.get('Extended') === 'TRUE';
 
-        message.reply(`📊 **Player Report: ${playerRow.get('Player Name')}**\n **Yearly Salary:** ${salary}\n **Cap Hit:** ${capHit}\n **Extended:** ${extended ? "✅ Yes" : "❌ No"}`);
+        message.reply(`📊 **Player Report: ${playerRow.get('Player Name')}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`);
       } else {
-        message.reply(`❌ I couldn't find **${playerNameInput}** in the PlayerList.`);
+        message.reply(`❌ I couldn't find anyone matching **${playerNameInput}** in the PlayerList.`);
       }
     } catch (err) {
       console.error("SEARCH ERROR:", err.message);
+      message.reply("⚠️ Error searching the database.");
     }
   }
 });
