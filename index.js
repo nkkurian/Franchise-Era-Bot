@@ -1,41 +1,58 @@
 const { Client, GatewayIntentBits } = require('discord.js');
+const { GoogleSpreadsheet } = require('google-spreadsheet');
+const { JWT } = require('google-auth-library');
 const express = require('express');
 
-// 1. WEB SERVER: Keeps Render alive
+// 1. Render Web Server
 const app = express();
-app.get('/', (req, res) => res.send('Bot is Heartbeating...'));
-app.listen(process.env.PORT || 10000, () => console.log("✅ Render Port Binding Successful"));
+app.get('/', (req, res) => res.send('Salary Tracker is Online'));
+app.listen(process.env.PORT || 10000);
 
-// 2. INTENTS: Telling Discord what the bot is allowed to do
+// 2. Google Sheets Authentication Setup
+const serviceAccountAuth = new JWT({
+  email: process.env.GOOGLE_EMAIL,
+  key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'), // Fixes private key formatting
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
+const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
+
+// 3. Discord Bot Setup
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers // For new member features
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-// 3. READY EVENT: Confirms the bot is actually online
-client.once('ready', () => {
-  console.log(`🚀 SYSTEM INITIALIZED: Logged in as ${client.user.tag}`);
-});
-
-// 4. COMMAND HANDLER: Where the magic happens
+// 4. THE SALARY LOGIC
 client.on('messageCreate', async (message) => {
-  // Ignore bots so we don't get infinite loops
   if (message.author.bot) return;
 
-  // Simple Ping Test
-  if (message.content.toLowerCase() === '!test') {
-    message.reply('The new system is online and listening! 📡');
+  const args = message.content.split(' ');
+  const command = args[0].toLowerCase();
+
+  if (command === '!salary') {
+    const playerName = args.slice(1).join(' '); // Grabs everything after !salary
+    
+    if (!playerName) return message.reply("Please provide a player name! (e.g., `!salary LeBron James`)");
+
+    try {
+      await doc.loadInfo(); 
+      const sheet = doc.sheetsByIndex[0]; // Assumes salary is in the first tab
+      const rows = await sheet.getRows();
+      
+      // Look for the player (Assumes column 1 is 'Name' and column 2 is 'Salary')
+      const playerRow = rows.find(r => r.get('Name').toLowerCase() === playerName.toLowerCase());
+
+      if (playerRow) {
+        message.reply(`💰 **${playerName}** earns **$${playerRow.get('Salary')}** this season.`);
+      } else {
+        message.reply(`❌ Player "${playerName}" not found in the records.`);
+      }
+    } catch (err) {
+      console.error(err);
+      message.reply("⚠️ Error accessing the salary database.");
+    }
   }
-
-  // --- ADD NEW FEATURES BELOW THIS LINE ---
 });
 
-// 5. LOGIN: The handshake with Discord
-console.log("--- INITIATING LOGIN SEQUENCE ---");
-client.login(process.env.DISCORD_TOKEN).catch(err => {
-  console.error("❌ CRITICAL LOGIN ERROR:", err.message); // This will tell us if the token is wrong
-});
+client.once('ready', () => console.log(`🚀 New Bot Ready: ${client.user.tag}`));
+client.login(process.env.DISCORD_TOKEN);
