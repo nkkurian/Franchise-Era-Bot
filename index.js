@@ -5,10 +5,7 @@ const express = require('express');
 
 // 1. WEB SERVER & MONITORING
 const app = express();
-app.get('/', (req, res) => {
-  console.log("💓 Heartbeat received");
-  res.send('Franchise Bot: PlayerList Mode Active');
-});
+app.get('/', (req, res) => res.send('Franchise Bot: Active'));
 app.listen(process.env.PORT || 10000);
 
 // 2. GOOGLE SHEETS AUTH
@@ -29,33 +26,21 @@ const client = new Client({
   ]
 });
 
-// 4. THE UPDATED SALARY COMMAND
+// 4. THE SALARY COMMAND
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
   const args = message.content.split(' ');
-  const command = args[0].toLowerCase();
-
-  if (command === '!salary') {
+  if (args[0].toLowerCase() === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim();
 
-    if (!playerNameInput) {
-      return message.reply("Who are we looking for? Try `!salary Reed Blankenship`");
-    }
+    if (!playerNameInput) return message.reply("Please provide a name!");
 
     try {
       await doc.loadInfo();
-      
-      // FIX: Find the specific tab named "PlayerList" instead of just the first one
-      const sheet = doc.sheetsByTitle['PlayerList']; 
-      
-      if (!sheet) {
-        return message.reply("⚠️ Error: I couldn't find a tab named 'PlayerList' in your sheet.");
-      }
-
+      const sheet = doc.sheetsByTitle['PlayerList']; // Targeted tab
       const rows = await sheet.getRows();
 
-      // Match headers exactly from image_475ba9.png
       const playerRow = rows.find(r => 
         r.get('Player Name') && r.get('Player Name').toLowerCase().trim() === playerNameInput.toLowerCase()
       );
@@ -65,22 +50,15 @@ client.on('messageCreate', async (message) => {
         const capHit = playerRow.get('Cap Hit') || "N/A";
         const extended = playerRow.get('Extended') === 'TRUE';
 
-        let response = `📊 **Player Report: ${playerRow.get('Player Name')}**\n`;
-        response += `💰 **Yearly Salary:** ${salary}\n`;
-        response += `🧢 **Cap Hit:** ${capHit}\n`;
-        response += `📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`;
-
-        message.reply(response);
+        message.reply(`📊 **Player Report: ${playerRow.get('Player Name')}**\n **Yearly Salary:** ${salary}\n **Cap Hit:** ${capHit}\n **Extended:** ${extended ? "✅ Yes" : "❌ No"}`);
       } else {
         message.reply(`❌ I couldn't find **${playerNameInput}** in the PlayerList.`);
       }
     } catch (err) {
       console.error("SEARCH ERROR:", err.message);
-      message.reply(`⚠️ Database Error: ${err.message}`);
     }
   }
 });
 
-// 5. LOGIN
-client.once('ready', () => console.log(`🚀 FRANCHISE BOT READY: ${client.user.tag}`));
+client.once('ready', () => console.log(`🚀 BOT ONLINE: ${client.user.tag}`));
 client.login(process.env.DISCORD_TOKEN);
