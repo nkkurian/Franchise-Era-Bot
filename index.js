@@ -7,7 +7,7 @@ const express = require('express');
 const app = express();
 app.get('/', (req, res) => {
   console.log("💓 Heartbeat received");
-  res.send('Franchise Bot: Active');
+  res.send('Franchise Bot: PlayerList Mode Active');
 });
 app.listen(process.env.PORT || 10000);
 
@@ -37,27 +37,33 @@ client.on('messageCreate', async (message) => {
   const command = args[0].toLowerCase();
 
   if (command === '!salary') {
-    const playerNameInput = args.slice(1).join(' ');
+    const playerNameInput = args.slice(1).join(' ').trim();
 
     if (!playerNameInput) {
-      return message.reply("Who are we looking for? Try `!salary Cobie Durant`");
+      return message.reply("Who are we looking for? Try `!salary Reed Blankenship`");
     }
 
     try {
       await doc.loadInfo();
-      const sheet = doc.sheetsByIndex[0]; 
+      
+      // FIX: Find the specific tab named "PlayerList" instead of just the first one
+      const sheet = doc.sheetsByTitle['PlayerList']; 
+      
+      if (!sheet) {
+        return message.reply("⚠️ Error: I couldn't find a tab named 'PlayerList' in your sheet.");
+      }
+
       const rows = await sheet.getRows();
 
-      // MATCHING HEADERS FROM image_474f8c.png
+      // Match headers exactly from image_475ba9.png
       const playerRow = rows.find(r => 
-        r.get('Player Name') && r.get('Player Name').toLowerCase() === playerNameInput.toLowerCase()
+        r.get('Player Name') && r.get('Player Name').toLowerCase().trim() === playerNameInput.toLowerCase()
       );
 
       if (playerRow) {
-        // We use the exact headers seen in your screenshot
-        const salary = playerRow.get('Yearly Sala') || "N/A";
+        const salary = playerRow.get('Yearly Salary') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
-        const extended = playerRow.get('Extended') === 'TRUE'; // Checkbox logic
+        const extended = playerRow.get('Extended') === 'TRUE';
 
         let response = `📊 **Player Report: ${playerRow.get('Player Name')}**\n`;
         response += `💰 **Yearly Salary:** ${salary}\n`;
@@ -66,12 +72,11 @@ client.on('messageCreate', async (message) => {
 
         message.reply(response);
       } else {
-        message.reply(`❌ I couldn't find **${playerNameInput}** in the roster.`);
+        message.reply(`❌ I couldn't find **${playerNameInput}** in the PlayerList.`);
       }
     } catch (err) {
-      // This prints the REAL error to your Render logs so we can fix it
-      console.error("DETAILED DATABASE ERROR:", err.message);
-      message.reply(`⚠️ Error: ${err.message}. Make sure the Service Account is invited to the sheet!`);
+      console.error("SEARCH ERROR:", err.message);
+      message.reply(`⚠️ Database Error: ${err.message}`);
     }
   }
 });
