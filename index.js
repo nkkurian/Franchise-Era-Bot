@@ -72,17 +72,16 @@ client.on('messageCreate', async (message) => {
       );
 
       if (sheet) {
-        // Load the specific cells (F2, I2, G2)
+        // Load cells including J to reach the extension count
         await sheet.loadCells('A1:J5'); 
         
+        // Target F2 for Cap Space and J2 for Extensions
         const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
-        const extensionsUsed = sheet.getCellByA1('I2').formattedValue || "0";
-        const deadCap = sheet.getCellByA1('G2').formattedValue || "$0.00";
+        const extensionsUsed = sheet.getCellByA1('J2').formattedValue || "0";
 
-        let response = `🏟️ **Team Report: ${sheet.title}**\n`; // Uses the real tab title
+        let response = `🏟️ **Team Report: ${sheet.title}**\n`;
         response += `💸 **Cap Space:** ${capSpace}\n`;
-        response += `📝 **Extensions Used:** ${extensionsUsed}\n`;
-        response += `💀 **Dead Cap:** ${deadCap}`;
+        response += `📝 **Extensions Used:** ${extensionsUsed}`;
 
         message.reply(response);
       } else {
