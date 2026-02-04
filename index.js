@@ -47,10 +47,11 @@ client.on('messageCreate', async (message) => {
         return fullName.includes(playerNameInput); 
       });
 
+      console.log("Detected Headers:", sheet.headerValues);
       if (playerRow) {
         const salary = playerRow.get('Yearly Salary') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
-        const years = playerRow.get('Years') || "N/A"; // ADDED: Pulls from Column C
+        const years = playerRow.get('Years') || "N/A";
         const extended = playerRow.get('Extended') === 'TRUE';
 
         let response = `📊 **Player Report: ${playerRow.get('Player Name')}**\n`;
