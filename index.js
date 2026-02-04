@@ -25,7 +25,29 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
-  // --- 1. FULL SALARY COMMAND (REVERTED TO PREFERRED FORMAT) ---
+  // --- 1. RESTORED TEAM COMMAND (F2 for Cap, J2 for Extensions) ---
+  if (command === '!team') {
+    const teamNameInput = args.slice(1).join(' ').trim().toLowerCase();
+    if (!teamNameInput) return message.reply("Please provide a team name!");
+
+    try {
+      await doc.loadInfo();
+      // Partial match search for the team tab
+      const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamNameInput));
+
+      if (sheet) {
+        await sheet.loadCells('A1:J5'); 
+        const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
+        const extensionsUsed = sheet.getCellByA1('J2').formattedValue || "0";
+
+        message.reply(`🏟️ **Team Report: ${sheet.title}**\n💸 **Cap Space:** ${capSpace}\n📝 **Extensions Used:** ${extensionsUsed}`);
+      } else {
+        message.reply(`❌ I couldn't find a team matching "**${teamNameInput}**".`);
+      }
+    } catch (err) { console.error(err); }
+  }
+
+  // --- 2. SALARY COMMAND (FULL PREFERRED FORMAT) ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
@@ -60,24 +82,24 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error(err); }
   }
 
-  // --- 2. INTEGRATED TRADE COMMAND (WITH TEAM CAP LOOKUP) ---
+  // --- 3. TRADE COMMAND (WITH BONUS LOOKUP & TEAM CAP) ---
   if (command === '!trade') {
     const tradeContent = message.content.slice(7); 
     const sides = tradeContent.split('for');
-    if (sides.length !== 2) return message.reply("Format: `!trade [TeamA]: Player1, Player2 for [TeamB]: Player3`");
+    if (sides.length !== 2) return message.reply("Format: `!trade [TeamA]: Player1 for [TeamB]: Player2`");
 
     try {
       await doc.loadInfo();
       const playerRows = await doc.sheetsByTitle['PlayerList'].getRows();
+      const transRows = await doc.sheetsByTitle['Transaction Log'].getRows();
 
       const getTradeData = async (sideStr) => {
         const [teamName, playerList] = sideStr.split(':').map(s => s.trim());
         const names = playerList.split(',').map(n => n.trim().toLowerCase());
         
         let totalHit = 0;
-        let found = [];
+        let details = [];
         
-        // Find Team Sheet for Cap Space (Cell F2)
         const teamSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
         let currentCap = 0;
         if (teamSheet) {
@@ -88,11 +110,19 @@ client.on('messageCreate', async (message) => {
         names.forEach(name => {
           const row = playerRows.find(r => r.get('Player Name')?.toLowerCase().includes(name));
           if (row) {
-            totalHit += parseFloat((row.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
-            found.push(row.get('Player Name'));
+            const actualName = row.get('Player Name');
+            const hit = parseFloat((row.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
+            totalHit += hit;
+
+            const bonus = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(actualName.toLowerCase()));
+            let playerStr = `- **${actualName}** ($${hit.toLocaleString()})`;
+            if (bonus && bonus.get('Bonus Structure')) {
+              playerStr += `\n  └ ✨ *Bonus: ${bonus.get('Bonus Structure')} (Kick-in: ${bonus.get('Kick In Year(Offseason)') || 'N/A'})*`;
+            }
+            details.push(playerStr);
           }
         });
-        return { team: teamSheet ? teamSheet.title : teamName, totalHit, players: found, currentCap };
+        return { team: teamSheet ? teamSheet.title : teamName, totalHit, details, currentCap };
       };
 
       const sideA = await getTradeData(sides[0]);
@@ -102,8 +132,8 @@ client.on('messageCreate', async (message) => {
       const bNew = sideB.currentCap + sideB.totalHit - sideA.totalHit;
 
       let res = `🤝 **Trade Analysis: ${sideA.team} ↔️ ${sideB.team}**\n\n`;
-      res += `**${sideA.team} Sends:** ${sideA.players.join(', ')} ($${sideA.totalHit.toLocaleString()})\n`;
-      res += `**${sideB.team} Sends:** ${sideB.players.join(', ')} ($${sideB.totalHit.toLocaleString()})\n\n`;
+      res += `**${sideA.team} Sends:**\n${sideA.details.join('\n')}\n*(Total Outgoing: $${sideA.totalHit.toLocaleString()})*\n\n`;
+      res += `**${sideB.team} Sends:**\n${sideB.details.join('\n')}\n*(Total Outgoing: $${sideB.totalHit.toLocaleString()})*\n\n`;
       res += `💰 **${sideA.team} New Space:** $${aNew.toLocaleString()}\n`;
       res += `💰 **${sideB.team} New Space:** $${bNew.toLocaleString()}`;
 
