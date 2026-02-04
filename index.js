@@ -29,7 +29,7 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
-  // --- UPDATED SALARY & BONUS COMMAND ---
+  // --- SALARY & BONUS COMMAND (WITH READABILITY SPACE) ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
@@ -37,7 +37,7 @@ client.on('messageCreate', async (message) => {
     try {
       await doc.loadInfo();
       const playerSheet = doc.sheetsByTitle['PlayerList']; 
-      const transactionSheet = doc.sheetsByTitle['Transaction Log']; // New lookup tab
+      const transactionSheet = doc.sheetsByTitle['Transaction Log']; 
       
       const playerRows = await playerSheet.getRows();
       const transRows = await transactionSheet.getRows();
@@ -65,42 +65,4 @@ client.on('messageCreate', async (message) => {
         response += `⏳ **Years Remaining:** ${years}\n`;
         response += `📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}\n`;
 
-        // Add Bonus details if they exist
-        if (bonusInfo) {
-          const structure = bonusInfo.get('Bonus Structure');
-          const kickIn = bonusInfo.get('Kick In Year(Offseason)');
-          if (structure) response += `✨ **Bonus:** ${structure}\n`;
-          if (kickIn) response += `📅 **Kick In Year:** ${kickIn}\n`;
-        }
-
-        message.reply(response);
-      } else {
-        message.reply(`❌ I couldn't find anyone matching **${playerNameInput}**.`);
-      }
-    } catch (err) { console.error(err); }
-  }
-
-  // --- TEAM COMMAND ---
-  if (command === '!team') {
-    const teamNameInput = args.slice(1).join(' ').trim().toLowerCase();
-    if (!teamNameInput) return message.reply("Please provide a team name!");
-
-    try {
-      await doc.loadInfo();
-      const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamNameInput));
-
-      if (sheet) {
-        await sheet.loadCells('A1:J5'); 
-        const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
-        const extensionsUsed = sheet.getCellByA1('J2').formattedValue || "0";
-
-        message.reply(`🏟️ **Team Report: ${sheet.title}**\n💸 **Cap Space:** ${capSpace}\n📝 **Extensions Used:** ${extensionsUsed}`);
-      } else {
-        message.reply(`❌ I couldn't find a team matching "**${teamNameInput}**".`);
-      }
-    } catch (err) { console.error(err); }
-  }
-});
-
-client.once('ready', () => console.log(`🚀 FRANCHISE BOT READY: ${client.user.tag}`));
-client.login(process.env.DISCORD_TOKEN);
+        // Check if bonus info exists to add the space and the details [cite: 1.
