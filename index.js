@@ -3,12 +3,10 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-// 1. WEB SERVER
 const app = express();
 app.get('/', (req, res) => res.send('Franchise Bot: Active'));
 app.listen(process.env.PORT || 10000);
 
-// 2. GOOGLE SHEETS AUTH
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
   key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'), 
@@ -17,13 +15,8 @@ const serviceAccountAuth = new JWT({
 
 const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
 
-// 3. DISCORD CLIENT
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 client.on('messageCreate', async (message) => {
@@ -32,7 +25,7 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
-  // --- RESTORED FULL SALARY COMMAND ---
+  // --- 1. FULL SALARY COMMAND (REVERTED TO PREFERRED FORMAT) ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
@@ -40,75 +33,81 @@ client.on('messageCreate', async (message) => {
     try {
       await doc.loadInfo();
       const playerSheet = doc.sheetsByTitle['PlayerList']; 
-      const transactionSheet = doc.sheetsByTitle['Transaction Log']; // For Bonus/Kick In
-      
+      const transSheet = doc.sheetsByTitle['Transaction Log'];
       const playerRows = await playerSheet.getRows();
-      const transRows = await transactionSheet.getRows();
+      const transRows = await transSheet.getRows();
 
-      const playerRow = playerRows.find(r => {
-        const fullName = r.get('Player Name') ? r.get('Player Name').toLowerCase() : "";
-        return fullName.includes(playerNameInput); 
-      });
+      const playerRow = playerRows.find(r => r.get('Player Name')?.toLowerCase().includes(playerNameInput));
 
       if (playerRow) {
         const name = playerRow.get('Player Name');
         const salary = playerRow.get('Yearly Salary') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
-        const years = playerRow._rawData[2] || "0"; // Pulls directly from Column C
+        const years = playerRow._rawData[2] || "0";
         const extended = playerRow.get('Extended') === 'TRUE';
 
-        // Lookup Bonus details in the Transaction Log tab
-        const bonusInfo = transRows.find(r => 
-          r.get('Player Name') && r.get('Player Name').toLowerCase().includes(name.toLowerCase())
-        );
+        const bonusInfo = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
 
-        // BUILDING THE FULL RESPONSE (AS SEEN IN IMAGE_0BA82A)
-        let response = `📊 **Player Report: ${name}**\n`;
-        response += `💰 **Yearly Salary:** ${salary}\n`;
-        response += `🧢 **Cap Hit:** ${capHit}\n`;
-        response += `⏳ **Years Remaining:** ${years}\n`;
-        response += `📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`;
+        let response = `📊 **Player Report: ${name}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n⏳ **Years Remaining:** ${years}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`;
 
-        // Add the space and bonus info if it exists
-        if (bonusInfo) {
-          const structure = bonusInfo.get('Bonus Structure');
-          const kickIn = bonusInfo.get('Kick In Year(Offseason)');
-          
-          if (structure || kickIn) {
-            response += `\n\n`; // The readability space you requested
-            if (structure) response += `✨ **Bonus:** ${structure}\n`;
-            if (kickIn) response += `📅 **Kick In Year:** ${kickIn}\n`;
-          }
+        if (bonusInfo && (bonusInfo.get('Bonus Structure') || bonusInfo.get('Kick In Year(Offseason)'))) {
+          response += `\n\n✨ **Bonus:** ${bonusInfo.get('Bonus Structure') || "None"}\n📅 **Kick In Year:** ${bonusInfo.get('Kick In Year(Offseason)') || "N/A"}`;
         }
-
         message.reply(response);
       } else {
         message.reply(`❌ I couldn't find **${playerNameInput}** in the roster.`);
       }
-    } catch (err) { 
-      console.error(err);
-      message.reply("⚠️ Error connecting to the salary database."); 
-    }
+    } catch (err) { console.error(err); }
   }
 
-  // --- TEAM COMMAND (PARTIAL SEARCH) ---
-  if (command === '!team') {
-    const teamNameInput = args.slice(1).join(' ').trim().toLowerCase();
-    if (!teamNameInput) return message.reply("Please provide a team name!");
+  // --- 2. INTEGRATED TRADE COMMAND (WITH TEAM CAP LOOKUP) ---
+  if (command === '!trade') {
+    const tradeContent = message.content.slice(7); 
+    const sides = tradeContent.split('for');
+    if (sides.length !== 2) return message.reply("Format: `!trade [TeamA]: Player1, Player2 for [TeamB]: Player3`");
 
     try {
       await doc.loadInfo();
-      const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamNameInput));
+      const playerRows = await doc.sheetsByTitle['PlayerList'].getRows();
 
-      if (sheet) {
-        await sheet.loadCells('A1:J5'); 
-        const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
-        const extensionsUsed = sheet.getCellByA1('J2').formattedValue || "0";
+      const getTradeData = async (sideStr) => {
+        const [teamName, playerList] = sideStr.split(':').map(s => s.trim());
+        const names = playerList.split(',').map(n => n.trim().toLowerCase());
+        
+        let totalHit = 0;
+        let found = [];
+        
+        // Find Team Sheet for Cap Space (Cell F2)
+        const teamSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
+        let currentCap = 0;
+        if (teamSheet) {
+          await teamSheet.loadCells('F2');
+          currentCap = parseFloat(teamSheet.getCellByA1('F2').formattedValue.replace(/[$,]/g, '')) || 0;
+        }
 
-        message.reply(`🏟️ **Team Report: ${sheet.title}**\n💸 **Cap Space:** ${capSpace}\n📝 **Extensions Used:** ${extensionsUsed}`);
-      } else {
-        message.reply(`❌ I couldn't find a team matching "**${teamNameInput}**".`);
-      }
+        names.forEach(name => {
+          const row = playerRows.find(r => r.get('Player Name')?.toLowerCase().includes(name));
+          if (row) {
+            totalHit += parseFloat((row.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
+            found.push(row.get('Player Name'));
+          }
+        });
+        return { team: teamSheet ? teamSheet.title : teamName, totalHit, players: found, currentCap };
+      };
+
+      const sideA = await getTradeData(sides[0]);
+      const sideB = await getTradeData(sides[1]);
+
+      const aNew = sideA.currentCap + sideA.totalHit - sideB.totalHit;
+      const bNew = sideB.currentCap + sideB.totalHit - sideA.totalHit;
+
+      let res = `🤝 **Trade Analysis: ${sideA.team} ↔️ ${sideB.team}**\n\n`;
+      res += `**${sideA.team} Sends:** ${sideA.players.join(', ')} ($${sideA.totalHit.toLocaleString()})\n`;
+      res += `**${sideB.team} Sends:** ${sideB.players.join(', ')} ($${sideB.totalHit.toLocaleString()})\n\n`;
+      res += `💰 **${sideA.team} New Space:** $${aNew.toLocaleString()}\n`;
+      res += `💰 **${sideB.team} New Space:** $${bNew.toLocaleString()}`;
+
+      message.reply(res);
     } catch (err) { console.error(err); }
   }
 });
