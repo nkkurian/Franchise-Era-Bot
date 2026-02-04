@@ -3,12 +3,10 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-// 1. WEB SERVER & MONITORING
 const app = express();
 app.get('/', (req, res) => res.send('Franchise Bot: Active'));
 app.listen(process.env.PORT || 10000);
 
-// 2. GOOGLE SHEETS AUTH
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
   key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'), 
@@ -17,7 +15,6 @@ const serviceAccountAuth = new JWT({
 
 const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
 
-// 3. DISCORD CLIENT
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -32,40 +29,55 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
-  // --- SALARY COMMAND (FIXED INDEX PULLING) ---
+  // --- UPDATED SALARY & BONUS COMMAND ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
 
     try {
       await doc.loadInfo();
-      const sheet = doc.sheetsByTitle['PlayerList']; 
-      const rows = await sheet.getRows();
+      const playerSheet = doc.sheetsByTitle['PlayerList']; 
+      const transactionSheet = doc.sheetsByTitle['Transaction Log']; // New lookup tab
+      
+      const playerRows = await playerSheet.getRows();
+      const transRows = await transactionSheet.getRows();
 
-      const playerRow = rows.find(r => {
+      const playerRow = playerRows.find(r => {
         const fullName = r.get('Player Name') ? r.get('Player Name').toLowerCase() : "";
         return fullName.includes(playerNameInput); 
       });
 
       if (playerRow) {
-        // We use _rawData to get the exact value from Column C (index 2)
-        // Index 0 = Player Name, Index 1 = Position, Index 2 = Years
+        const name = playerRow.get('Player Name');
         const salary = playerRow.get('Yearly Salary') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
-        const years = playerRow._rawData[2] || "0"; // Directly pulls Column C
+        const years = playerRow._rawData[2] || "0";
         const extended = playerRow.get('Extended') === 'TRUE';
 
-        let response = `📊 **Player Report: ${playerRow.get('Player Name')}**\n`;
+        // LOOKUP BONUS IN TRANSACTION LOG
+        const bonusInfo = transRows.find(r => 
+          r.get('Player Name') && r.get('Player Name').toLowerCase().includes(name.toLowerCase())
+        );
+
+        let response = `📊 **Player Report: ${name}**\n`;
         response += `💰 **Yearly Salary:** ${salary}\n`;
         response += `🧢 **Cap Hit:** ${capHit}\n`;
         response += `⏳ **Years Remaining:** ${years}\n`;
-        response += `📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`;
+        response += `📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}\n`;
+
+        // Add Bonus details if they exist
+        if (bonusInfo) {
+          const structure = bonusInfo.get('Bonus Structure');
+          const kickIn = bonusInfo.get('Kick In Year(Offseason)');
+          if (structure) response += `✨ **Bonus:** ${structure}\n`;
+          if (kickIn) response += `📅 **Kick In Year:** ${kickIn}\n`;
+        }
 
         message.reply(response);
       } else {
         message.reply(`❌ I couldn't find anyone matching **${playerNameInput}**.`);
       }
-    } catch (err) { console.error("SALARY ERROR:", err.message); }
+    } catch (err) { console.error(err); }
   }
 
   // --- TEAM COMMAND ---
@@ -82,15 +94,11 @@ client.on('messageCreate', async (message) => {
         const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
         const extensionsUsed = sheet.getCellByA1('J2').formattedValue || "0";
 
-        let response = `🏟️ **Team Report: ${sheet.title}**\n`;
-        response += `💸 **Cap Space:** ${capSpace}\n`;
-        response += `📝 **Extensions Used:** ${extensionsUsed}`;
-
-        message.reply(response);
+        message.reply(`🏟️ **Team Report: ${sheet.title}**\n💸 **Cap Space:** ${capSpace}\n📝 **Extensions Used:** ${extensionsUsed}`);
       } else {
         message.reply(`❌ I couldn't find a team matching "**${teamNameInput}**".`);
       }
-    } catch (err) { console.error("TEAM ERROR:", err.message); }
+    } catch (err) { console.error(err); }
   }
 });
 
