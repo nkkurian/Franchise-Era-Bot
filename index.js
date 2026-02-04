@@ -32,7 +32,7 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
-  // --- SALARY COMMAND (PARTIAL SEARCH + YEARS ADDED) ---
+  // --- SALARY COMMAND (FIXED INDEX PULLING) ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
@@ -47,24 +47,25 @@ client.on('messageCreate', async (message) => {
         return fullName.includes(playerNameInput); 
       });
 
-      console.log("Detected Headers:", sheet.headerValues);
       if (playerRow) {
+        // We use _rawData to get the exact value from Column C (index 2)
+        // Index 0 = Player Name, Index 1 = Position, Index 2 = Years
         const salary = playerRow.get('Yearly Salary') || "N/A";
         const capHit = playerRow.get('Cap Hit') || "N/A";
-        const years = playerRow.get('Years') || "N/A";
+        const years = playerRow._rawData[2] || "0"; // Directly pulls Column C
         const extended = playerRow.get('Extended') === 'TRUE';
 
         let response = `📊 **Player Report: ${playerRow.get('Player Name')}**\n`;
         response += `💰 **Yearly Salary:** ${salary}\n`;
         response += `🧢 **Cap Hit:** ${capHit}\n`;
-        response += `⏳ **Years Remaining:** ${years}\n`; // ADDED: Displays Years
+        response += `⏳ **Years Remaining:** ${years}\n`;
         response += `📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`;
 
         message.reply(response);
       } else {
         message.reply(`❌ I couldn't find anyone matching **${playerNameInput}**.`);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("SALARY ERROR:", err.message); }
   }
 
   // --- TEAM COMMAND ---
@@ -89,7 +90,7 @@ client.on('messageCreate', async (message) => {
       } else {
         message.reply(`❌ I couldn't find a team matching "**${teamNameInput}**".`);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error("TEAM ERROR:", err.message); }
   }
 });
 
