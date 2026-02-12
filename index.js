@@ -29,16 +29,14 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
-  // --- 1. HELP COMMAND ---
   if (command === '!help') {
     let helpMsg = `📜 **Franchise Bot Commands**\n\n`;
-    helpMsg += `🔍 **!salary [Player Name]**\nShows contract details and bonus structures.\n\n`;
+    helpMsg += `🔍 **!salary [Player Name]**\nShows contract details, bonuses, and dead cap status.\n\n`;
     helpMsg += `🏟️ **!team [Team Name]**\nShows cap space and extensions left.\n\n`;
-    helpMsg += `🤝 **!trade [TeamA]: Player1 for [TeamB]: Player2**\nCalculates trade impact and bonus info.`;
+    helpMsg += `🤝 **!trade [TeamA]: Player1 for [TeamB]: Player2**\nCalculates trade impact including dead cap warnings.`;
     return message.reply(helpMsg);
   }
 
-  // --- 2. TEAM COMMAND ---
   if (command === '!team') {
     const teamNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!teamNameInput) return message.reply("Please provide a team name!");
@@ -56,7 +54,7 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error(err); }
   }
 
-  // --- 3. SALARY COMMAND ---
+  // --- UPDATED SALARY COMMAND WITH DEAD CAP ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
@@ -74,10 +72,12 @@ client.on('messageCreate', async (message) => {
         const capHit = playerRow.get('Cap Hit') || "N/A";
         const years = playerRow._rawData[2] || "0";
         const extended = playerRow.get('Extended') === 'TRUE';
+        const hasDeadCap = playerRow.get('Dead Cap') === 'TRUE'; // Pulls from Column I
 
         const bonusInfo = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
 
-        let response = `📊 **Player Report: ${name}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n⏳ **Years Remaining:** ${years}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}`;
+        let response = `📊 **Player Report: ${name}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n⏳ **Years Remaining:** ${years}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}\n💀 **Dead Cap:** ${hasDeadCap ? "⚠️ Yes" : "❌ No"}`;
+        
         if (bonusInfo && (bonusInfo.get('Bonus Structure') || bonusInfo.get('Kick In Year(Offseason)'))) {
           response += `\n\n✨ **Bonus:** ${bonusInfo.get('Bonus Structure') || "None"}\n📅 **Kick In Year:** ${bonusInfo.get('Kick In Year(Offseason)') || "N/A"}`;
         }
@@ -88,7 +88,7 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error(err); }
   }
 
-  // --- 4. TRADE COMMAND ---
+  // --- UPDATED TRADE COMMAND WITH DEAD CAP WARNINGS ---
   if (command === '!trade') {
     const tradeContent = message.content.slice(7); 
     const sides = tradeContent.split('for');
@@ -115,9 +115,11 @@ client.on('messageCreate', async (message) => {
           if (row) {
             const actualName = row.get('Player Name');
             const hit = parseFloat((row.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
+            const hasDeadCap = row.get('Dead Cap') === 'TRUE'; //
             totalHit += hit;
+
             const bonus = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(actualName.toLowerCase()));
-            let playerStr = `- **${actualName}** ($${hit.toLocaleString()})`;
+            let playerStr = `- **${actualName}** ($${hit.toLocaleString()}) ${hasDeadCap ? "💀" : ""}`;
             if (bonus && bonus.get('Bonus Structure')) {
               playerStr += `\n  └ ✨ *Bonus: ${bonus.get('Bonus Structure')} (Kick-in: ${bonus.get('Kick In Year(Offseason)') || 'N/A'})*`;
             }
@@ -137,6 +139,10 @@ client.on('messageCreate', async (message) => {
       res += `**${sideB.team} Sends:**\n${sideB.details.join('\n')}\n*(Total Outgoing: $${sideB.totalHit.toLocaleString()})*\n\n`;
       res += `💰 **${sideA.team} New Space:** $${aNew.toLocaleString()}\n`;
       res += `💰 **${sideB.team} New Space:** $${bNew.toLocaleString()}`;
+      
+      if (res.includes("💀")) {
+        res += `\n\n⚠️ **Warning:** Players marked with 💀 carry Dead Cap. Transferring them may trigger penalties for the sender.`;
+      }
       message.reply(res);
     } catch (err) { console.error(err); }
   }
