@@ -151,4 +151,13 @@ client.on('messageCreate', async (message) => {
       res += `💰 **${sideA.team} New Space:** $${aNew.toLocaleString()}\n`;
       res += `💰 **${sideB.team} New Space:** $${bNew.toLocaleString()}`;
       
-      if
+      if (res.includes("💀") || res.includes("🔄")) {
+        res += `\n\n⚠️ **Note:** Check 💀 Dead Cap or 🔄 Restructure details before finalizing.`;
+      }
+      message.reply(res);
+    } catch (err) { console.error(err); }
+  }
+});
+
+client.once('ready', () => console.log(`🚀 FRANCHISE BOT READY`));
+client.login(process.env.DISCORD_TOKEN);
