@@ -29,14 +29,16 @@ client.on('messageCreate', async (message) => {
   const args = message.content.split(' ');
   const command = args[0].toLowerCase();
 
+  // --- 1. HELP COMMAND ---
   if (command === '!help') {
     let helpMsg = `📜 **Franchise Bot Commands**\n\n`;
-    helpMsg += `🔍 **!salary [Player Name]**\nShows contract details, bonuses, and dead cap status.\n\n`;
+    helpMsg += `🔍 **!salary [Player Name]**\nShows details, dead cap, and restructure info.\n\n`;
     helpMsg += `🏟️ **!team [Team Name]**\nShows cap space and extensions left.\n\n`;
-    helpMsg += `🤝 **!trade [TeamA]: Player1 for [TeamB]: Player2**\nCalculates trade impact including dead cap warnings.`;
+    helpMsg += `🤝 **!trade [TeamA]: Player1 for [TeamB]: Player2**\nCalculates impact and alerts for restructures/dead cap.`;
     return message.reply(helpMsg);
   }
 
+  // --- 2. TEAM COMMAND ---
   if (command === '!team') {
     const teamNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!teamNameInput) return message.reply("Please provide a team name!");
@@ -49,12 +51,12 @@ client.on('messageCreate', async (message) => {
         const extensionsLeft = sheet.getCellByA1('J2').formattedValue || "0";
         message.reply(`🏟️ **Team Report: ${sheet.title}**\n💸 **Cap Space:** ${capSpace}\n📝 **Extensions Left:** ${extensionsLeft}`);
       } else {
-        message.reply(`❌ I couldn't find a team matching "**${teamNameInput}**".`);
+        message.reply(`❌ I couldn't find team "**${teamNameInput}**".`);
       }
     } catch (err) { console.error(err); }
   }
 
-  // --- UPDATED SALARY COMMAND WITH DEAD CAP ---
+  // --- 3. UPDATED SALARY COMMAND (RESTRUCTURE LOGIC) ---
   if (command === '!salary') {
     const playerNameInput = args.slice(1).join(' ').trim().toLowerCase();
     if (!playerNameInput) return message.reply("Please provide a name!");
@@ -72,14 +74,20 @@ client.on('messageCreate', async (message) => {
         const capHit = playerRow.get('Cap Hit') || "N/A";
         const years = playerRow._rawData[2] || "0";
         const extended = playerRow.get('Extended') === 'TRUE';
-        const hasDeadCap = playerRow.get('Dead Cap') === 'TRUE'; // Pulls from Column I
+        const hasDeadCap = playerRow.get('Dead Cap') === 'TRUE';
 
-        const bonusInfo = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
+        // Search Transaction Log for this specific player
+        const transInfo = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
+        const isRestructured = transInfo?.get('Type') === 'Restructure';
 
         let response = `📊 **Player Report: ${name}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n⏳ **Years Remaining:** ${years}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}\n💀 **Dead Cap:** ${hasDeadCap ? "⚠️ Yes" : "❌ No"}`;
         
-        if (bonusInfo && (bonusInfo.get('Bonus Structure') || bonusInfo.get('Kick In Year(Offseason)'))) {
-          response += `\n\n✨ **Bonus:** ${bonusInfo.get('Bonus Structure') || "None"}\n📅 **Kick In Year:** ${bonusInfo.get('Kick In Year(Offseason)') || "N/A"}`;
+        if (transInfo) {
+          const detailLabel = isRestructured ? "🔄 **Restructure Details**" : "✨ **Bonus**";
+          const details = transInfo.get('Bonus Structure') || "None";
+          const kickIn = transInfo.get('Kick In Year(Offseason)') || "N/A";
+
+          response += `\n\n${detailLabel}: ${details}\n📅 **Kick In Year:** ${kickIn}`;
         }
         message.reply(response);
       } else {
@@ -88,7 +96,7 @@ client.on('messageCreate', async (message) => {
     } catch (err) { console.error(err); }
   }
 
-  // --- UPDATED TRADE COMMAND WITH DEAD CAP WARNINGS ---
+  // --- 4. UPDATED TRADE COMMAND ---
   if (command === '!trade') {
     const tradeContent = message.content.slice(7); 
     const sides = tradeContent.split('for');
@@ -115,13 +123,16 @@ client.on('messageCreate', async (message) => {
           if (row) {
             const actualName = row.get('Player Name');
             const hit = parseFloat((row.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
-            const hasDeadCap = row.get('Dead Cap') === 'TRUE'; //
+            const hasDeadCap = row.get('Dead Cap') === 'TRUE';
             totalHit += hit;
 
-            const bonus = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(actualName.toLowerCase()));
-            let playerStr = `- **${actualName}** ($${hit.toLocaleString()}) ${hasDeadCap ? "💀" : ""}`;
-            if (bonus && bonus.get('Bonus Structure')) {
-              playerStr += `\n  └ ✨ *Bonus: ${bonus.get('Bonus Structure')} (Kick-in: ${bonus.get('Kick In Year(Offseason)') || 'N/A'})*`;
+            const trans = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(actualName.toLowerCase()));
+            const isRes = trans?.get('Type') === 'Restructure';
+            
+            let playerStr = `- **${actualName}** ($${hit.toLocaleString()})${hasDeadCap ? "💀" : ""}${isRes ? "🔄" : ""}`;
+            if (trans) {
+              const label = isRes ? "Restructure" : "Bonus";
+              playerStr += `\n  └ ℹ️ *${label}: ${trans.get('Bonus Structure')}*`;
             }
             details.push(playerStr);
           }
@@ -140,13 +151,4 @@ client.on('messageCreate', async (message) => {
       res += `💰 **${sideA.team} New Space:** $${aNew.toLocaleString()}\n`;
       res += `💰 **${sideB.team} New Space:** $${bNew.toLocaleString()}`;
       
-      if (res.includes("💀")) {
-        res += `\n\n⚠️ **Warning:** Players marked with 💀 carry Dead Cap. Transferring them may trigger penalties for the sender.`;
-      }
-      message.reply(res);
-    } catch (err) { console.error(err); }
-  }
-});
-
-client.once('ready', () => console.log(`🚀 FRANCHISE BOT READY`));
-client.login(process.env.DISCORD_TOKEN);
+      if
