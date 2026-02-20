@@ -64,12 +64,16 @@ client.once('ready', async () => {
   }
 });
 
-// --- 5. PREFIX REDIRECT (Handles ! commands) ---
+// --- 5. SMART PREFIX REDIRECT ---
 client.on('messageCreate', (message) => {
   if (message.author.bot) return;
-  // If user tries old ! prefix, redirect them to slash commands
-  if (message.content.startsWith('!')) {
-    message.reply("⚠️ **Please use the new / commands!** Just type `/` in the chat to use Salary, Team, or Trade.");
+
+  const content = message.content.toLowerCase();
+  // FIXED: Only warn if they use the specific old command names
+  const oldCommands = ['!salary', '!team', '!trade', '!help'];
+  
+  if (oldCommands.some(cmd => content.startsWith(cmd))) {
+    message.reply("⚠️ **Please use the new / commands!** Just type `/` to see the menu for Salary, Team, and Trade info.");
   }
 });
 
@@ -77,7 +81,6 @@ client.on('messageCreate', (message) => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  // CRITICAL: Defer immediately to prevent "Application did not respond"
   await interaction.deferReply(); 
 
   const { commandName, options } = interaction;
@@ -142,7 +145,7 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // --- TRADE COMMAND (DETAILED WITH TRANSACTION LOG DATA) ---
+    // --- TRADE COMMAND ---
     if (commandName === 'trade') {
       const teamAName = options.getString('teama');
       const teamAPlayers = options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
@@ -171,7 +174,6 @@ client.on('interactionCreate', async (interaction) => {
             const dead = row.get('Dead Cap') === 'TRUE';
             totalHit += hit;
 
-            // FIX: Pull Bonus/Restructure details for the trade card
             const trans = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(actualName.toLowerCase()));
             let playerStr = `- **${actualName}** ($${hit.toLocaleString()})${dead ? " 💀" : ""}`;
             
@@ -179,7 +181,6 @@ client.on('interactionCreate', async (interaction) => {
                 const typeLabel = trans.get('Type') === 'Restructure' ? "🔄 Restructure" : "✨ Bonus";
                 playerStr += `\n   └ *${typeLabel}: ${trans.get('Bonus Structure')}*`;
             }
-            
             details.push(playerStr);
           }
         });
@@ -207,7 +208,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (err) {
     console.error('Interaction Error:', err);
-    await interaction.editReply("⚠️ There was an error. Ensure player names are correct and the Transaction Log is updated.");
+    await interaction.editReply("⚠️ Error: Check spreadsheet formatting or team names.");
   }
 });
 
