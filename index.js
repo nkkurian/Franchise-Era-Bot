@@ -34,23 +34,30 @@ const commands = [
   new SlashCommandBuilder()
     .setName('trade')
     .setDescription('Calculates trade impact')
-    .addStringOption(opt => opt.setName('teama').setRequired(true))
-    .addStringOption(opt => opt.setName('p_teama').setRequired(true))
-    .addStringOption(opt => opt.setName('teamb').setRequired(true))
-    .addStringOption(opt => opt.setName('p_teamb').setRequired(true)),
+    // FIXED: Added missing descriptions to avoid ValidationError
+    .addStringOption(opt => opt.setName('teama').setDescription('Name of Team A').setRequired(true))
+    .addStringOption(opt => opt.setName('p_teama').setDescription('Players from Team A (comma separated)').setRequired(true))
+    .addStringOption(opt => opt.setName('teamb').setDescription('Name of Team B').setRequired(true))
+    .addStringOption(opt => opt.setName('p_teamb').setDescription('Players from Team B (comma separated)').setRequired(true)),
 ].map(command => command.toJSON());
 
 // --- 4. STARTUP ---
 client.once('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-  console.log(`🚀 FRANCHISE BOT READY`);
+  try {
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log(`🚀 FRANCHISE BOT READY`);
+  } catch (err) {
+    console.error('Failed to register commands:', err);
+  }
 });
 
 // --- 5. INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  await interaction.deferReply(); // Prevents "Application did not respond"
+  
+  // IMMEDIATELY defer to prevent 3-second timeout
+  await interaction.deferReply(); 
 
   try {
     await doc.loadInfo();
@@ -68,21 +75,22 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.editReply({ embeds: [help] });
     }
 
-    // --- TEAM COMMAND (FIXED FOR ROW 9 OFFSET) ---
+    // --- TEAM COMMAND ---
     if (commandName === 'team') {
       const input = options.getString('teamname').toLowerCase();
       const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(input));
 
       if (sheet) {
-        // Scan Row 9 (Index 8) to Row 50 for players
-        await sheet.loadCells('A1:J50'); 
+        // Loads specific cells to match your Sleeper-synced layout
+        await sheet.loadCells('A1:J60'); 
         
         const capSpace = sheet.getCellByA1('F2').formattedValue || "$0";
         const extensions = sheet.getCellByA1('I2').formattedValue || "0";
         const capVal = parseFloat(capSpace.replace(/[$,]/g, '')) || 0;
 
         let players = [];
-        for (let i = 8; i < 45; i++) { // Starts scanning at Row 9
+        // Scan starting from Row 9 (Index 8)
+        for (let i = 8; i < 55; i++) { 
           const pName = sheet.getCell(i, 0).value; // Column A
           const pHit = sheet.getCell(i, 6).formattedValue; // Column G: Cap hit(This Year)
           
@@ -118,26 +126,18 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'salary') {
       const input = options.getString('player').toLowerCase();
       const pSheet = doc.sheetsByTitle['PlayerList'];
-      const tSheet = doc.sheetsByTitle['Transaction Log'];
-      
       const rows = await pSheet.getRows();
-      const tRows = await tSheet.getRows();
       const row = rows.find(r => r.get('Player Name')?.toLowerCase().includes(input));
 
       if (row) {
-        const name = row.get('Player Name');
-        const trans = tRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
-        const isDead = row.get('Dead Cap') === 'TRUE';
-
         const embed = new EmbedBuilder()
-          .setTitle(`📊 Player Report: ${name}`)
-          .setColor(isDead ? 0xff0000 : 0x00ff00)
+          .setTitle(`📊 Player Report: ${row.get('Player Name')}`)
+          .setColor(0x00ff00)
           .addFields(
-            { name: '💰 Salary', value: row.get('Yearly Salary') || "N/A", inline: true },
+            { name: '💰 Yearly Salary', value: row.get('Yearly Salary') || "N/A", inline: true },
             { name: '🧢 Cap Hit', value: row.get('Cap Hit') || "N/A", inline: true },
-            { name: '💀 Dead Cap', value: isDead ? "⚠️ Yes" : "❌ No", inline: true }
+            { name: '⌛ Years Left', value: row.get('Contract Years Left') || "N/A", inline: true }
           );
-        if (trans) embed.addFields({ name: '✨ Bonus/Note', value: trans.get('Bonus Structure') || 'N/A' });
         await interaction.editReply({ embeds: [embed] });
       } else await interaction.editReply(`❌ Player **${input}** not found.`);
     }
@@ -178,7 +178,7 @@ client.on('interactionCreate', async (interaction) => {
 
   } catch (err) {
     console.error(err);
-    await interaction.editReply("⚠️ Error: Check spreadsheet formatting or permissions.");
+    if (!interaction.replied) await interaction.editReply("⚠️ Error: Check spreadsheet formatting or permissions.");
   }
 });
 
