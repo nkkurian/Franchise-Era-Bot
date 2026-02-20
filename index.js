@@ -5,7 +5,7 @@ const express = require('express');
 
 // --- 1. WEB SERVER FOR RENDER ---
 const app = express();
-app.get('/', (req, res) => res.send('Franchise Bot: Slash Command Active'));
+app.get('/', (req, res) => res.send('Franchise Bot: Active'));
 app.listen(process.env.PORT || 10000);
 
 // --- 2. AUTHENTICATION & CLIENT SETUP ---
@@ -25,28 +25,27 @@ const client = new Client({
   ]
 });
 
-// --- 3. DEFINE SLASH COMMANDS (THE POPUP MENU) ---
-// This creates the menu seen in image_a83e04.png
+// --- 3. DEFINE SLASH COMMANDS (FOR POPUP DESCRIPTIONS) ---
 const commands = [
   new SlashCommandBuilder()
     .setName('salary')
-    .setDescription('Shows player details, dead cap, and restructure info')
+    .setDescription('Shows player contract details, dead cap, and restructure info')
     .addStringOption(option => 
-      option.setName('player').setDescription('Name of the player').setRequired(true)),
+      option.setName('player').setDescription('Enter the player name').setRequired(true)),
   
   new SlashCommandBuilder()
     .setName('team')
-    .setDescription('Shows cap space and extensions left')
+    .setDescription('Shows team cap space and available extensions')
     .addStringOption(option => 
-      option.setName('teamname').setDescription('Name of the team').setRequired(true)),
+      option.setName('teamname').setDescription('Enter the team name').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('trade')
     .setDescription('Calculates trade impact between two teams')
     .addStringOption(option => 
-      option.setName('teama').setDescription('Team A and Players (Team: Player)').setRequired(true))
+      option.setName('teama').setDescription('Format: Team: Player').setRequired(true))
     .addStringOption(option => 
-      option.setName('teamb').setDescription('Team B and Players (Team: Player)').setRequired(true)),
+      option.setName('teamb').setDescription('Format: Team: Player').setRequired(true)),
 ].map(command => command.toJSON());
 
 // --- 4. REGISTER COMMANDS ON STARTUP ---
@@ -62,7 +61,7 @@ client.once('ready', async () => {
     );
     console.log('Successfully reloaded application (/) commands.');
   } catch (error) {
-    console.error(error);
+    console.error('Error registering commands:', error);
   }
 });
 
@@ -71,68 +70,73 @@ client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, options } = interaction;
-  await doc.loadInfo();
+  
+  try {
+    await doc.loadInfo();
 
-  // --- SALARY COMMAND ---
-  if (commandName === 'salary') {
-    const playerNameInput = options.getString('player').toLowerCase();
-    const playerSheet = doc.sheetsByTitle['PlayerList'];
-    const transSheet = doc.sheetsByTitle['Transaction Log'];
-    const playerRows = await playerSheet.getRows();
-    const transRows = await transSheet.getRows();
+    // --- SALARY COMMAND ---
+    if (commandName === 'salary') {
+      const playerNameInput = options.getString('player').toLowerCase();
+      const playerSheet = doc.sheetsByTitle['PlayerList'];
+      const transSheet = doc.sheetsByTitle['Transaction Log'];
+      const playerRows = await playerSheet.getRows();
+      const transRows = await transSheet.getRows();
 
-    const playerRow = playerRows.find(r => r.get('Player Name')?.toLowerCase().includes(playerNameInput));
+      const playerRow = playerRows.find(r => r.get('Player Name')?.toLowerCase().includes(playerNameInput));
 
-    if (playerRow) {
-      const name = playerRow.get('Player Name');
-      const salary = playerRow.get('Yearly Salary') || "N/A";
-      const capHit = playerRow.get('Cap Hit') || "N/A";
-      const years = playerRow._rawData[2] || "0";
-      const extended = playerRow.get('Extended') === 'TRUE';
-      const hasDeadCap = playerRow.get('Dead Cap') === 'TRUE'; //
+      if (playerRow) {
+        const name = playerRow.get('Player Name');
+        const salary = playerRow.get('Yearly Salary') || "N/A";
+        const capHit = playerRow.get('Cap Hit') || "N/A";
+        const years = playerRow._rawData[2] || "0";
+        const extended = playerRow.get('Extended') === 'TRUE';
+        const hasDeadCap = playerRow.get('Dead Cap') === 'TRUE'; //
 
-      const transInfo = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
-      const isRestructured = transInfo?.get('Type') === 'Restructure'; //
+        const transInfo = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
+        const isRestructured = transInfo?.get('Type') === 'Restructure'; //
 
-      let response = `📊 **Player Report: ${name}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n⏳ **Years Remaining:** ${years}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}\n💀 **Dead Cap:** ${hasDeadCap ? "⚠️ Yes" : "❌ No"}`;
-      
-      if (transInfo) {
-        const label = isRestructured ? "🔄 **Restructure Details**" : "✨ **Bonus**"; //
-        response += `\n\n${label}: ${transInfo.get('Bonus Structure') || "None"}\n📅 **Kick In Year:** ${transInfo.get('Kick In Year(Offseason)') || "N/A"}`;
+        let response = `📊 **Player Report: ${name}**\n💰 **Yearly Salary:** ${salary}\n🧢 **Cap Hit:** ${capHit}\n⏳ **Years Remaining:** ${years}\n📝 **Extended:** ${extended ? "✅ Yes" : "❌ No"}\n💀 **Dead Cap:** ${hasDeadCap ? "⚠️ Yes" : "❌ No"}`;
+        
+        if (transInfo) {
+          const label = isRestructured ? "🔄 **Restructure Details**" : "✨ **Bonus**"; //
+          response += `\n\n${label}: ${transInfo.get('Bonus Structure') || "None"}\n📅 **Kick In Year:** ${transInfo.get('Kick In Year(Offseason)') || "N/A"}`;
+        }
+        await interaction.reply(response);
+      } else {
+        await interaction.reply({ content: `❌ I couldn't find **${playerNameInput}**.`, ephemeral: true });
       }
-      await interaction.reply(response);
-    } else {
-      await interaction.reply({ content: `❌ I couldn't find **${playerNameInput}**.`, ephemeral: true });
     }
-  }
 
-  // --- TEAM COMMAND ---
-  if (commandName === 'team') {
-    const teamInput = options.getString('teamname').toLowerCase();
-    const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamInput));
-    
-    if (sheet) {
-      await sheet.loadCells('A1:J5');
-      const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
-      const extensions = sheet.getCellByA1('J2').formattedValue || "0";
-      await interaction.reply(`🏟️ **Team Report: ${sheet.title}**\n💸 **Cap Space:** ${capSpace}\n📝 **Extensions Left:** ${extensions}`);
-    } else {
-      await interaction.reply({ content: `❌ I couldn't find team "**${teamInput}**".`, ephemeral: true });
+    // --- TEAM COMMAND ---
+    if (commandName === 'team') {
+      const teamInput = options.getString('teamname').toLowerCase();
+      const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamInput));
+      
+      if (sheet) {
+        await sheet.loadCells('A1:J5');
+        const capSpace = sheet.getCellByA1('F2').formattedValue || "$0.00";
+        const extensions = sheet.getCellByA1('J2').formattedValue || "0";
+        await interaction.reply(`🏟️ **Team Report: ${sheet.title}**\n💸 **Cap Space:** ${capSpace}\n📝 **Extensions Left:** ${extensions}`);
+      } else {
+        await interaction.reply({ content: `❌ I couldn't find team "**${teamInput}**".`, ephemeral: true });
+      }
     }
-  }
 
-  // --- TRADE COMMAND ---
-  if (commandName === 'trade') {
-    const strA = options.getString('teama');
-    const strB = options.getString('teamb');
-    
-    try {
+    // --- TRADE COMMAND ---
+    if (commandName === 'trade') {
+      const strA = options.getString('teama');
+      const strB = options.getString('teamb');
+      
       const playerRows = await doc.sheetsByTitle['PlayerList'].getRows();
       const transRows = await doc.sheetsByTitle['Transaction Log'].getRows();
 
       const getTradeData = async (sideStr) => {
-        const [teamName, playerList] = sideStr.split(':').map(s => s.trim());
-        const names = playerList.split(',').map(n => n.trim().toLowerCase());
+        const parts = sideStr.split(':');
+        if (parts.length < 2) throw new Error("Format error");
+        
+        const teamName = parts[0].trim();
+        const names = parts[1].split(',').map(n => n.trim().toLowerCase());
+        
         let totalHit = 0;
         let details = [];
         const teamSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
@@ -174,9 +178,11 @@ client.on('interactionCreate', async (interaction) => {
       res += `💰 **${sideB.team} New Space:** $${bNew.toLocaleString()}`;
 
       await interaction.reply(res);
-    } catch (err) {
-      console.error(err);
-      await interaction.reply({ content: "Error processing trade. Use format `Team: Player`", ephemeral: true });
+    }
+  } catch (err) {
+    console.error('Error handling interaction:', err);
+    if (!interaction.replied) {
+      await interaction.reply({ content: "⚠️ There was an error processing your request. Please ensure you used the correct format (e.g., `Team: Player`).", ephemeral: true });
     }
   }
 });
