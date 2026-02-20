@@ -3,12 +3,12 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-// --- 1. WEB SERVER ---
+// --- 1. WEB SERVER FOR RENDER ---
 const app = express();
 app.get('/', (req, res) => res.send('Franchise Bot: Active'));
 app.listen(process.env.PORT || 10000);
 
-// --- 2. AUTH & CLIENT ---
+// --- 2. AUTHENTICATION & CLIENT SETUP ---
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
   key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'),
@@ -16,40 +16,52 @@ const serviceAccountAuth = new JWT({
 });
 
 const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
+
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-// --- 3. SLASH COMMAND DEFINITIONS ---
+// --- 3. DEFINE SLASH COMMANDS ---
 const commands = [
   new SlashCommandBuilder()
     .setName('help')
     .setDescription('Explains bot symbols, commands, and league rules'),
-    
+
   new SlashCommandBuilder()
     .setName('salary')
-    .setDescription('Shows player contract, dead cap, and restructure info')
-    .addStringOption(opt => opt.setName('player').setDescription('Player name').setRequired(true)),
+    .setDescription('Shows player contract details, dead cap, and restructure info')
+    .addStringOption(option => 
+      option.setName('player').setDescription('Enter the player name').setRequired(true)),
   
   new SlashCommandBuilder()
     .setName('team')
-    .setDescription('Shows cap space, extensions, and top earners')
-    .addStringOption(opt => opt.setName('teamname').setDescription('Team name').setRequired(true)),
+    .setDescription('Shows team cap space, extensions, and top 5 earners')
+    .addStringOption(option => 
+      option.setName('teamname').setDescription('Enter the team name').setRequired(true)),
 
   new SlashCommandBuilder()
     .setName('trade')
     .setDescription('Calculates trade impact between two teams')
-    .addStringOption(opt => opt.setName('teama').setDescription('Team A').setRequired(true))
-    .addStringOption(opt => opt.setName('teama_players').setDescription('Team A Players (comma separated)').setRequired(true))
-    .addStringOption(opt => opt.setName('teamb').setDescription('Team B').setRequired(true))
-    .addStringOption(opt => opt.setName('teamb_players').setDescription('Team B Players (comma separated)').setRequired(true)),
+    .addStringOption(option => option.setName('teama').setDescription('Name of Team A').setRequired(true))
+    .addStringOption(option => option.setName('teama_players').setDescription('Players from Team A (comma separated)').setRequired(true))
+    .addStringOption(option => option.setName('teamb').setDescription('Name of Team B').setRequired(true))
+    .addStringOption(option => option.setName('teamb_players').setDescription('Players from Team B (comma separated)').setRequired(true)),
 ].map(command => command.toJSON());
 
-// --- 4. STARTUP ---
+// --- 4. REGISTER COMMANDS ON STARTUP ---
 client.once('ready', async () => {
+  console.log(`🚀 FRANCHISE BOT READY as ${client.user.tag}`);
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-  console.log(`🚀 FRANCHISE BOT READY`);
+  try {
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log('Successfully reloaded application (/) commands.');
+  } catch (error) {
+    console.error('Error registering commands:', error);
+  }
 });
 
 // --- 5. SILENT PREFIX REDIRECT ---
@@ -58,16 +70,18 @@ client.on('messageCreate', (message) => {
   const content = message.content.toLowerCase();
   const oldCommands = ['!salary', '!team', '!trade', '!help'];
   if (oldCommands.some(cmd => content.startsWith(cmd))) {
-    message.reply("⚠️ **Please use / commands!** Type `/` to see the menu.");
+    message.reply("⚠️ **Please use the new / commands!** Just type `/` in the chat to see the menu.");
   }
 });
 
 // --- 6. INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
+
   await interaction.deferReply(); 
 
   const { commandName, options } = interaction;
+  
   try {
     await doc.loadInfo();
     const playerSheet = doc.sheetsByTitle['PlayerList'];
@@ -78,14 +92,13 @@ client.on('interactionCreate', async (interaction) => {
       const helpEmbed = new EmbedBuilder()
         .setTitle('📚 Franchise League Help Guide')
         .setColor(0x5865F2)
-        .setDescription('Welcome to the Franchise Bot! Here is a guide to the symbols and tools used in our salary tracking.')
+        .setDescription('Use the slash commands to manage your team and trades.')
         .addFields(
-          { name: '🛠️ Commands', value: '`/salary`: Check a player contract\n`/team`: Check cap space & top earners\n`/trade`: Analyze trade impact' },
-          { name: '💀 Dead Cap', value: 'Indicates a player has guaranteed money that stays on your books if cut or traded.' },
-          { name: '🔄 Restructure', value: 'Details from the Transaction Log showing modified contracts.' },
-          { name: '✨ Bonus', value: 'Specific signing or performance bonuses noted in the log.' }
-        )
-        .setFooter({ text: 'Always use the / popup menu for accuracy!' });
+          { name: '💀 Dead Cap', value: 'Money that stays on your books if the player is cut/traded.', inline: true },
+          { name: '🔄 Restructure', value: 'Indicates a modified contract found in the logs.', inline: true },
+          { name: '✨ Bonus', value: 'Special signing or performance bonuses.', inline: true },
+          { name: '🔴 Red Card', value: 'The bot turns the card red if a team is over the salary cap.' }
+        );
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
 
@@ -99,8 +112,8 @@ client.on('interactionCreate', async (interaction) => {
       if (row) {
         const name = row.get('Player Name');
         const hasDeadCap = row.get('Dead Cap') === 'TRUE';
-        const trans = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
-        
+        const trans = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
+
         const embed = new EmbedBuilder()
           .setTitle(`📊 Player Report: ${name}`)
           .setColor(hasDeadCap ? 0xff0000 : 0x00ff00)
@@ -109,28 +122,32 @@ client.on('interactionCreate', async (interaction) => {
             { name: '🧢 Cap Hit', value: row.get('Cap Hit') || "N/A", inline: true },
             { name: '💀 Dead Cap', value: hasDeadCap ? "⚠️ Yes" : "❌ No", inline: true }
           );
-        if (trans) embed.addFields({ name: trans.get('Type') === 'Restructure' ? '🔄 Restructure' : '✨ Bonus', value: trans.get('Bonus Structure') || 'N/A' });
+        if (trans) {
+          embed.addFields({ name: trans.get('Type') === 'Restructure' ? '🔄 Restructure' : '✨ Bonus', value: trans.get('Bonus Structure') || 'N/A' });
+        }
         await interaction.editReply({ embeds: [embed] });
-      } else await interaction.editReply(`❌ Player **${input}** not found.`);
+      } else {
+        await interaction.editReply(`❌ Could not find **${input}**.`);
+      }
     }
 
     // --- TEAM COMMAND (SMART CARD) ---
     if (commandName === 'team') {
       const input = options.getString('teamname').toLowerCase();
       const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(input));
+      
       if (sheet) {
         await sheet.loadCells('F2:J2');
         const capRaw = sheet.getCellByA1('F2').formattedValue || "$0";
-        const capValue = parseFloat(capRaw.replace(/[$,]/g, ''));
+        const capValue = parseFloat(capRaw.replace(/[$,]/g, '')) || 0;
         const isNegative = capValue < 0;
 
-        // Fetch Top 5 Earners 
         const playerRows = await playerSheet.getRows();
         const teamPlayers = playerRows
-          .filter(r => r.get('Team')?.toLowerCase() === sheet.title.toLowerCase())
+          .filter(r => r.get('Team')?.toLowerCase().includes(input) || sheet.title.toLowerCase().includes(r.get('Team')?.toLowerCase()))
           .sort((a, b) => {
-            const hitA = parseFloat((a.get('Cap Hit') || "0").replace(/[$,]/g, ''));
-            const hitB = parseFloat((b.get('Cap Hit') || "0").replace(/[$,]/g, ''));
+            const hitA = parseFloat((a.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
+            const hitB = parseFloat((b.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
             return hitB - hitA;
           })
           .slice(0, 5);
@@ -141,17 +158,19 @@ client.on('interactionCreate', async (interaction) => {
           .setTitle(`🏟️ Team Report: ${sheet.title}`)
           .setColor(isNegative ? 0xff0000 : 0x3498db)
           .addFields(
-            { name: '💸 Cap Space', value: isNegative ? `⚠️ **${capRaw}**` : capRaw, inline: true },
+            { name: '💸 Cap Space', value: isNegative ? `🚨 **${capRaw}**` : capRaw, inline: true },
             { name: '📝 Extensions', value: sheet.getCellByA1('J2').formattedValue || "0", inline: true },
             { name: '🔝 Top 5 Cap Hits', value: topEarners }
           );
         
         if (isNegative) embed.setDescription('🚨 **WARNING:** This team is currently over the salary cap!');
         await interaction.editReply({ embeds: [embed] });
-      } else await interaction.editReply(`❌ Team **${input}** not found.`);
+      } else {
+        await interaction.editReply(`❌ Team **${input}** not found.`);
+      }
     }
 
-    // --- TRADE COMMAND ---
+    // --- TRADE COMMAND (DETAILED) ---
     if (commandName === 'trade') {
       const tA = options.getString('teama');
       const pA = options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
@@ -170,7 +189,7 @@ client.on('interactionCreate', async (interaction) => {
         playerNames.forEach(pn => {
           const r = playerRows.find(row => row.get('Player Name')?.toLowerCase().includes(pn));
           if (r) {
-            const hit = parseFloat((r.get('Cap Hit') || "0").replace(/[$,]/g, ''));
+            const hit = parseFloat((r.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
             total += hit;
             const tr = transRows.find(t => t.get('Player Name')?.toLowerCase().includes(r.get('Player Name').toLowerCase()));
             let str = `- **${r.get('Player Name')}** ($${hit.toLocaleString()})${r.get('Dead Cap') === 'TRUE' ? " 💀" : ""}`;
@@ -189,16 +208,20 @@ client.on('interactionCreate', async (interaction) => {
 
       const embed = new EmbedBuilder()
         .setTitle('🤝 Detailed Trade Analysis')
-        .setColor(0xe67e22)
+        .setColor((nA < 0 || nB < 0) ? 0xff0000 : 0xe67e22)
         .addFields(
           { name: `📤 ${sA.title} Sends`, value: sA.details.join('\n') || 'None' },
           { name: `📥 ${sB.title} Sends`, value: sB.details.join('\n') || 'None' },
-          { name: `💰 ${sA.title} New Cap`, value: nA < 0 ? `🚨 $${nA.toLocaleString()}` : `$${nA.toLocaleString()}`, inline: true },
-          { name: `💰 ${sB.title} New Cap`, value: nB < 0 ? `🚨 $${nB.toLocaleString()}` : `$${nB.toLocaleString()}`, inline: true }
+          { name: `💰 ${sA.title} New Cap`, value: nA < 0 ? `🚨 **$${nA.toLocaleString()}**` : `$${nA.toLocaleString()}`, inline: true },
+          { name: `💰 ${sB.title} New Cap`, value: nB < 0 ? `🚨 **$${nB.toLocaleString()}**` : `$${nB.toLocaleString()}`, inline: true }
         );
+
       await interaction.editReply({ embeds: [embed] });
     }
-  } catch (err) { console.error(err); await interaction.editReply("⚠️ Error processing request."); }
+  } catch (err) {
+    console.error(err);
+    await interaction.editReply("⚠️ Error processing request. Check your spreadsheet formatting.");
+  }
 });
 
 client.login(process.env.DISCORD_TOKEN);
