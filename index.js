@@ -67,8 +67,9 @@ client.once('ready', async () => {
 // --- 5. PREFIX REDIRECT (Handles ! commands) ---
 client.on('messageCreate', (message) => {
   if (message.author.bot) return;
+  // If user tries old ! prefix, redirect them to slash commands
   if (message.content.startsWith('!')) {
-    message.reply("⚠️ **Please use the new / commands!** Just type `/` in the chat to see the menu for Salary, Team, and Trade info.");
+    message.reply("⚠️ **Please use the new / commands!** Just type `/` in the chat to use Salary, Team, or Trade.");
   }
 });
 
@@ -76,7 +77,8 @@ client.on('messageCreate', (message) => {
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
 
-  await interaction.deferReply(); // Prevent timeout errors
+  // CRITICAL: Defer immediately to prevent "Application did not respond"
+  await interaction.deferReply(); 
 
   const { commandName, options } = interaction;
   
@@ -110,8 +112,9 @@ client.on('interactionCreate', async (interaction) => {
           );
         
         if (transInfo) {
-          const label = isRestructured ? "🔄 Restructure Details" : "✨ Bonus Info";
+          const label = isRestructured ? "🔄 Restructure" : "✨ Bonus Info";
           salaryEmbed.addFields({ name: label, value: transInfo.get('Bonus Structure') || "None" });
+          salaryEmbed.setFooter({ text: `Kick In Year: ${transInfo.get('Kick In Year(Offseason)') || "N/A"}` });
         }
 
         await interaction.editReply({ embeds: [salaryEmbed] });
@@ -139,7 +142,7 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
-    // --- TRADE COMMAND (WITH BONUS/RESTRICT DETAILS) ---
+    // --- TRADE COMMAND (DETAILED WITH TRANSACTION LOG DATA) ---
     if (commandName === 'trade') {
       const teamAName = options.getString('teama');
       const teamAPlayers = options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
@@ -168,13 +171,15 @@ client.on('interactionCreate', async (interaction) => {
             const dead = row.get('Dead Cap') === 'TRUE';
             totalHit += hit;
 
-            // Find Bonus/Restructure details for trade report
+            // FIX: Pull Bonus/Restructure details for the trade card
             const trans = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(actualName.toLowerCase()));
             let playerStr = `- **${actualName}** ($${hit.toLocaleString()})${dead ? " 💀" : ""}`;
+            
             if (trans) {
-                const label = trans.get('Type') === 'Restructure' ? "🔄 Restructure" : "✨ Bonus";
-                playerStr += `\n  └ *${label}: ${trans.get('Bonus Structure')}*`;
+                const typeLabel = trans.get('Type') === 'Restructure' ? "🔄 Restructure" : "✨ Bonus";
+                playerStr += `\n   └ *${typeLabel}: ${trans.get('Bonus Structure')}*`;
             }
+            
             details.push(playerStr);
           }
         });
@@ -188,7 +193,7 @@ client.on('interactionCreate', async (interaction) => {
       const bNew = sideB.currentCap + sideB.totalHit - sideA.totalHit;
 
       const tradeEmbed = new EmbedBuilder()
-        .setTitle('🤝 Trade Analysis')
+        .setTitle('🤝 Detailed Trade Analysis')
         .setColor(0xe67e22)
         .addFields(
           { name: `📤 ${sideA.title} Sends`, value: sideA.details.join('\n') || 'None', inline: false },
@@ -202,7 +207,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (err) {
     console.error('Interaction Error:', err);
-    await interaction.editReply("⚠️ Error: Check spreadsheet formatting or team names.");
+    await interaction.editReply("⚠️ There was an error. Ensure player names are correct and the Transaction Log is updated.");
   }
 });
 
