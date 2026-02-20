@@ -64,11 +64,12 @@ client.once('ready', async () => {
   }
 });
 
-// --- 5. SILENT PREFIX REDIRECT ---
+// --- 5. SMART PREFIX REDIRECT (Fixes !!! anger) ---
 client.on('messageCreate', (message) => {
   if (message.author.bot) return;
   const content = message.content.toLowerCase();
   const oldCommands = ['!salary', '!team', '!trade', '!help'];
+  // Only triggers if it exactly matches an old command name
   if (oldCommands.some(cmd => content.startsWith(cmd))) {
     message.reply("⚠️ **Please use the new / commands!** Just type `/` in the chat to see the menu.");
   }
@@ -84,7 +85,7 @@ client.on('interactionCreate', async (interaction) => {
   
   try {
     await doc.loadInfo();
-    const playerSheet = doc.sheetsByTitle['PlayerList'];
+    const playerMasterSheet = doc.sheetsByTitle['PlayerList'];
     const transSheet = doc.sheetsByTitle['Transaction Log'];
 
     // --- HELP COMMAND ---
@@ -105,7 +106,7 @@ client.on('interactionCreate', async (interaction) => {
     // --- SALARY COMMAND ---
     if (commandName === 'salary') {
       const input = options.getString('player').toLowerCase();
-      const rows = await playerSheet.getRows();
+      const rows = await playerMasterSheet.getRows();
       const transRows = await transSheet.getRows();
       const row = rows.find(r => r.get('Player Name')?.toLowerCase().includes(input));
 
@@ -127,32 +128,35 @@ client.on('interactionCreate', async (interaction) => {
         }
         await interaction.editReply({ embeds: [embed] });
       } else {
-        await interaction.editReply(`❌ Could not find **${input}**.`);
+        await interaction.editReply(`❌ Could not find **${input}** in PlayerList.`);
       }
     }
 
-    // --- TEAM COMMAND (SMART CARD) ---
+    // --- TEAM COMMAND (READS INDIVIDUAL TEAM TABS) ---
     if (commandName === 'team') {
       const input = options.getString('teamname').toLowerCase();
       const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(input));
       
       if (sheet) {
+        // Load the players specifically from the Team's own tab
+        const rows = await sheet.getRows();
         await sheet.loadCells('F2:J2');
+        
         const capRaw = sheet.getCellByA1('F2').formattedValue || "$0";
         const capValue = parseFloat(capRaw.replace(/[$,]/g, '')) || 0;
         const isNegative = capValue < 0;
 
-        const playerRows = await playerSheet.getRows();
-        const teamPlayers = playerRows
-          .filter(r => r.get('Team')?.toLowerCase().includes(input) || sheet.title.toLowerCase().includes(r.get('Team')?.toLowerCase()))
+        // Sort players by "Cap hit(This Year)" column from the team sheet
+        const topEarnersList = rows
+          .filter(r => r.get('Player name')) 
           .sort((a, b) => {
-            const hitA = parseFloat((a.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
-            const hitB = parseFloat((b.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
-            return hitB - hitA;
+            const valA = parseFloat((a.get('Cap hit(This Year)') || "0").replace(/[$,]/g, '')) || 0;
+            const valB = parseFloat((b.get('Cap hit(This Year)') || "0").replace(/[$,]/g, '')) || 0;
+            return valB - valA;
           })
-          .slice(0, 5);
-
-        const topEarners = teamPlayers.map(p => `\`${p.get('Cap Hit')}\` - ${p.get('Player Name')}`).join('\n') || 'No players found';
+          .slice(0, 5)
+          .map(p => `\`${p.get('Cap hit(This Year)')}\` - ${p.get('Player name')}`)
+          .join('\n') || 'No players found';
 
         const embed = new EmbedBuilder()
           .setTitle(`🏟️ Team Report: ${sheet.title}`)
@@ -160,31 +164,34 @@ client.on('interactionCreate', async (interaction) => {
           .addFields(
             { name: '💸 Cap Space', value: isNegative ? `🚨 **${capRaw}**` : capRaw, inline: true },
             { name: '📝 Extensions', value: sheet.getCellByA1('J2').formattedValue || "0", inline: true },
-            { name: '🔝 Top 5 Cap Hits', value: topEarners }
+            { name: '🔝 Top 5 Earners', value: topEarnersList }
           );
         
         if (isNegative) embed.setDescription('🚨 **WARNING:** This team is currently over the salary cap!');
         await interaction.editReply({ embeds: [embed] });
       } else {
-        await interaction.editReply(`❌ Team **${input}** not found.`);
+        await interaction.editReply(`❌ Team tab "**${input}**" not found.`);
       }
     }
 
-    // --- TRADE COMMAND (DETAILED) ---
+    // --- TRADE COMMAND ---
     if (commandName === 'trade') {
       const tA = options.getString('teama');
       const pA = options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
       const tB = options.getString('teamb');
       const pB = options.getString('teamb_players').split(',').map(p => p.trim().toLowerCase());
       
-      const playerRows = await playerSheet.getRows();
+      const playerRows = await playerMasterSheet.getRows();
       const transRows = await transSheet.getRows();
 
       const processSide = async (name, playerNames) => {
         let total = 0; let details = [];
         const tSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(name.toLowerCase()));
         let cap = 0;
-        if (tSheet) { await tSheet.loadCells('F2'); cap = parseFloat(tSheet.getCellByA1('F2').formattedValue.replace(/[$,]/g, '')) || 0; }
+        if (tSheet) { 
+          await tSheet.loadCells('F2'); 
+          cap = parseFloat(tSheet.getCellByA1('F2').formattedValue.replace(/[$,]/g, '')) || 0; 
+        }
 
         playerNames.forEach(pn => {
           const r = playerRows.find(row => row.get('Player Name')?.toLowerCase().includes(pn));
@@ -220,7 +227,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (err) {
     console.error(err);
-    await interaction.editReply("⚠️ Error processing request. Check your spreadsheet formatting.");
+    await interaction.editReply("⚠️ Error: Ensure column headers like 'Player name' and 'Cap hit(This Year)' match your team tabs exactly.");
   }
 });
 
