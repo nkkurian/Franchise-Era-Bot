@@ -69,11 +69,10 @@ client.on('messageCreate', (message) => {
   if (message.author.bot) return;
 
   const content = message.content.toLowerCase();
-  // FIXED: Only warn if they use the specific old command names
   const oldCommands = ['!salary', '!team', '!trade', '!help'];
   
   if (oldCommands.some(cmd => content.startsWith(cmd))) {
-    message.reply("⚠️ **Please use the new / commands!** Just type `/` to see the menu for Salary, Team, and Trade info.");
+    message.reply("⚠️ **Please use the new / commands!** Just type `/` in the chat to see the menu for Salary, Team, and Trade info.");
   }
 });
 
@@ -179,7 +178,7 @@ client.on('interactionCreate', async (interaction) => {
             
             if (trans) {
                 const typeLabel = trans.get('Type') === 'Restructure' ? "🔄 Restructure" : "✨ Bonus";
-                playerStr += `\n   └ *${typeLabel}: ${trans.get('Bonus Structure')}*`;
+                playerStr += `\n    └ *${typeLabel}: ${trans.get('Bonus Structure')}*`;
             }
             details.push(playerStr);
           }
