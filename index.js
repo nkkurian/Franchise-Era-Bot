@@ -66,4 +66,144 @@ client.once('ready', async () => {
 
 // --- 5. PREFIX REDIRECT (Handles ! commands) ---
 client.on('messageCreate', (message) => {
-  if (
+  if (message.author.bot) return;
+  if (message.content.startsWith('!')) {
+    message.reply("⚠️ **Please use the new / commands!** Just type `/` in the chat to see the menu for Salary, Team, and Trade info.");
+  }
+});
+
+// --- 6. INTERACTION HANDLER ---
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  await interaction.deferReply(); // Prevent timeout errors
+
+  const { commandName, options } = interaction;
+  
+  try {
+    await doc.loadInfo();
+
+    // --- SALARY COMMAND ---
+    if (commandName === 'salary') {
+      const playerNameInput = options.getString('player').toLowerCase();
+      const playerSheet = doc.sheetsByTitle['PlayerList'];
+      const transSheet = doc.sheetsByTitle['Transaction Log'];
+      const playerRows = await playerSheet.getRows();
+      const transRows = await transSheet.getRows();
+
+      const playerRow = playerRows.find(r => r.get('Player Name')?.toLowerCase().includes(playerNameInput));
+
+      if (playerRow) {
+        const name = playerRow.get('Player Name');
+        const hasDeadCap = playerRow.get('Dead Cap') === 'TRUE';
+        const transInfo = transRows.find(r => r.get('Player Name')?.toLowerCase().includes(name.toLowerCase()));
+        const isRestructured = transInfo?.get('Type') === 'Restructure';
+
+        const salaryEmbed = new EmbedBuilder()
+          .setTitle(`📊 Player Report: ${name}`)
+          .setColor(hasDeadCap ? 0xff0000 : 0x00ff00)
+          .addFields(
+            { name: '💰 Yearly Salary', value: playerRow.get('Yearly Salary') || "N/A", inline: true },
+            { name: '🧢 Cap Hit', value: playerRow.get('Cap Hit') || "N/A", inline: true },
+            { name: '⏳ Years Left', value: playerRow._rawData[2] || "0", inline: true },
+            { name: '💀 Dead Cap', value: hasDeadCap ? "⚠️ Yes" : "❌ No", inline: true }
+          );
+        
+        if (transInfo) {
+          const label = isRestructured ? "🔄 Restructure Details" : "✨ Bonus Info";
+          salaryEmbed.addFields({ name: label, value: transInfo.get('Bonus Structure') || "None" });
+        }
+
+        await interaction.editReply({ embeds: [salaryEmbed] });
+      } else {
+        await interaction.editReply(`❌ I couldn't find **${playerNameInput}**.`);
+      }
+    }
+
+    // --- TEAM COMMAND ---
+    if (commandName === 'team') {
+      const teamInput = options.getString('teamname').toLowerCase();
+      const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamInput));
+      if (sheet) {
+        await sheet.loadCells('F2:J2');
+        const teamEmbed = new EmbedBuilder()
+          .setTitle(`🏟️ Team Report: ${sheet.title}`)
+          .setColor(0x3498db)
+          .addFields(
+            { name: '💸 Cap Space', value: sheet.getCellByA1('F2').formattedValue || "$0.00", inline: true },
+            { name: '📝 Extensions Left', value: sheet.getCellByA1('J2').formattedValue || "0", inline: true }
+          );
+        await interaction.editReply({ embeds: [teamEmbed] });
+      } else {
+        await interaction.editReply(`❌ I couldn't find team "**${teamInput}**".`);
+      }
+    }
+
+    // --- TRADE COMMAND (WITH BONUS/RESTRICT DETAILS) ---
+    if (commandName === 'trade') {
+      const teamAName = options.getString('teama');
+      const teamAPlayers = options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
+      const teamBName = options.getString('teamb');
+      const teamBPlayers = options.getString('teamb_players').split(',').map(p => p.trim().toLowerCase());
+      
+      const playerRows = await doc.sheetsByTitle['PlayerList'].getRows();
+      const transRows = await doc.sheetsByTitle['Transaction Log'].getRows();
+
+      const processTradeSide = async (name, playerNames) => {
+        let totalHit = 0;
+        let details = [];
+        const teamSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(name.toLowerCase()));
+        let currentCap = 0;
+        
+        if (teamSheet) {
+          await teamSheet.loadCells('F2');
+          currentCap = parseFloat(teamSheet.getCellByA1('F2').formattedValue.replace(/[$,]/g, '')) || 0;
+        }
+
+        playerNames.forEach(pName => {
+          const row = playerRows.find(r => r.get('Player Name')?.toLowerCase().includes(pName));
+          if (row) {
+            const actualName = row.get('Player Name');
+            const hit = parseFloat((row.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
+            const dead = row.get('Dead Cap') === 'TRUE';
+            totalHit += hit;
+
+            // Find Bonus/Restructure details for trade report
+            const trans = transRows.find(tr => tr.get('Player Name')?.toLowerCase().includes(actualName.toLowerCase()));
+            let playerStr = `- **${actualName}** ($${hit.toLocaleString()})${dead ? " 💀" : ""}`;
+            if (trans) {
+                const label = trans.get('Type') === 'Restructure' ? "🔄 Restructure" : "✨ Bonus";
+                playerStr += `\n  └ *${label}: ${trans.get('Bonus Structure')}*`;
+            }
+            details.push(playerStr);
+          }
+        });
+        return { title: teamSheet ? teamSheet.title : name, totalHit, details, currentCap };
+      };
+
+      const sideA = await processTradeSide(teamAName, teamAPlayers);
+      const sideB = await processTradeSide(teamBName, teamBPlayers);
+      
+      const aNew = sideA.currentCap + sideA.totalHit - sideB.totalHit;
+      const bNew = sideB.currentCap + sideB.totalHit - sideA.totalHit;
+
+      const tradeEmbed = new EmbedBuilder()
+        .setTitle('🤝 Trade Analysis')
+        .setColor(0xe67e22)
+        .addFields(
+          { name: `📤 ${sideA.title} Sends`, value: sideA.details.join('\n') || 'None', inline: false },
+          { name: `📥 ${sideB.title} Sends`, value: sideB.details.join('\n') || 'None', inline: false },
+          { name: `💰 ${sideA.title} New Cap`, value: `$${aNew.toLocaleString()}`, inline: true },
+          { name: `💰 ${sideB.title} New Cap`, value: `$${bNew.toLocaleString()}`, inline: true }
+        )
+        .setFooter({ text: '💀 = Dead Cap | 🔄 = Restructure | ✨ = Bonus' });
+
+      await interaction.editReply({ embeds: [tradeEmbed] });
+    }
+  } catch (err) {
+    console.error('Interaction Error:', err);
+    await interaction.editReply("⚠️ Error: Check spreadsheet formatting or team names.");
+  }
+});
+
+client.login(process.env.DISCORD_TOKEN);
