@@ -25,7 +25,7 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName('salary')
-    .setDescription('Shows player contract details')
+    .setDescription('Shows player contract details from the Master List')
     .addStringOption(option => 
       option.setName('player').setDescription('Enter the player name').setRequired(true)),
   
@@ -39,9 +39,9 @@ const commands = [
     .setName('trade')
     .setDescription('Calculates trade impact between two teams')
     .addStringOption(option => option.setName('teama').setDescription('Name of Team A').setRequired(true))
-    .addStringOption(option => option.setName('teama_players').setDescription('Players from Team A').setRequired(true))
+    .addStringOption(option => option.setName('teama_players').setDescription('Players from Team A (comma separated)').setRequired(true))
     .addStringOption(option => option.setName('teamb').setDescription('Name of Team B').setRequired(true))
-    .addStringOption(option => option.setName('teamb_players').setDescription('Players from Team B').setRequired(true)),
+    .addStringOption(option => option.setName('teamb_players').setDescription('Players from Team B (comma separated)').setRequired(true)),
 ].map(command => command.toJSON());
 
 // --- 4. STARTUP ---
@@ -64,51 +64,55 @@ client.on('interactionCreate', async (interaction) => {
   
   try {
     await doc.loadInfo();
+    const pSheet = doc.sheetsByTitle['PlayerList'];
+    const pRows = await pSheet.getRows();
 
     // --- SALARY COMMAND ---
     if (commandName === 'salary') {
       const input = options.getString('player').toLowerCase();
-      const pSheet = doc.sheetsByTitle['PlayerList'];
-      const rows = await pSheet.getRows();
       
-      // Matches your sheet: Col A = Team, Col B = Name
-      const row = rows.find(r => r.get('Player Name')?.toLowerCase().includes(input));
+      // Searches Column B (Player Name) directly
+      const row = pRows.find(r => r.get('Player Name')?.toLowerCase().includes(input));
 
       if (row) {
         const pName = row.get('Player Name');
-        const tName = row.get('Current Team') || "Free Agent";
+        const tName = row.get('Current Team') || "Free Agent"; // Pulls from Column A
         
         const salaryEmbed = new EmbedBuilder()
-          .setTitle(`📊 Player Report: ${pName} (${tName})`) // Requested Format
+          .setTitle(`📊 Player Report: ${pName} (${tName})`)
           .setColor(0x00ff00)
           .addFields(
             { name: '💰 Yearly Salary', value: row.get('Yearly Salary') || "$0.00", inline: true },
             { name: '🧢 Cap Hit', value: row.get('Cap Hit') || "$0.00", inline: true },
-            { name: '⏳ Years Left', value: row.get('Years Left') || "0", inline: true }
+            { name: '⏳ Years Left', value: row.get('Years Left') || "0", inline: true },
+            { name: '📅 Contract Year', value: row.get('Contract Year') || "N/A", inline: true }
           );
         await interaction.editReply({ embeds: [salaryEmbed] });
       } else {
-        await interaction.editReply(`❌ Player **${input}** not found.`);
+        await interaction.editReply(`❌ Player **${input}** not found in PlayerList.`);
       }
     }
 
     // --- TEAM COMMAND ---
     if (commandName === 'team') {
       const teamInput = options.getString('teamname').toLowerCase();
-      const pSheet = doc.sheetsByTitle['PlayerList'];
-      const pRows = await pSheet.getRows();
       const teamSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamInput));
       
       if (teamSheet) {
         await teamSheet.loadCells('F2:J2');
         const tTitle = teamSheet.title;
 
+        // Filters PlayerList by the Team Name in Column A
         const top5 = pRows
           .filter(r => r.get('Current Team') === tTitle)
-          .sort((a, b) => parseFloat(b.get('Cap Hit')?.replace(/[$,]/g, '') || 0) - parseFloat(a.get('Cap Hit')?.replace(/[$,]/g, '') || 0))
+          .sort((a, b) => {
+            const valA = parseFloat((a.get('Cap Hit') || "0").replace(/[$,]/g, ''));
+            const valB = parseFloat((b.get('Cap Hit') || "0").replace(/[$,]/g, ''));
+            return valB - valA;
+          })
           .slice(0, 5)
           .map(r => `• ${r.get('Player Name')}: **${r.get('Cap Hit')}**`)
-          .join('\n') || "No players found.";
+          .join('\n') || "No players found on roster.";
 
         const teamEmbed = new EmbedBuilder()
           .setTitle(`🏟️ Team Report: ${tTitle}`)
@@ -116,7 +120,7 @@ client.on('interactionCreate', async (interaction) => {
           .addFields(
             { name: '💸 Cap Space', value: teamSheet.getCellByA1('F2').formattedValue || "$0.00", inline: true },
             { name: '📝 Extensions', value: teamSheet.getCellByA1('J2').formattedValue || "0", inline: true },
-            { name: '🔝 Top 5 Earners', value: top5, inline: false }
+            { name: '🔝 Top 5 Cap Hits', value: top5, inline: false }
           );
         await interaction.editReply({ embeds: [teamEmbed] });
       } else {
@@ -130,16 +134,19 @@ client.on('interactionCreate', async (interaction) => {
       const pA_input = options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
       const tB = options.getString('teamb');
       const pB_input = options.getString('teamb_players').split(',').map(p => p.trim().toLowerCase());
-      
-      const pRows = await doc.sheetsByTitle['PlayerList'].getRows();
 
       const getSide = async (teamName, playersIn) => {
         const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
-        let cap = 0; if (sh) { await sh.loadCells('F2'); cap = parseFloat(sh.getCellByA1('F2').formattedValue?.replace(/[$,]/g, '')) || 0; }
+        let cap = 0; 
+        if (sh) { 
+          await sh.loadCells('F2'); 
+          cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0; 
+        }
+        
         let totalSent = 0;
         playersIn.forEach(pn => {
           const r = pRows.find(row => row.get('Player Name')?.toLowerCase().includes(pn));
-          if (r) totalSent += parseFloat(r.get('Cap Hit')?.replace(/[$,]/g, '') || 0);
+          if (r) totalSent += parseFloat((r.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
         });
         return { title: sh ? sh.title : teamName, cap, totalSent };
       };
@@ -149,6 +156,7 @@ client.on('interactionCreate', async (interaction) => {
       
       const embed = new EmbedBuilder()
         .setTitle('🤝 Trade Analysis')
+        .setDescription(`Impact analysis for **${sA.title}** and **${sB.title}**`)
         .setColor(0xe67e22)
         .addFields(
           { name: `${sA.title} New Cap`, value: `$${(sA.cap + sA.totalSent - sB.totalSent).toLocaleString()}`, inline: true },
@@ -158,7 +166,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (err) {
     console.error(err);
-    await interaction.editReply("⚠️ Error processing command. Check Logs.");
+    await interaction.editReply("⚠️ Error: Check spreadsheet headers and bot logs.");
   }
 });
 
