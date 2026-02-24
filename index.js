@@ -14,17 +14,26 @@ const serviceAccountAuth = new JWT({
 });
 
 const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
+const client = new Client({ 
+  intents: [
+    GatewayIntentBits.Guilds, 
+    GatewayIntentBits.GuildMessages, 
+    GatewayIntentBits.MessageContent // Required to "see" !free
+  ] 
+});
 
+// --- 1. DEFINE SLASH COMMANDS (Hidden /free removed from here) ---
 const commands = [
   new SlashCommandBuilder()
     .setName('salary')
-    .setDescription('Shows player contract, dead cap, and detailed bonus info from logs')
+    .setDescription('Shows player contract, dead cap, and detailed bonus info')
     .addStringOption(option => option.setName('player').setDescription('Enter player name').setRequired(true)),
+  
   new SlashCommandBuilder()
     .setName('team')
     .setDescription('Shows team cap space and top 5 earners')
     .addStringOption(option => option.setName('teamname').setDescription('Enter team name').setRequired(true)),
+
   new SlashCommandBuilder()
     .setName('trade')
     .setDescription('Calculates trade impact between two teams')
@@ -42,6 +51,17 @@ client.once('ready', async () => {
   } catch (err) { console.error(err); }
 });
 
+// --- 2. HIDDEN MESSAGE LISTENER (For !free) ---
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  // If someone types !free, the bot slams the door
+  if (message.content.toLowerCase() === '!free') {
+    await message.reply(`GO AWAY AND SLAM THE DOOR!!!!!! ${message.author.username}`);
+  }
+});
+
+// --- 3. SLASH INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   await interaction.deferReply(); 
@@ -59,8 +79,6 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
-      
-      // 1. Find Player in PlayerList
       const pRow = pRows.find(r => r._rawData[1]?.toLowerCase().includes(input));
 
       if (pRow) {
@@ -68,13 +86,12 @@ client.on('interactionCreate', async (interaction) => {
         const playerName = pRow._rawData[1];
         const deadCapStatus = pRow._rawData[9] === "TRUE" || pRow._rawData[9] === true ? "✅ Yes" : "❌ No";
 
-        // 2. Cross-reference in Transaction Log
         const tLogRow = tRows.find(r => r._rawData[0]?.toLowerCase().includes(playerName.toLowerCase()));
         
         let bonusDisplay = "None";
         if (tLogRow) {
-          const bonusStructure = tLogRow._rawData[4] || ""; // Column E
-          const kickInYear = tLogRow._rawData[5] || "";    // Column F
+          const bonusStructure = tLogRow._rawData[4] || ""; 
+          const kickInYear = tLogRow._rawData[5] || "";    
           
           if (bonusStructure || kickInYear) {
             bonusDisplay = "";
@@ -152,7 +169,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (err) {
     console.error(err);
-    await interaction.editReply("⚠️ Error: Check spreadsheet sheet names and try again.");
+    if (!interaction.replied) await interaction.editReply("⚠️ Error: Check logs.");
   }
 });
 
