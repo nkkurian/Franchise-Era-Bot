@@ -19,15 +19,15 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 const commands = [
   new SlashCommandBuilder()
     .setName('salary')
-    .setDescription('Shows player contract details')
+    .setDescription('Shows full player contract details, dead cap, and extension info')
     .addStringOption(option => option.setName('player').setDescription('Enter player name').setRequired(true)),
   new SlashCommandBuilder()
     .setName('team')
-    .setDescription('Shows team cap space')
+    .setDescription('Shows team cap space and top earners')
     .addStringOption(option => option.setName('teamname').setDescription('Enter team name').setRequired(true)),
   new SlashCommandBuilder()
     .setName('trade')
-    .setDescription('Calculates trade impact')
+    .setDescription('Calculates trade impact between teams')
     .addStringOption(option => option.setName('teama').setDescription('Team A').setRequired(true))
     .addStringOption(option => option.setName('teama_players').setDescription('Players from A').setRequired(true))
     .addStringOption(option => option.setName('teamb').setDescription('Team B').setRequired(true))
@@ -49,21 +49,23 @@ client.on('interactionCreate', async (interaction) => {
   try {
     await doc.loadInfo();
     const pSheet = doc.sheetsByTitle['PlayerList'];
-    // IMPORTANT: We load all cells to ensure we can access raw data by index
     await pSheet.loadCells(); 
     const rows = await pSheet.getRows();
 
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
-      
-      // Direct Search in Column B (Index 1)
       const row = rows.find(r => r._rawData[1]?.toLowerCase().includes(input));
 
       if (row) {
-        // Grab Team Name from Column A (Index 0) and Player from Column B (Index 1)
         const teamName = row._rawData[0] || "Free Agent"; 
         const playerName = row._rawData[1];
         
+        // Logic for Kick In Year: If Contract Year exists, use it
+        const kickIn = row._rawData[7] || "N/A";
+        
+        // Logic for Dead Cap: Check Column J (Index 9)
+        const deadCapStatus = row._rawData[9] === "TRUE" || row._rawData[9] === true ? "✅ Yes" : "❌ No";
+
         const salaryEmbed = new EmbedBuilder()
           .setTitle(`📊 Player Report: ${playerName} (${teamName})`)
           .setColor(0x00ff00)
@@ -71,7 +73,8 @@ client.on('interactionCreate', async (interaction) => {
             { name: '💰 Yearly Salary', value: row._rawData[4] || "$0.00", inline: true },
             { name: '🧢 Cap Hit', value: row._rawData[6] || "$0.00", inline: true },
             { name: '⏳ Years Left', value: row._rawData[3] || "0", inline: true },
-            { name: '📅 Contract Year', value: row._rawData[7] || "N/A", inline: true }
+            { name: '💀 Dead Cap', value: deadCapStatus, inline: true },
+            { name: '✨ Bonus Info', value: `Kick In Year: ${kickIn}`, inline: false }
           );
         await interaction.editReply({ embeds: [salaryEmbed] });
       } else {
@@ -87,7 +90,6 @@ client.on('interactionCreate', async (interaction) => {
         await teamSheet.loadCells('F2:J2');
         const tTitle = teamSheet.title;
 
-        // Filter PlayerList by checking Column A (Index 0)
         const top5 = rows
           .filter(r => r._rawData[0] === tTitle)
           .sort((a, b) => {
@@ -113,6 +115,7 @@ client.on('interactionCreate', async (interaction) => {
       }
     }
 
+    // --- TRADE COMMAND LOGIC ---
     if (interaction.commandName === 'trade') {
       const tA = interaction.options.getString('teama');
       const pA_input = interaction.options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
@@ -145,7 +148,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (err) {
     console.error(err);
-    await interaction.editReply("⚠️ Spreadsheet Error: Check bot logs on Render.");
+    await interaction.editReply("⚠️ Spreadsheet Error: Verify Row 1 headers and try again.");
   }
 });
 
