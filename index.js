@@ -25,7 +25,7 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName('salary')
-    .setDescription('Shows player contract details from the Master List')
+    .setDescription('Shows player contract details')
     .addStringOption(option => 
       option.setName('player').setDescription('Enter the player name').setRequired(true)),
   
@@ -37,11 +37,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('trade')
-    .setDescription('Calculates trade impact between two teams')
-    .addStringOption(option => option.setName('teama').setDescription('Name of Team A').setRequired(true))
-    .addStringOption(option => option.setName('teama_players').setDescription('Players from Team A (comma separated)').setRequired(true))
-    .addStringOption(option => option.setName('teamb').setDescription('Name of Team B').setRequired(true))
-    .addStringOption(option => option.setName('teamb_players').setDescription('Players from Team B (comma separated)').setRequired(true)),
+    .setDescription('Calculates trade impact')
+    .addStringOption(option => option.setName('teama').setDescription('Team A').setRequired(true))
+    .addStringOption(option => option.setName('teama_players').setDescription('Players from A').setRequired(true))
+    .addStringOption(option => option.setName('teamb').setDescription('Team B').setRequired(true))
+    .addStringOption(option => option.setName('teamb_players').setDescription('Players from B').setRequired(true)),
 ].map(command => command.toJSON());
 
 // --- 4. STARTUP ---
@@ -71,12 +71,13 @@ client.on('interactionCreate', async (interaction) => {
     if (commandName === 'salary') {
       const input = options.getString('player').toLowerCase();
       
-      // Searches Column B (Player Name) directly
+      // SEARCH: Looking for header "Player Name"
       const row = pRows.find(r => r.get('Player Name')?.toLowerCase().includes(input));
 
       if (row) {
+        // PULLING TEAM: Now using "Team Name" to match your Column A
         const pName = row.get('Player Name');
-        const tName = row.get('Current Team') || "Free Agent"; // Pulls from Column A
+        const tName = row.get('Team Name') || "Free Agent";
         
         const salaryEmbed = new EmbedBuilder()
           .setTitle(`📊 Player Report: ${pName} (${tName})`)
@@ -89,7 +90,7 @@ client.on('interactionCreate', async (interaction) => {
           );
         await interaction.editReply({ embeds: [salaryEmbed] });
       } else {
-        await interaction.editReply(`❌ Player **${input}** not found in PlayerList.`);
+        await interaction.editReply(`❌ Player **${input}** not found.`);
       }
     }
 
@@ -102,9 +103,9 @@ client.on('interactionCreate', async (interaction) => {
         await teamSheet.loadCells('F2:J2');
         const tTitle = teamSheet.title;
 
-        // Filters PlayerList by the Team Name in Column A
+        // Filter PlayerList by the corrected "Team Name" header
         const top5 = pRows
-          .filter(r => r.get('Current Team') === tTitle)
+          .filter(r => r.get('Team Name') === tTitle)
           .sort((a, b) => {
             const valA = parseFloat((a.get('Cap Hit') || "0").replace(/[$,]/g, ''));
             const valB = parseFloat((b.get('Cap Hit') || "0").replace(/[$,]/g, ''));
@@ -112,7 +113,7 @@ client.on('interactionCreate', async (interaction) => {
           })
           .slice(0, 5)
           .map(r => `• ${r.get('Player Name')}: **${r.get('Cap Hit')}**`)
-          .join('\n') || "No players found on roster.";
+          .join('\n') || "No players found.";
 
         const teamEmbed = new EmbedBuilder()
           .setTitle(`🏟️ Team Report: ${tTitle}`)
@@ -120,7 +121,7 @@ client.on('interactionCreate', async (interaction) => {
           .addFields(
             { name: '💸 Cap Space', value: teamSheet.getCellByA1('F2').formattedValue || "$0.00", inline: true },
             { name: '📝 Extensions', value: teamSheet.getCellByA1('J2').formattedValue || "0", inline: true },
-            { name: '🔝 Top 5 Cap Hits', value: top5, inline: false }
+            { name: '🔝 Top 5 Earners', value: top5, inline: false }
           );
         await interaction.editReply({ embeds: [teamEmbed] });
       } else {
@@ -142,11 +143,10 @@ client.on('interactionCreate', async (interaction) => {
           await sh.loadCells('F2'); 
           cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0; 
         }
-        
         let totalSent = 0;
         playersIn.forEach(pn => {
           const r = pRows.find(row => row.get('Player Name')?.toLowerCase().includes(pn));
-          if (r) totalSent += parseFloat((r.get('Cap Hit') || "0").replace(/[$,]/g, '')) || 0;
+          if (r) totalSent += parseFloat((r.get('Cap Hit') || "0").replace(/[$,]/g, ''));
         });
         return { title: sh ? sh.title : teamName, cap, totalSent };
       };
@@ -156,7 +156,6 @@ client.on('interactionCreate', async (interaction) => {
       
       const embed = new EmbedBuilder()
         .setTitle('🤝 Trade Analysis')
-        .setDescription(`Impact analysis for **${sA.title}** and **${sB.title}**`)
         .setColor(0xe67e22)
         .addFields(
           { name: `${sA.title} New Cap`, value: `$${(sA.cap + sA.totalSent - sB.totalSent).toLocaleString()}`, inline: true },
@@ -166,7 +165,7 @@ client.on('interactionCreate', async (interaction) => {
     }
   } catch (err) {
     console.error(err);
-    await interaction.editReply("⚠️ Error: Check spreadsheet headers and bot logs.");
+    await interaction.editReply("⚠️ Error. Check spreadsheet headers and bot logs.");
   }
 });
 
