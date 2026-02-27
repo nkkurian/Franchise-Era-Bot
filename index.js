@@ -27,7 +27,7 @@ const client = new Client({
 let cachedPlayers = [];
 let cachedLogs = [];
 let lastFetchTime = 0;
-const CACHE_LIFESPAN = 30000; // 30 seconds
+const CACHE_LIFESPAN = 30000; 
 
 async function getSheetData() {
   const now = Date.now();
@@ -45,12 +45,26 @@ async function getSheetData() {
   return { players: cachedPlayers, logs: cachedLogs };
 }
 
-// --- COMMAND REGISTRATION ---
+// --- COMMAND REGISTRATION (FIXED DESCRIPTIONS) ---
 const commands = [
-  new SlashCommandBuilder().setName('help').setDescription('List all bot commands'),
-  new SlashCommandBuilder().setName('salary').setDescription('Check player contract & bonus info').addStringOption(o => o.setName('player').setDescription('Enter player name').setRequired(true)),
-  new SlashCommandBuilder().setName('team').setDescription('Check team cap space').addStringOption(o => o.setName('teamname').setDescription('Enter team name').setRequired(true)),
-  new SlashCommandBuilder().setName('trade').setDescription('Analyze trade impact').addStringOption(o => o.setName('teama').setRequired(true)).addStringOption(o => o.setName('teama_players').setRequired(true)).addStringOption(o => o.setName('teamb').setRequired(true)).addStringOption(o => o.setName('teamb_players').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('help')
+    .setDescription('List all bot commands'),
+  new SlashCommandBuilder()
+    .setName('salary')
+    .setDescription('Check player contract & bonus info')
+    .addStringOption(o => o.setName('player').setDescription('Enter player name').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('team')
+    .setDescription('Check team cap space')
+    .addStringOption(o => o.setName('teamname').setDescription('Enter team name').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('trade')
+    .setDescription('Analyze trade impact')
+    .addStringOption(o => o.setName('teama').setDescription('First team').setRequired(true))
+    .addStringOption(o => o.setName('teama_players').setDescription('Players from first team').setRequired(true))
+    .addStringOption(o => o.setName('teamb').setDescription('Second team').setRequired(true))
+    .addStringOption(o => o.setName('teamb_players').setDescription('Players from second team').setRequired(true)),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -95,7 +109,6 @@ client.on('interactionCreate', async (interaction) => {
   try {
     const { players, logs } = await getSheetData();
 
-    // --- HELP COMMAND ---
     if (interaction.commandName === 'help') {
       const helpEmbed = new EmbedBuilder()
         .setTitle('📖 Franchise Pro Bot Help')
@@ -108,20 +121,17 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
 
-    // --- SALARY COMMAND (WITH BUTTONS) ---
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
       const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
 
       if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
 
-      // Single match: Instant response
       if (matches.length === 1) {
         return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0], logs)] });
       }
 
-      // Multiple matches: Show buttons
-      const limitedMatches = matches.slice(0, 5); // Max 5 buttons per row
+      const limitedMatches = matches.slice(0, 5); 
       const row = new ActionRowBuilder().addComponents(
         limitedMatches.map((m, index) => 
           new ButtonBuilder()
@@ -132,39 +142,31 @@ client.on('interactionCreate', async (interaction) => {
       );
 
       const response = await interaction.editReply({
-        content: `🔍 Found multiple players for "**${input}**". Select one:`,
+        content: `🔍 Found multiple players. Select one:`,
         components: [row]
       });
 
-      // Wait for button click
       const collector = response.createMessageComponentCollector({ 
         componentType: ComponentType.Button, 
         time: 30000 
       });
 
       collector.on('collect', async (i) => {
-        if (i.user.id !== interaction.user.id) return i.reply({ content: "This search isn't yours!", ephemeral: true });
-        
+        if (i.user.id !== interaction.user.id) return i.reply({ content: "Not your search!", ephemeral: true });
         const selectedIndex = parseInt(i.customId.replace('select_player_', ''));
         const selectedPlayer = limitedMatches[selectedIndex];
-        
-        await i.update({ 
-          content: null, 
-          embeds: [createPlayerEmbed(selectedPlayer, logs)], 
-          components: [] 
-        });
+        await i.update({ content: null, embeds: [createPlayerEmbed(selectedPlayer, logs)], components: [] });
         collector.stop();
       });
 
       collector.on('end', (collected, reason) => {
         if (reason === 'time' && collected.size === 0) {
-          interaction.editReply({ content: "⏳ Selection timed out. Please try the search again.", components: [] });
+          interaction.editReply({ content: "⏳ Selection timed out.", components: [] });
         }
       });
       return;
     }
 
-    // --- TEAM COMMAND ---
     if (interaction.commandName === 'team') {
       const teamInput = interaction.options.getString('teamname').toLowerCase();
       const teamSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamInput));
@@ -174,7 +176,7 @@ client.on('interactionCreate', async (interaction) => {
         const tTitle = teamSheet.title;
         const top5 = players
           .filter(r => r._rawData[0] === tTitle)
-          .sort((a, b) => parseFloat((b._rawData[6] || "0").replace(/[$,]/g, '')) - parseFloat((a._rawData[6] || "0").replace(/[$,]/g, '')))
+          .sort((a, b) => parseFloat((b._rawData[6] || "0").replace(/[$,]/g, '')) - parseFloat((a._rawData[a] || "0").replace(/[$,]/g, '')))
           .slice(0, 5).map(r => `• ${r._rawData[1]}: **${r._rawData[6]}**`).join('\n');
 
         const teamEmbed = new EmbedBuilder().setTitle(`🏟️ Team Report: ${tTitle}`).setColor(0x3498db)
@@ -188,7 +190,6 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.editReply(`❌ Team **${teamInput}** not found.`);
     }
 
-    // --- TRADE COMMAND ---
     if (interaction.commandName === 'trade') {
       const tA = interaction.options.getString('teama');
       const pA_input = interaction.options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
@@ -220,13 +221,8 @@ client.on('interactionCreate', async (interaction) => {
 
   } catch (err) {
     console.error(err);
-    if (!interaction.replied) await interaction.editReply("⚠️ Bot Error: Please check logs or try again.");
+    if (!interaction.replied) await interaction.editReply("⚠️ Bot Error.");
   }
-});
-
-// Hidden command
-client.on('messageCreate', m => {
-  if (!m.author.bot && m.content.toLowerCase().startsWith('!free')) m.reply(`GO AWAY AND SLAM THE DOOR!!!!!! ${m.author.username}`);
 });
 
 client.login(process.env.DISCORD_TOKEN);
