@@ -106,8 +106,8 @@ client.on('interactionCreate', async (interaction) => {
         .addFields(
           { name: '`/salary [name]`', value: 'Search for player contract details and bonuses.' },
           { name: '`/team [team]`', value: 'View team salary cap, extensions, and top 5 earners.' },
-          { name: '`/trade [A] [Players] [B] [Players]`', value: 'Calculate the cap impact of a swap.' },
-          { name: '`!free [text]`', value: 'The classic hidden command.' }
+          { name: '`/trade [A] [Players] [B] [Players]`', value: 'Calculate the cap impact of a swap.' }
+          
         );
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
@@ -115,8 +115,25 @@ client.on('interactionCreate', async (interaction) => {
     // --- SALARY COMMAND ---
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
-      let pRow = players.find(r => r._rawData[1]?.toLowerCase() === input);
+      
+      // Look for ALL players that match the input
+      const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
 
+      if (matches.length === 0) {
+        return await interaction.editReply(`❌ Player **${input}** not found.`);
+      }
+
+      if (matches.length > 1) {
+        // If more than one, show the list
+        const names = matches.map(m => `• ${m._rawData[1]}`).join('\n');
+        return await interaction.editReply(`❌ Multiple players found. Please be more specific:\n${names}`);
+      }
+
+      // If exactly one, proceed with the card
+      const pRow = matches[0];
+      const teamName = pRow._rawData[0] || "Free Agent"; 
+      const playerName = pRow._rawData[1];
+      
       if (!pRow) {
         // FUZZY SEARCH: Find top 3 partial matches if exact match fails
         const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input)).slice(0, 3);
