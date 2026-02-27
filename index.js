@@ -4,7 +4,7 @@ const { JWT } = require('google-auth-library');
 const express = require('express');
 
 const app = express();
-app.get('/', (req, res) => res.send('Franchise Pro Bot: Optimized & Online'));
+app.get('/', (req, res) => res.send('Franchise Pro Bot: Fully Recovered'));
 app.listen(process.env.PORT || 10000);
 
 const serviceAccountAuth = new JWT({
@@ -14,122 +14,114 @@ const serviceAccountAuth = new JWT({
 });
 
 const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
-
 const client = new Client({ 
-  intents: [
-    GatewayIntentBits.Guilds, 
-    GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent 
-  ] 
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-// --- CACHE SYSTEM ---
 let cachedPlayers = [];
 let cachedLogs = [];
 let lastFetchTime = 0;
-const CACHE_LIFESPAN = 30000; // 30 seconds. Data stays "hot" for 30s before checking Google again.
+const CACHE_LIFESPAN = 30000;
 
 async function getSheetData() {
   const now = Date.now();
-  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-    return { players: cachedPlayers, logs: cachedLogs };
-  }
-
+  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) return { players: cachedPlayers, logs: cachedLogs };
   await doc.loadInfo();
-  const pSheet = doc.sheetsByTitle['PlayerList'];
-  const tLogSheet = doc.sheetsByTitle['Transaction Log'];
-
-  // Fetching rows in parallel (much faster than sequential)
   const [pRows, tRows] = await Promise.all([
-    pSheet.getRows(),
-    tLogSheet.getRows()
+    doc.sheetsByTitle['PlayerList'].getRows(),
+    doc.sheetsByTitle['Transaction Log'].getRows()
   ]);
-
   cachedPlayers = pRows;
   cachedLogs = tRows;
   lastFetchTime = now;
   return { players: cachedPlayers, logs: cachedLogs };
 }
 
-// --- 1. REGISTER SLASH COMMANDS ---
+// --- 1. REGISTER COMMANDS (INCLUDING HELP) ---
 const commands = [
-  new SlashCommandBuilder()
-    .setName('salary')
-    .setDescription('Shows player contract, dead cap, and detailed bonus info')
-    .addStringOption(option => option.setName('player').setDescription('Enter player name').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('team')
-    .setDescription('Shows team cap space and top 5 earners')
-    .addStringOption(option => option.setName('teamname').setDescription('Enter team name').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('trade')
-    .setDescription('Calculates trade impact between two teams')
-    .addStringOption(option => option.setName('teama').setDescription('Team A').setRequired(true))
-    .addStringOption(option => option.setName('teama_players').setDescription('Players from A').setRequired(true))
-    .addStringOption(option => option.setName('teamb').setDescription('Team B').setRequired(true))
-    .addStringOption(option => option.setName('teamb_players').setDescription('Players from B').setRequired(true)),
-].map(command => command.toJSON());
+  new SlashCommandBuilder().setName('help').setDescription('List all bot commands and how to use them'),
+  new SlashCommandBuilder().setName('salary').setDescription('Check player contract & bonus').addStringOption(o => o.setName('player').setRequired(true)),
+  new SlashCommandBuilder().setName('team').setDescription('Check team cap').addStringOption(o => o.setName('teamname').setRequired(true)),
+  new SlashCommandBuilder().setName('trade').setDescription('Analyze trade impact').addStringOption(o => o.setName('teama').setRequired(true)).addStringOption(o => o.setName('teama_players').setRequired(true)).addStringOption(o => o.setName('teamb').setRequired(true)).addStringOption(o => o.setName('teamb_players').setRequired(true)),
+].map(c => c.toJSON());
 
 client.once('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  try {
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log(`🚀 FRANCHISE PRO BOT READY (OPTIMIZED)`);
-  } catch (err) { console.error(err); }
+  await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+  console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
 });
 
-// --- 2. HIDDEN MESSAGE LISTENER ---
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  if (message.content.toLowerCase().startsWith('!free')) {
-    await message.reply(`GO AWAY AND SLAM THE DOOR!!!!!! ${message.author.username}`);
+client.on('messageCreate', async (m) => {
+  if (!m.author.bot && m.content.toLowerCase().startsWith('!free')) {
+    await m.reply(`GO AWAY AND SLAM THE DOOR!!!!!! ${m.author.username}`);
   }
 });
 
-// --- 3. SLASH COMMAND HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
-  await interaction.deferReply(); 
+  await interaction.deferReply();
   
   try {
-    // Uses the cached data function
     const { players, logs } = await getSheetData();
 
-    // --- SALARY COMMAND ---
+    // --- HELP COMMAND ---
+    if (interaction.commandName === 'help') {
+      const helpEmbed = new EmbedBuilder()
+        .setTitle('📖 Franchise Pro Bot Help')
+        .setColor(0x3498db)
+        .addFields(
+          { name: '`/salary [name]`', value: 'Shows player salary, years left, and bonus info.' },
+          { name: '`/team [team]`', value: 'Shows team cap space, extensions, and top earners.' },
+          { name: '`/trade [A] [Players] [B] [Players]`', value: 'Calculates cap impact for both teams.' },
+          { name: '`!free [text]`', value: 'A hidden command for... special occasions.' }
+        );
+      return await interaction.editReply({ embeds: [helpEmbed] });
+    }
+
+    // --- SALARY COMMAND (WITH FUZZY SEARCH) ---
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
-      const pRow = players.find(r => r._rawData[1]?.toLowerCase().includes(input));
+      // First try an exact match or clear inclusion
+      let pRow = players.find(r => r._rawData[1]?.toLowerCase() === input);
+      
+      if (!pRow) {
+        // Find top 3 partial matches
+        const matches = players
+          .filter(r => r._rawData[1]?.toLowerCase().includes(input))
+          .slice(0, 3);
 
-      if (pRow) {
-        const teamName = pRow._rawData[0] || "Free Agent"; 
-        const playerName = pRow._rawData[1];
-        const deadCapStatus = pRow._rawData[9] === "TRUE" || pRow._rawData[9] === true ? "✅ Yes" : "❌ No";
-
-        const tLogRow = logs.find(r => r._rawData[0]?.toLowerCase().includes(playerName.toLowerCase()));
-        
-        let bonusDisplay = "None";
-        if (tLogRow) {
-          const bonusStructure = tLogRow._rawData[4] || ""; 
-          const kickInYear = tLogRow._rawData[5] || "";
-          if (bonusStructure || kickInYear) {
-            bonusDisplay = "";
-            if (kickInYear) bonusDisplay += `**Kick In Year:** ${kickInYear}\n`;
-            if (bonusStructure) bonusDisplay += `**Details:** ${bonusStructure}`;
-          }
+        if (matches.length === 1) {
+          pRow = matches[0];
+        } else if (matches.length > 1) {
+          const names = matches.map(m => `• ${m._rawData[1]}`).join('\n');
+          return await interaction.editReply(`❌ Multiple players found. Did you mean:\n${names}`);
+        } else {
+          return await interaction.editReply(`❌ Player **${input}** not found.`);
         }
+      }
 
-        const salaryEmbed = new EmbedBuilder()
-          .setTitle(`📊 Player Report: ${playerName} (${teamName})`)
-          .setColor(0x00ff00)
-          .addFields(
-            { name: '💰 Yearly Salary', value: pRow._rawData[4] || "$0.00", inline: true },
-            { name: '🧢 Cap Hit', value: pRow._rawData[6] || "$0.00", inline: true },
-            { name: '⏳ Years Left', value: pRow._rawData[3] || "0", inline: true },
-            { name: '💀 Dead Cap', value: deadCapStatus, inline: true },
-            { name: '✨ Bonus Info', value: bonusDisplay, inline: false }
-          );
-        await interaction.editReply({ embeds: [salaryEmbed] });
-      } else {
+      // If we found a player (pRow exists)
+      const playerName = pRow._rawData[1];
+      const tLogRow = logs.find(r => r._rawData[0]?.toLowerCase().includes(playerName.toLowerCase()));
+      let bonusDisplay = "None";
+      if (tLogRow) {
+        const bonus = tLogRow._rawData[4] || ""; 
+        const kick = tLogRow._rawData[5] || "";
+        if (bonus || kick) bonusDisplay = `${kick ? `**Kick In:** ${kick}\n` : ""}${bonus}`;
+      }
+
+      const embed = new EmbedBuilder()
+        .setTitle(`📊 Report: ${playerName} (${pRow._rawData[0] || "FA"})`)
+        .setColor(0x00ff00)
+        .addFields(
+          { name: '💰 Salary', value: pRow._rawData[4] || "$0", inline: true },
+          { name: '🧢 Cap Hit', value: pRow._rawData[6] || "$0", inline: true },
+          { name: '⏳ Years', value: pRow._rawData[3] || "0", inline: true },
+          { name: '💀 Dead Cap', value: (pRow._rawData[9] === "TRUE" ? "✅ Yes" : "❌ No"), inline: true },
+          { name: '✨ Bonus', value: bonusDisplay, inline: false }
+        );
+      await interaction.editReply({ embeds: [embed] });
+    } else {
         await interaction.editReply(`❌ Player **${input}** not found.`);
       }
     }
@@ -203,7 +195,7 @@ client.on('interactionCreate', async (interaction) => {
 
   } catch (err) {
     console.error(err);
-    if (!interaction.replied) await interaction.editReply("⚠️ Error processing request. Try again.");
+    await interaction.editReply("⚠️ Spreadsheet error. Try again.");
   }
 });
 
