@@ -107,7 +107,6 @@ client.on('interactionCreate', async (interaction) => {
           { name: '`/salary [name]`', value: 'Search for player contract details and bonuses.' },
           { name: '`/team [team]`', value: 'View team salary cap, extensions, and top 5 earners.' },
           { name: '`/trade [A] [Players] [B] [Players]`', value: 'Calculate the cap impact of a swap.' }
-          
         );
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
@@ -124,7 +123,6 @@ client.on('interactionCreate', async (interaction) => {
       }
 
       if (matches.length > 1) {
-        // If more than one, show the list
         const names = matches.map(m => `• ${m._rawData[1]}`).join('\n');
         return await interaction.editReply(`❌ Multiple players found. Please be more specific:\n${names}`);
       }
@@ -133,23 +131,8 @@ client.on('interactionCreate', async (interaction) => {
       const pRow = matches[0];
       const teamName = pRow._rawData[0] || "Free Agent"; 
       const playerName = pRow._rawData[1];
-      
-      if (!pRow) {
-        // FUZZY SEARCH: Find top 3 partial matches if exact match fails
-        const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input)).slice(0, 3);
-        if (matches.length === 1) {
-          pRow = matches[0];
-        } else if (matches.length > 1) {
-          const names = matches.map(m => `• ${m._rawData[1]}`).join('\n');
-          return await interaction.editReply(`❌ Multiple players found. Did you mean:\n${names}`);
-        } else {
-          return await interaction.editReply(`❌ Player **${input}** not found.`);
-        }
-      }
-
-      const teamName = pRow._rawData[0] || "Free Agent"; 
-      const playerName = pRow._rawData[1];
       const deadCapStatus = pRow._rawData[9] === "TRUE" || pRow._rawData[9] === true ? "✅ Yes" : "❌ No";
+      
       const tLogRow = logs.find(r => r._rawData[0]?.toLowerCase().includes(playerName.toLowerCase()));
       
       let bonusDisplay = "None";
