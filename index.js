@@ -1,11 +1,14 @@
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { 
+  Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, 
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType 
+} = require('discord.js');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 
-// Keep-alive server
+// Keep-alive server for Render
 const app = express();
-app.get('/', (req, res) => res.send('Franchise Pro Bot: Fully Functional'));
+app.get('/', (req, res) => res.send('Franchise Pro Bot: Buttons & Search Active'));
 app.listen(process.env.PORT || 10000);
 
 // Google Sheets Auth
@@ -16,13 +19,8 @@ const serviceAccountAuth = new JWT({
 });
 
 const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
-
 const client = new Client({ 
-  intents: [
-    GatewayIntentBits.Guilds, 
-    GatewayIntentBits.GuildMessages, 
-    GatewayIntentBits.MessageContent 
-  ] 
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
 // --- CACHE SYSTEM ---
@@ -33,46 +31,27 @@ const CACHE_LIFESPAN = 30000; // 30 seconds
 
 async function getSheetData() {
   const now = Date.now();
-  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-    return { players: cachedPlayers, logs: cachedLogs };
-  }
-
+  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) return { players: cachedPlayers, logs: cachedLogs };
+  
   await doc.loadInfo();
-  const pSheet = doc.sheetsByTitle['PlayerList'];
-  const tLogSheet = doc.sheetsByTitle['Transaction Log'];
-
   const [pRows, tRows] = await Promise.all([
-    pSheet.getRows(),
-    tLogSheet.getRows()
+    doc.sheetsByTitle['PlayerList'].getRows(),
+    doc.sheetsByTitle['Transaction Log'].getRows()
   ]);
-
+  
   cachedPlayers = pRows;
   cachedLogs = tRows;
   lastFetchTime = now;
   return { players: cachedPlayers, logs: cachedLogs };
 }
 
-// --- 1. REGISTER SLASH COMMANDS ---
+// --- COMMAND REGISTRATION ---
 const commands = [
-  new SlashCommandBuilder()
-    .setName('help')
-    .setDescription('List all bot commands and usage instructions'),
-  new SlashCommandBuilder()
-    .setName('salary')
-    .setDescription('Check player contract, dead cap, and bonus info')
-    .addStringOption(option => option.setName('player').setDescription('Enter player name').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('team')
-    .setDescription('Shows team cap space and top 5 earners')
-    .addStringOption(option => option.setName('teamname').setDescription('Enter team name').setRequired(true)),
-  new SlashCommandBuilder()
-    .setName('trade')
-    .setDescription('Calculates trade impact between two teams')
-    .addStringOption(option => option.setName('teama').setDescription('Team A').setRequired(true))
-    .addStringOption(option => option.setName('teama_players').setDescription('Players from A').setRequired(true))
-    .addStringOption(option => option.setName('teamb').setDescription('Team B').setRequired(true))
-    .addStringOption(option => option.setName('teamb_players').setDescription('Players from B').setRequired(true)),
-].map(command => command.toJSON());
+  new SlashCommandBuilder().setName('help').setDescription('List all bot commands'),
+  new SlashCommandBuilder().setName('salary').setDescription('Check player contract & bonus info').addStringOption(o => o.setName('player').setDescription('Enter player name').setRequired(true)),
+  new SlashCommandBuilder().setName('team').setDescription('Check team cap space').addStringOption(o => o.setName('teamname').setDescription('Enter team name').setRequired(true)),
+  new SlashCommandBuilder().setName('trade').setDescription('Analyze trade impact').addStringOption(o => o.setName('teama').setRequired(true)).addStringOption(o => o.setName('teama_players').setRequired(true)).addStringOption(o => o.setName('teamb').setRequired(true)).addStringOption(o => o.setName('teamb_players').setRequired(true)),
+].map(c => c.toJSON());
 
 client.once('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -82,15 +61,33 @@ client.once('ready', async () => {
   } catch (err) { console.error(err); }
 });
 
-// --- 2. HIDDEN MESSAGE LISTENER ---
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  if (message.content.toLowerCase().startsWith('!free')) {
-    await message.reply(`GO AWAY AND SLAM THE DOOR!!!!!! ${message.author.username}`);
+// --- HELPER: CREATE PLAYER EMBED ---
+function createPlayerEmbed(pRow, logs) {
+  const teamName = pRow._rawData[0] || "Free Agent";
+  const playerName = pRow._rawData[1];
+  const deadCapStatus = pRow._rawData[9] === "TRUE" || pRow._rawData[9] === true ? "✅ Yes" : "❌ No";
+  const tLogRow = logs.find(r => r._rawData[0]?.toLowerCase().includes(playerName.toLowerCase()));
+  
+  let bonusDisplay = "None";
+  if (tLogRow) {
+    const bonus = tLogRow._rawData[4] || ""; 
+    const kick = tLogRow._rawData[5] || "";
+    if (bonus || kick) bonusDisplay = `${kick ? `**Kick In:** ${kick}\n` : ""}${bonus ? `**Details:** ${bonus}` : ""}`;
   }
-});
 
-// --- 3. SLASH COMMAND HANDLER ---
+  return new EmbedBuilder()
+    .setTitle(`📊 Player Report: ${playerName} (${teamName})`)
+    .setColor(0x00ff00)
+    .addFields(
+      { name: '💰 Yearly Salary', value: pRow._rawData[4] || "$0.00", inline: true },
+      { name: '🧢 Cap Hit', value: pRow._rawData[6] || "$0.00", inline: true },
+      { name: '⏳ Years Left', value: pRow._rawData[3] || "0", inline: true },
+      { name: '💀 Dead Cap', value: deadCapStatus, inline: true },
+      { name: '✨ Bonus Info', value: bonusDisplay, inline: false }
+    );
+}
+
+// --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   await interaction.deferReply(); 
@@ -104,55 +101,67 @@ client.on('interactionCreate', async (interaction) => {
         .setTitle('📖 Franchise Pro Bot Help')
         .setColor(0x3498db)
         .addFields(
-          { name: '`/salary [name]`', value: 'Search for player contract details and bonuses.' },
-          { name: '`/team [team]`', value: 'View team salary cap, extensions, and top 5 earners.' },
-          { name: '`/trade [A] [Players] [B] [Players]`', value: 'Calculate the cap impact of a swap.' }
+          { name: '`/salary [name]`', value: 'Search for player contracts. Uses buttons for multiple matches.' },
+          { name: '`/team [team]`', value: 'View team cap space and top 5 earners.' },
+          { name: '`/trade`', value: 'Calculate cap impact for swaps.' }
         );
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
 
-    // --- SALARY COMMAND ---
+    // --- SALARY COMMAND (WITH BUTTONS) ---
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
-      
-      // Look for ALL players that match the input
       const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
 
-      if (matches.length === 0) {
-        return await interaction.editReply(`❌ Player **${input}** not found.`);
+      if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
+
+      // Single match: Instant response
+      if (matches.length === 1) {
+        return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0], logs)] });
       }
 
-      if (matches.length > 1) {
-        const names = matches.map(m => `• ${m._rawData[1]}`).join('\n');
-        return await interaction.editReply(`❌ Multiple players found. Please be more specific:\n${names}`);
-      }
+      // Multiple matches: Show buttons
+      const limitedMatches = matches.slice(0, 5); // Max 5 buttons per row
+      const row = new ActionRowBuilder().addComponents(
+        limitedMatches.map((m, index) => 
+          new ButtonBuilder()
+            .setCustomId(`select_player_${index}`)
+            .setLabel(m._rawData[1])
+            .setStyle(ButtonStyle.Primary)
+        )
+      );
 
-      // If exactly one, proceed with the card
-      const pRow = matches[0];
-      const teamName = pRow._rawData[0] || "Free Agent"; 
-      const playerName = pRow._rawData[1];
-      const deadCapStatus = pRow._rawData[9] === "TRUE" || pRow._rawData[9] === true ? "✅ Yes" : "❌ No";
-      
-      const tLogRow = logs.find(r => r._rawData[0]?.toLowerCase().includes(playerName.toLowerCase()));
-      
-      let bonusDisplay = "None";
-      if (tLogRow) {
-        const bonus = tLogRow._rawData[4] || ""; 
-        const kick = tLogRow._rawData[5] || "";
-        if (bonus || kick) bonusDisplay = `${kick ? `**Kick In Year:** ${kick}\n` : ""}${bonus ? `**Details:** ${bonus}` : ""}`;
-      }
+      const response = await interaction.editReply({
+        content: `🔍 Found multiple players for "**${input}**". Select one:`,
+        components: [row]
+      });
 
-      const salaryEmbed = new EmbedBuilder()
-        .setTitle(`📊 Player Report: ${playerName} (${teamName})`)
-        .setColor(0x00ff00)
-        .addFields(
-          { name: '💰 Yearly Salary', value: pRow._rawData[4] || "$0.00", inline: true },
-          { name: '🧢 Cap Hit', value: pRow._rawData[6] || "$0.00", inline: true },
-          { name: '⏳ Years Left', value: pRow._rawData[3] || "0", inline: true },
-          { name: '💀 Dead Cap', value: deadCapStatus, inline: true },
-          { name: '✨ Bonus Info', value: bonusDisplay, inline: false }
-        );
-      return await interaction.editReply({ embeds: [salaryEmbed] });
+      // Wait for button click
+      const collector = response.createMessageComponentCollector({ 
+        componentType: ComponentType.Button, 
+        time: 30000 
+      });
+
+      collector.on('collect', async (i) => {
+        if (i.user.id !== interaction.user.id) return i.reply({ content: "This search isn't yours!", ephemeral: true });
+        
+        const selectedIndex = parseInt(i.customId.replace('select_player_', ''));
+        const selectedPlayer = limitedMatches[selectedIndex];
+        
+        await i.update({ 
+          content: null, 
+          embeds: [createPlayerEmbed(selectedPlayer, logs)], 
+          components: [] 
+        });
+        collector.stop();
+      });
+
+      collector.on('end', (collected, reason) => {
+        if (reason === 'time' && collected.size === 0) {
+          interaction.editReply({ content: "⏳ Selection timed out. Please try the search again.", components: [] });
+        }
+      });
+      return;
     }
 
     // --- TEAM COMMAND ---
@@ -166,17 +175,13 @@ client.on('interactionCreate', async (interaction) => {
         const top5 = players
           .filter(r => r._rawData[0] === tTitle)
           .sort((a, b) => parseFloat((b._rawData[6] || "0").replace(/[$,]/g, '')) - parseFloat((a._rawData[6] || "0").replace(/[$,]/g, '')))
-          .slice(0, 5)
-          .map(r => `• ${r._rawData[1]}: **${r._rawData[6]}**`)
-          .join('\n') || "No players found.";
+          .slice(0, 5).map(r => `• ${r._rawData[1]}: **${r._rawData[6]}**`).join('\n');
 
-        const teamEmbed = new EmbedBuilder()
-          .setTitle(`🏟️ Team Report: ${tTitle}`)
-          .setColor(0x3498db)
+        const teamEmbed = new EmbedBuilder().setTitle(`🏟️ Team Report: ${tTitle}`).setColor(0x3498db)
           .addFields(
-            { name: '💸 Cap Space', value: teamSheet.getCellByA1('F2').formattedValue || "$0.00", inline: true },
+            { name: '💸 Cap Space', value: teamSheet.getCellByA1('F2').formattedValue || "$0", inline: true },
             { name: '📝 Extensions', value: teamSheet.getCellByA1('J2').formattedValue || "0", inline: true },
-            { name: '🔝 Top 5 Earners', value: top5, inline: false }
+            { name: '🔝 Top 5 Earners', value: top5 || "No data found", inline: false }
           );
         return await interaction.editReply({ embeds: [teamEmbed] });
       }
@@ -205,9 +210,7 @@ client.on('interactionCreate', async (interaction) => {
       const sA = await getSide(tA, pA_input);
       const sB = await getSide(tB, pB_input);
       
-      const tradeEmbed = new EmbedBuilder()
-        .setTitle('🤝 Trade Analysis')
-        .setColor(0xe67e22)
+      const tradeEmbed = new EmbedBuilder().setTitle('🤝 Trade Analysis').setColor(0xe67e22)
         .addFields(
           { name: `${sA.title} New Cap`, value: `$${(sA.cap + sA.totalSent - sB.totalSent).toLocaleString()}`, inline: true },
           { name: `${sB.title} New Cap`, value: `$${(sB.cap + sB.totalSent - sA.totalSent).toLocaleString()}`, inline: true }
@@ -217,8 +220,13 @@ client.on('interactionCreate', async (interaction) => {
 
   } catch (err) {
     console.error(err);
-    if (!interaction.replied) await interaction.editReply("⚠️ Spreadsheet Error: Please verify tab names and try again.");
+    if (!interaction.replied) await interaction.editReply("⚠️ Bot Error: Please check logs or try again.");
   }
+});
+
+// Hidden command
+client.on('messageCreate', m => {
+  if (!m.author.bot && m.content.toLowerCase().startsWith('!free')) m.reply(`GO AWAY AND SLAM THE DOOR!!!!!! ${m.author.username}`);
 });
 
 client.login(process.env.DISCORD_TOKEN);
