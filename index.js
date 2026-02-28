@@ -18,9 +18,13 @@ const serviceAccountAuth = new JWT({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
 
-const doc = new GoogleSpreadsheet(process.env.SHEET_ID, serviceAccountAuth);
 const client = new Client({ 
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
+  intents: [
+    GatewayIntentBits.Guilds, 
+    GatewayIntentBits.GuildMessages, 
+    GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
+    GatewayIntentBits.GuildMessageReactions // <--- CRITICAL for reactions
+  ] 
 });
 
 // --- CACHE SYSTEM ---
@@ -231,46 +235,47 @@ client.on('interactionCreate', async (interaction) => {
 
 // --- SLEEPER TRANSACTION WATCHER ---
 client.on('messageCreate', async (message) => {
-  // 1. Only listen in your specific transaction channel (Replace '00000' with your actual Channel ID)
-  if (message.channelId !== '1477395251181125684') return;
+  // 1. Log every message in the console to verify the bot is "hearing" the channel
+  console.log(`Message heard in ${message.channelId}: ${message.content.slice(0, 20)}...`);
 
-  // 2. Ignore messages from your own bot to prevent loops
+  if (message.channelId !== 'YOUR_ACTUAL_CHANNEL_ID') return;
   if (message.author.id === client.user.id) return;
 
   try {
     const { players, logs } = await getSheetData();
     
-    // 3. Search the message text (or embed description) for any player in your sheet
-    // Sleeper Link often uses "First Initial. Last Name" (e.g., G. Wilson)
+    // Check if Sleeper Link mentioned a player name from your sheet
     const foundPlayer = players.find(p => {
       const fullName = p._rawData[1];
       if (!fullName) return false;
       
-      // Check for exact name or the common "J. Jefferson" format
+      // Standard format or "J. Jefferson" format
       const initialFormat = `${fullName.charAt(0)}. ${fullName.split(' ').pop()}`;
+      
       return message.content.includes(fullName) || 
-             (message.embeds[0]?.description?.includes(fullName)) ||
-             (message.embeds[0]?.description?.includes(initialFormat));
+             message.embeds[0]?.description?.includes(fullName) ||
+             message.embeds[0]?.description?.includes(initialFormat);
     });
 
     if (foundPlayer) {
-      // 4. Add the money bag emoji to the Sleeper message
-      await message.react('💰');
+      console.log(`✅ Player match found: ${foundPlayer._rawData[1]}. Adding reaction...`);
+      await message.react('💰').catch(err => console.error("Failed to react:", err));
 
-      // 5. Create a collector to wait for someone to click the emoji
       const filter = (reaction, user) => reaction.emoji.name === '💰' && !user.bot;
-      const collector = message.createReactionCollector({ filter, time: 60000, max: 1 });
+      const collector = message.createReactionCollector({ filter, time: 60000 });
 
-      collector.on('collect', async () => {
+      collector.on('collect', async (reaction, user) => {
+        console.log(`💰 Reaction clicked by ${user.tag}`);
         const embed = createPlayerEmbed(foundPlayer, logs);
         await message.reply({ 
           content: `📊 **Salary Insight for ${foundPlayer._rawData[1]}:**`, 
           embeds: [embed] 
         });
+        collector.stop();
       });
     }
   } catch (err) {
-    console.error("Sleeper Listener Error:", err);
+    console.error("Watcher Error:", err);
   }
 });
 
