@@ -334,7 +334,7 @@ async function pollSleeper() {
 
   try {
     const { players, logs, idMap } = await getSheetData();
-    const channel = await client.channels.fetch('YOUR_CHANNEL_ID');
+    const channel = await client.channels.fetch('1477399855541518366');
     
     // FETCH DATA
     const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
@@ -362,19 +362,39 @@ async function pollSleeper() {
 
       // --- HELPER: GET PLAYER DETAILS ---
       const getDetails = (pId) => {
-        const idRow = idMap.find(row => row._rawData[0] === pId);
-        const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
-        const pData = players.find(p => p._rawData[1] === name);
-        
-        if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*` };
+  // 1. Check if it's a Draft Pick (Non-numeric IDs like '2026_1_5')
+  if (isNaN(pId) || pId.includes('_')) {
+    // Format the ID for the embed (e.g., 2026_1_5 -> 2026 1 5)
+    const pickName = pId.replace(/_/g, ' ');
+    return { 
+      name: pickName, 
+      cap: 0, 
+      text: `• 🎫 **${pickName}** ($0 - Entry Level)` 
+    };
+  }
 
-        const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
-        const years = pData._rawData[3] || "?";
-        const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
-        const bonus = tLogRow ? `\n   ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
-        
-        return { name, cap, text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` };
-      };
+  // 2. It's a Player - Find Name in Sleeper_Players sheet
+  const idRow = idMap.find(row => row._rawData[0] === pId);
+  const name = idRow ? idRow._rawData[1] : `Unknown Player (${pId})`;
+
+  // 3. Find Salary in PlayerList
+  const pData = players.find(p => p._rawData[1] === name);
+  
+  if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*` };
+
+  const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
+  const years = pData._rawData[3] || "?";
+  
+  // 4. Check Transaction Log for Bonuses
+  const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
+  const bonus = tLogRow ? `\n   ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
+  
+  return { 
+    name, 
+    cap, 
+    text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` 
+  };
+};
 
       // --- PROCESS ADDS & DROPS ---
       let addsStr = "";
