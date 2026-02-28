@@ -33,7 +33,9 @@ let cachedLogs = [];
 let cachedIds = []; // Added to store Sleeper ID mappings
 let lastFetchTime = 0;
 const CACHE_LIFESPAN = 30000; 
-const BOT_START_TIME = Date.now();
+// This sets the "start time" to 2 hours ago, so the bot backfills recent trades
+const BACKFILL_MS = 2 * 60 * 60 * 1000; 
+const BOT_START_TIME = Date.now() - BACKFILL_MS;
 
 // Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
 const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
@@ -375,13 +377,19 @@ async function pollSleeper() {
 
   
       // If we've seen this ID, skip it
-      for (const tx of transactions) {
-        // --- MUTE HISTORY LOGIC ---
-  // If the transaction happened BEFORE the bot started, skip it.
-        if (tx.status_updated < BOT_START_TIME) {
-          processedTxIds.add(tx.transaction_id); // Mark as seen so we don't check again
-          continue;
-        }
+      // --- MUTE/BACKFILL LOGIC ---
+for (const tx of transactions) {
+  // 1. Skip if already processed in this session
+  if (processedTxIds.has(tx.transaction_id)) continue;
+
+  // 2. Skip only if the transaction is older than our backfill window
+  if (tx.status_updated < BOT_START_TIME) {
+    processedTxIds.add(tx.transaction_id); // Mark as seen so we don't check again
+    continue;
+  }
+
+  // 3. Log that we are processing a transaction (helps debug if it doesn't show in Discord)
+  console.log(`processing TX: ${tx.transaction_id} | Type: ${tx.type} | Status: ${tx.status}`);
       if (processedTxIds.has(tx.transaction_id)) continue;
 
       let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
