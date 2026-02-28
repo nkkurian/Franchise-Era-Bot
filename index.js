@@ -365,22 +365,41 @@ async function pollSleeper() {
     const channel = await client.channels.fetch('1477399855541518366');
     
     // FETCH DATA
+// FETCH DATA - Added 'trade' and 'pending' to ensure we see proposals
     const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Sleeper API Error: ${response.status}`);
     
-    const transactions = await response.json();
-    console.log(`[${timestamp}] 📡 Received ${transactions.length} transactions from Sleeper.`);
+    let transactions = await response.json();
 
+    // NEW: Console Log the last 5 trades found in the API for debugging
+    console.log("--- 📋 RECENT API HISTORY (Last 5) ---");
+    transactions.slice(0, 5).forEach(t => {
+       console.log(`ID: ${t.transaction_id} | Status: ${t.status} | Type: ${t.type} | Date: ${new Date(t.status_updated).toLocaleString()}`);
+    });
+    console.log("--------------------------------------");
+
+    // Sort to process oldest first
     // Sort to process oldest first
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
-  
-      // If we've seen this ID, skip it
-      // --- MUTE/BACKFILL LOGIC ---
-for (const tx of transactions) {
-  // 1. Skip if already processed in this session
-  if (processedTxIds.has(tx.transaction_id)) continue;
+    for (const tx of transactions) {
+      // 1. Skip if already processed in this session
+      if (processedTxIds.has(tx.transaction_id)) continue;
+
+      // 2. BACKFILL/MUTE LOGIC
+      // Only process "complete" OR "pending" transactions
+      if (tx.status !== 'complete' && tx.status !== 'pending') continue;
+
+      // 3. Skip if it's strictly older than our backfill window
+      if (tx.status_updated < BOT_START_TIME) {
+        processedTxIds.add(tx.transaction_id); 
+        continue;
+      }
+
+      console.log(`🆕 PROCESSING TX: ${tx.transaction_id} | Status: ${tx.status}`);
+
+      // Continue with your existing EmbedBuilder logic...
 
   // 2. Skip only if the transaction is older than our backfill window
   if (tx.status_updated < BOT_START_TIME) {
