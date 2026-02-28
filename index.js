@@ -167,29 +167,6 @@ client.on('interactionCreate', async (interaction) => {
       return;
     }
 
-    if (interaction.commandName === 'team') {
-      const teamInput = interaction.options.getString('teamname').toLowerCase();
-      const teamSheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamInput));
-      
-      if (teamSheet) {
-        await teamSheet.loadCells(['F2', 'J2']);
-        const tTitle = teamSheet.title;
-        const top5 = players
-          .filter(r => r._rawData[0] === tTitle)
-          .sort((a, b) => parseFloat((b._rawData[6] || "0").replace(/[$,]/g, '')) - parseFloat((a._rawData[a] || "0").replace(/[$,]/g, '')))
-          .slice(0, 5).map(r => `• ${r._rawData[1]}: **${r._rawData[6]}**`).join('\n');
-
-        const teamEmbed = new EmbedBuilder().setTitle(`🏟️ Team Report: ${tTitle}`).setColor(0x3498db)
-          .addFields(
-            { name: '💸 Cap Space', value: teamSheet.getCellByA1('F2').formattedValue || "$0", inline: true },
-            { name: '📝 Extensions', value: teamSheet.getCellByA1('J2').formattedValue || "0", inline: true },
-            { name: '🔝 Top 5 Earners', value: top5 || "No data found", inline: false }
-          );
-        return await interaction.editReply({ embeds: [teamEmbed] });
-      }
-      return await interaction.editReply(`❌ Team **${teamInput}** not found.`);
-    }
-
     if (interaction.commandName === 'trade') {
       const tA = interaction.options.getString('teama');
       const pA_input = interaction.options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
@@ -212,7 +189,17 @@ client.on('interactionCreate', async (interaction) => {
           if (r) {
             const hit = parseFloat((r._rawData[6] || "0").replace(/[$,]/g, ''));
             totalCapSent += hit;
-            playerDetails.push(`• ${r._rawData[1]}: **$${hit.toLocaleString()}**`);
+            
+            // Find Bonus Info for this specific player
+            const tLogRow = logs.find(log => log._rawData[0]?.toLowerCase().includes(r._rawData[1].toLowerCase()));
+            let bonusText = "";
+            if (tLogRow) {
+              const bonus = tLogRow._rawData[4] || ""; 
+              const kick = tLogRow._rawData[5] || "";
+              if (bonus || kick) bonusText = `\n   ┗ ✨ *${kick ? `Kick:${kick} ` : ""}${bonus.slice(0, 30)}...*`;
+            }
+
+            playerDetails.push(`• ${r._rawData[1]}: **$${hit.toLocaleString()}**${bonusText}`);
           } else {
             playerDetails.push(`• ${pn}: *Not Found*`);
           }
@@ -236,7 +223,6 @@ client.on('interactionCreate', async (interaction) => {
 
       return await interaction.editReply({ embeds: [tradeEmbed] });
     }
-
   } catch (err) {
     console.error(err);
     if (!interaction.replied) await interaction.editReply("⚠️ Bot Error.");
