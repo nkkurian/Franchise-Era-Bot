@@ -196,26 +196,44 @@ client.on('interactionCreate', async (interaction) => {
       const tB = interaction.options.getString('teamb');
       const pB_input = interaction.options.getString('teamb_players').split(',').map(p => p.trim().toLowerCase());
 
-      const getSide = async (teamName, playersIn) => {
+      const getSideData = async (teamName, playersIn) => {
         const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
         let cap = 0; 
-        if (sh) { await sh.loadCells('F2'); cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0; }
-        let totalSent = 0;
+        if (sh) { 
+            await sh.loadCells('F2'); 
+            cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0; 
+        }
+        
+        let totalCapSent = 0;
+        let playerDetails = [];
+
         playersIn.forEach(pn => {
           const r = players.find(row => row._rawData[1]?.toLowerCase().includes(pn));
-          if (r) totalSent += parseFloat((r._rawData[6] || "0").replace(/[$,]/g, ''));
+          if (r) {
+            const hit = parseFloat((r._rawData[6] || "0").replace(/[$,]/g, ''));
+            totalCapSent += hit;
+            playerDetails.push(`• ${r._rawData[1]}: **$${hit.toLocaleString()}**`);
+          } else {
+            playerDetails.push(`• ${pn}: *Not Found*`);
+          }
         });
-        return { title: sh ? sh.title : teamName, cap, totalSent };
+
+        return { title: sh ? sh.title : teamName, cap, totalCapSent, playerDetails };
       };
 
-      const sA = await getSide(tA, pA_input);
-      const sB = await getSide(tB, pB_input);
+      const sA = await getSideData(tA, pA_input);
+      const sB = await getSideData(tB, pB_input);
       
-      const tradeEmbed = new EmbedBuilder().setTitle('🤝 Trade Analysis').setColor(0xe67e22)
+      const tradeEmbed = new EmbedBuilder()
+        .setTitle('🤝 Detailed Trade Analysis')
+        .setColor(0xe67e22)
         .addFields(
-          { name: `${sA.title} New Cap`, value: `$${(sA.cap + sA.totalSent - sB.totalSent).toLocaleString()}`, inline: true },
-          { name: `${sB.title} New Cap`, value: `$${(sB.cap + sB.totalSent - sA.totalSent).toLocaleString()}`, inline: true }
+          { name: `📤 From ${sA.title}`, value: sA.playerDetails.join('\n') || "None", inline: false },
+          { name: `📥 From ${sB.title}`, value: sB.playerDetails.join('\n') || "None", inline: false },
+          { name: `${sA.title} New Cap`, value: `**$${(sA.cap + sA.totalCapSent - sB.totalCapSent).toLocaleString()}**`, inline: true },
+          { name: `${sB.title} New Cap`, value: `**$${(sB.cap + sB.totalCapSent - sA.totalCapSent).toLocaleString()}**`, inline: true }
         );
+
       return await interaction.editReply({ embeds: [tradeEmbed] });
     }
 
