@@ -238,7 +238,7 @@ client.on('messageCreate', async (message) => {
   // 1. Log every message in the console to verify the bot is "hearing" the channel
   console.log(`Message heard in ${message.channelId}: ${message.content.slice(0, 20)}...`);
 
-  if (message.channelId !== '1477395251181125684') return;
+  if (message.channelId !== '1477399855541518366') return;
   if (message.author.id === client.user.id) return;
 
   try {
