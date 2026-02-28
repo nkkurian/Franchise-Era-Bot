@@ -30,23 +30,38 @@ const client = new Client({
 // --- CACHE SYSTEM ---
 let cachedPlayers = [];
 let cachedLogs = [];
+let cachedIds = []; // Added to store Sleeper ID mappings
 let lastFetchTime = 0;
 const CACHE_LIFESPAN = 30000; 
 
+// Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
+const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
+
 async function getSheetData() {
   const now = Date.now();
-  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) return { players: cachedPlayers, logs: cachedLogs };
+  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds };
+  }
   
-  await doc.loadInfo();
-  const [pRows, tRows] = await Promise.all([
-    doc.sheetsByTitle['PlayerList'].getRows(),
-    doc.sheetsByTitle['Transaction Log'].getRows()
-  ]);
-  
-  cachedPlayers = pRows;
-  cachedLogs = tRows;
-  lastFetchTime = now;
-  return { players: cachedPlayers, logs: cachedLogs };
+  try {
+    await doc.loadInfo();
+    const [pRows, tRows, idRows] = await Promise.all([
+      doc.sheetsByTitle['PlayerList'].getRows(),
+      doc.sheetsByTitle['Transaction Log'].getRows(),
+      doc.sheetsByTitle['Sleeper_Players'].getRows() // Fetches the ID sheet seen in your screenshots
+    ]);
+    
+    cachedPlayers = pRows;
+    cachedLogs = tRows;
+    cachedIds = idRows;
+    lastFetchTime = now;
+    
+    console.log(`📊 Cache Updated: ${pRows.length} players, ${idRows.length} IDs loaded.`);
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds };
+  } catch (err) {
+    console.error("❌ Sheet Fetch Error:", err);
+    return { players: [], logs: [], idMap: [] };
+  }
 }
 
 // --- COMMAND REGISTRATION (FIXED DESCRIPTIONS) ---
@@ -76,7 +91,20 @@ client.once('ready', async () => {
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
-  } catch (err) { console.error(err); }
+    
+    // Initialize Team Map
+    await updateTeamMap().catch(err => console.error("Team Map Error:", err));
+
+    // Start the Sleeper Poller immediately
+    console.log("💓 Sleeper Poller Started...");
+    pollSleeper(); 
+
+    // Then check every 60 seconds
+    setInterval(pollSleeper, 60000); 
+
+  } catch (err) { 
+    console.error("Startup Error:", err); 
+  }
 });
 
 // --- HELPER: CREATE PLAYER EMBED ---
@@ -301,17 +329,29 @@ async function updateTeamMap() {
 
 // 2. The Main Poller
 async function pollSleeper() {
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`[${timestamp}] 🔍 Checking Sleeper for new transactions...`);
+
   try {
     const { players, logs, idMap } = await getSheetData();
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    if (Object.keys(rosterToTeamName).length === 0) await updateTeamMap();
-
-    const response = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`);
+    const channel = await client.channels.fetch('YOUR_CHANNEL_ID');
+    
+    // FETCH DATA
+    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Sleeper API Error: ${response.status}`);
+    
     const transactions = await response.json();
+    console.log(`[${timestamp}] 📡 Received ${transactions.length} transactions from Sleeper.`);
+
+    // Sort to process oldest first
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     for (const tx of transactions) {
+      // If we've seen this ID, skip it
       if (processedTxIds.has(tx.transaction_id)) continue;
+
+      console.log(`🆕 NEW TRANSACTION FOUND: ${tx.transaction_id} (${tx.type} - ${tx.status})`);
 
       let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
       let embedColor = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
@@ -374,8 +414,11 @@ async function pollSleeper() {
 
       await channel.send({ embeds: [embed] });
       processedTxIds.add(tx.transaction_id);
+      console.log(`✅ Message sent for TX: ${tx.transaction_id}`);
     }
-  } catch (err) { console.error("Poller Error:", err); }
+  } catch (err) {
+    console.error(`❌ Poller Error at ${timestamp}:`, err.message);
+  }
 }
 
 client.once('ready', () => { setInterval(pollSleeper, 60000); });
