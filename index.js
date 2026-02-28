@@ -93,16 +93,9 @@ client.once('ready', async () => {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
     
-    // Initialize Team Map
-    await updateTeamMap().catch(err => console.error("Team Map Error:", err));
-
-    // Start the Sleeper Poller immediately
-    console.log("💓 Sleeper Poller Started...");
-    pollSleeper(); 
-
-    // Then check every 60 seconds
-    setInterval(pollSleeper, 60000); 
-
+    await updateTeamMap(); // Maps Roster IDs to Team Names
+    pollSleeper();         // Runs immediately
+    setInterval(pollSleeper, 60000); // Checks every minute
   } catch (err) { 
     console.error("Startup Error:", err); 
   }
@@ -328,6 +321,38 @@ async function updateTeamMap() {
   });
 }
 
+const getDetails = (pId, players, logs, idMap) => {
+  // 1. DRAFT PICK DETECTION (Matches ID format like '2026_1_5')
+  if (isNaN(pId) || pId.includes('_')) {
+    const pickName = pId.replace(/_/g, ' ');
+    return { 
+      name: pickName, 
+      cap: 0, 
+      text: `• 🎫 **${pickName}** ($0 - Entry Level)` 
+    };
+  }
+
+  // 2. PLAYER DETECTION
+  const idRow = idMap.find(row => row._rawData[0] === pId);
+  const name = idRow ? idRow._rawData[1] : `Unknown Player (${pId})`;
+  const pData = players.find(p => p._rawData[1] === name);
+  
+  if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*` };
+
+  const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
+  const years = pData._rawData[3] || "?";
+  
+  // 3. BONUS CHECK
+  const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
+  const bonus = tLogRow ? `\n   ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
+  
+  return { 
+    name, 
+    cap, 
+    text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` 
+  };
+};
+
 // 2. The Main Poller
 async function pollSleeper() {
   const timestamp = new Date().toLocaleTimeString();
@@ -348,7 +373,6 @@ async function pollSleeper() {
     // Sort to process oldest first
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
-    for (const tx of transactions) {
       ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   // --- MUTE HISTORY LOGIC ---
   // If the transaction happened BEFORE the bot started, skip it.
@@ -357,57 +381,50 @@ async function pollSleeper() {
       //continue;
   //}
       // If we've seen this ID, skip it
+      for (const tx of transactions) {
       if (processedTxIds.has(tx.transaction_id)) continue;
 
-      console.log(`🆕 NEW TRANSACTION FOUND: ${tx.transaction_id} (${tx.type} - ${tx.status})`);
-
       let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
-      let embedColor = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
-      
-      const embed = new EmbedBuilder().setTitle(title).setColor(embedColor).setTimestamp(new Date(tx.status_updated));
+      const embed = new EmbedBuilder().setTitle(title).setColor(tx.status === 'pending' ? 0xFFA500 : 0x2ecc71).setTimestamp(new Date(tx.status_updated));
 
-      let teamStats = {}; 
+      let teamSummaries = {}; // Grouping: { "Team Name": { actions: [], net: 0 } }
 
-      // Helper to initialize a team's grouping
-      const initTeam = (tName) => {
-        if (!teamStats[tName]) {
-          teamStats[tName] = { actions: [], netCap: 0 };
-        }
+      const initTeam = (rId) => {
+        const tName = rosterToTeamName[rId];
+        if (!teamSummaries[tName]) teamSummaries[tName] = { actions: [], net: 0 };
+        return tName;
       };
 
-      // 1. Process Acquisitions (✅ Receives)
+      // 1. Process Assets Gained
       for (const [pId, rId] of Object.entries(tx.adds || {})) {
-        const d = getDetails(pId);
-        const t = rosterToTeamName[rId];
-        initTeam(t);
-        teamStats[t].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
-        teamStats[t].netCap -= d.cap; 
+        const tName = initTeam(rId);
+        const d = getDetails(pId, players, logs, idMap);
+        teamSummaries[tName].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
+        teamSummaries[tName].net -= d.cap;
       }
 
-      // 2. Process Outgoing (📤 Sends)
+      // 2. Process Assets Lost
       for (const [pId, rId] of Object.entries(tx.drops || {})) {
-        const d = getDetails(pId);
-        const t = rosterToTeamName[rId];
-        initTeam(t);
-        teamStats[t].actions.push(`📤 **Sends:** ${d.text.replace('• ', '')}`);
-        teamStats[t].netCap += d.cap;
+        const tName = initTeam(rId);
+        const d = getDetails(pId, players, logs, idMap);
+        teamSummaries[tName].actions.push(`📤 **Sends:** ${d.text.replace('• ', '')}`);
+        teamSummaries[tName].net += d.cap;
       }
 
-      // 3. Generate Team-Based Embed Fields
-      for (const [tName, data] of Object.entries(teamStats)) {
+      // 3. Build Team-Specific Embed Fields
+      for (const [tName, data] of Object.entries(teamSummaries)) {
         const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
-        let capHeader = "📊 Cap Space Impact";
+        let capStr = "📊 Cap Impact Pending";
         
         if (sh) {
           await sh.loadCells('F2');
-          const current = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
-          const after = current + data.netCap;
-          capHeader = `📊 $${current.toLocaleString()} ➔ **$${after.toLocaleString()}**`;
+          const cur = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
+          capStr = `📊 $${cur.toLocaleString()} ➔ **$${(cur + data.net).toLocaleString()}**`;
         }
 
         embed.addFields({ 
           name: `🏟️ ${tName.toUpperCase()}`, 
-          value: `${data.actions.join('\n')}\n${capHeader}`, 
+          value: `${data.actions.join('\n')}\n${capStr}`, 
           inline: false 
         });
       }
@@ -416,11 +433,10 @@ async function pollSleeper() {
       processedTxIds.add(tx.transaction_id);
       console.log(`✅ Message sent for TX: ${tx.transaction_id}`);
     }
+      
   } catch (err) {
     console.error(`❌ Poller Error at ${timestamp}:`, err.message);
   }
 }
-
-client.once('ready', () => { setInterval(pollSleeper, 60000); });
 
 client.login(process.env.DISCORD_TOKEN);
