@@ -33,6 +33,7 @@ let cachedLogs = [];
 let cachedIds = []; // Added to store Sleeper ID mappings
 let lastFetchTime = 0;
 const CACHE_LIFESPAN = 30000; 
+const BOT_START_TIME = Date.now();
 
 // Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
 const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
@@ -348,6 +349,13 @@ async function pollSleeper() {
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     for (const tx of transactions) {
+      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  // --- MUTE HISTORY LOGIC ---
+  // If the transaction happened BEFORE the bot started, skip it.
+  //if (tx.status_updated < BOT_START_TIME) {
+      //processedTxIds.add(tx.transaction_id); // Mark as seen so we don't check again
+      //continue;
+  //}
       // If we've seen this ID, skip it
       if (processedTxIds.has(tx.transaction_id)) continue;
 
@@ -358,79 +366,51 @@ async function pollSleeper() {
       
       const embed = new EmbedBuilder().setTitle(title).setColor(embedColor).setTimestamp(new Date(tx.status_updated));
 
-      let teamSummaries = {}; // To track net cap change per team
+      let teamStats = {}; 
 
-      // --- HELPER: GET PLAYER DETAILS ---
-      const getDetails = (pId) => {
-  // 1. Check if it's a Draft Pick (Non-numeric IDs like '2026_1_5')
-  if (isNaN(pId) || pId.includes('_')) {
-    // Format the ID for the embed (e.g., 2026_1_5 -> 2026 1 5)
-    const pickName = pId.replace(/_/g, ' ');
-    return { 
-      name: pickName, 
-      cap: 0, 
-      text: `• 🎫 **${pickName}** ($0 - Entry Level)` 
-    };
-  }
-
-  // 2. It's a Player - Find Name in Sleeper_Players sheet
-  const idRow = idMap.find(row => row._rawData[0] === pId);
-  const name = idRow ? idRow._rawData[1] : `Unknown Player (${pId})`;
-
-  // 3. Find Salary in PlayerList
-  const pData = players.find(p => p._rawData[1] === name);
-  
-  if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*` };
-
-  const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
-  const years = pData._rawData[3] || "?";
-  
-  // 4. Check Transaction Log for Bonuses
-  const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
-  const bonus = tLogRow ? `\n   ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
-  
-  return { 
-    name, 
-    cap, 
-    text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` 
-  };
-};
-
-      // --- PROCESS ADDS & DROPS ---
-      let addsStr = "";
-      for (const [pId, rId] of Object.entries(tx.adds || {})) {
-        const details = getDetails(pId);
-        const teamName = rosterToTeamName[rId];
-        addsStr += `✅ **${teamName}** receives ${details.text}\n`;
-        teamSummaries[teamName] = (teamSummaries[teamName] || 0) - details.cap; // Adding player = less cap space
-      }
-
-      let dropsStr = "";
-      for (const [pId, rId] of Object.entries(tx.drops || {})) {
-        const details = getDetails(pId);
-        const teamName = rosterToTeamName[rId];
-        dropsStr += `❌ **${teamName}** drops ${details.text}\n`;
-        teamSummaries[teamName] = (teamSummaries[teamName] || 0) + details.cap; // Dropping player = more cap space
-      }
-
-      // --- CAP SPACE IMPACT ---
-      let impactStr = "";
-      for (const [tName, netChange] of Object.entries(teamSummaries)) {
-        // Fetch current cap space from Team Sheets logic
-        const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
-        if (sh) {
-            await sh.loadCells('F2');
-            const currentCap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
-            const newCap = currentCap + netChange;
-            impactStr += `🏟️ **${tName}**: $${currentCap.toLocaleString()} ➔ **$${newCap.toLocaleString()}**\n`;
+      // Helper to initialize a team's grouping
+      const initTeam = (tName) => {
+        if (!teamStats[tName]) {
+          teamStats[tName] = { actions: [], netCap: 0 };
         }
+      };
+
+      // 1. Process Acquisitions (✅ Receives)
+      for (const [pId, rId] of Object.entries(tx.adds || {})) {
+        const d = getDetails(pId);
+        const t = rosterToTeamName[rId];
+        initTeam(t);
+        teamStats[t].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
+        teamStats[t].netCap -= d.cap; 
       }
 
-      embed.addFields(
-        { name: '📥 Acquisitions', value: addsStr || "None", inline: false },
-        { name: '📤 Releases', value: dropsStr || "None", inline: false },
-        { name: '📊 Cap Space Impact', value: impactStr || "Calculation unavailable", inline: false }
-      );
+      // 2. Process Outgoing (📤 Sends)
+      for (const [pId, rId] of Object.entries(tx.drops || {})) {
+        const d = getDetails(pId);
+        const t = rosterToTeamName[rId];
+        initTeam(t);
+        teamStats[t].actions.push(`📤 **Sends:** ${d.text.replace('• ', '')}`);
+        teamStats[t].netCap += d.cap;
+      }
+
+      // 3. Generate Team-Based Embed Fields
+      for (const [tName, data] of Object.entries(teamStats)) {
+        const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
+        let capHeader = "📊 Cap Space Impact";
+        
+        if (sh) {
+          await sh.loadCells('F2');
+          const current = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
+          const after = current + data.netCap;
+          capHeader = `📊 $${current.toLocaleString()} ➔ **$${after.toLocaleString()}**`;
+        }
+
+        embed.addFields({ 
+          name: `🏟️ ${tName.toUpperCase()}`, 
+          value: `${data.actions.join('\n')}\n${capHeader}`, 
+          inline: false 
+        });
+      }
 
       await channel.send({ embeds: [embed] });
       processedTxIds.add(tx.transaction_id);
