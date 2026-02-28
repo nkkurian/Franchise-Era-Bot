@@ -279,4 +279,105 @@ client.on('messageCreate', async (message) => {
   }
 });
 
+// --- CONFIG & CACHE ---
+const SLEEPER_LEAGUE_ID = '1312556169230815232';
+const CHANNEL_ID = '1477399855541518366';
+let processedTxIds = new Set();
+let rosterToTeamName = {}; // Cache for mapping Roster ID -> "Team Name"
+
+// 1. Function to map Roster IDs to Team Names from Sleeper
+async function updateTeamMap() {
+  const usersRes = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/users`);
+  const rostersRes = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/rosters`);
+  const users = await usersRes.json();
+  const rosters = await rostersRes.json();
+
+  rosters.forEach(r => {
+    const user = users.find(u => u.user_id === r.owner_id);
+    // Use metadata team_name or fallback to display_name
+    rosterToTeamName[r.roster_id] = user?.metadata?.team_name || user?.display_name || `Team ${r.roster_id}`;
+  });
+}
+
+// 2. The Main Poller
+async function pollSleeper() {
+  try {
+    const { players, logs, idMap } = await getSheetData();
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    if (Object.keys(rosterToTeamName).length === 0) await updateTeamMap();
+
+    const response = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`);
+    const transactions = await response.json();
+    transactions.sort((a, b) => a.status_updated - b.status_updated);
+
+    for (const tx of transactions) {
+      if (processedTxIds.has(tx.transaction_id)) continue;
+
+      let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
+      let embedColor = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
+      
+      const embed = new EmbedBuilder().setTitle(title).setColor(embedColor).setTimestamp(new Date(tx.status_updated));
+
+      let teamSummaries = {}; // To track net cap change per team
+
+      // --- HELPER: GET PLAYER DETAILS ---
+      const getDetails = (pId) => {
+        const idRow = idMap.find(row => row._rawData[0] === pId);
+        const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
+        const pData = players.find(p => p._rawData[1] === name);
+        
+        if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*` };
+
+        const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
+        const years = pData._rawData[3] || "?";
+        const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
+        const bonus = tLogRow ? `\n   ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
+        
+        return { name, cap, text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` };
+      };
+
+      // --- PROCESS ADDS & DROPS ---
+      let addsStr = "";
+      for (const [pId, rId] of Object.entries(tx.adds || {})) {
+        const details = getDetails(pId);
+        const teamName = rosterToTeamName[rId];
+        addsStr += `✅ **${teamName}** receives ${details.text}\n`;
+        teamSummaries[teamName] = (teamSummaries[teamName] || 0) - details.cap; // Adding player = less cap space
+      }
+
+      let dropsStr = "";
+      for (const [pId, rId] of Object.entries(tx.drops || {})) {
+        const details = getDetails(pId);
+        const teamName = rosterToTeamName[rId];
+        dropsStr += `❌ **${teamName}** drops ${details.text}\n`;
+        teamSummaries[teamName] = (teamSummaries[teamName] || 0) + details.cap; // Dropping player = more cap space
+      }
+
+      // --- CAP SPACE IMPACT ---
+      let impactStr = "";
+      for (const [tName, netChange] of Object.entries(teamSummaries)) {
+        // Fetch current cap space from Team Sheets logic
+        const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
+        if (sh) {
+            await sh.loadCells('F2');
+            const currentCap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
+            const newCap = currentCap + netChange;
+            impactStr += `🏟️ **${tName}**: $${currentCap.toLocaleString()} ➔ **$${newCap.toLocaleString()}**\n`;
+        }
+      }
+
+      embed.addFields(
+        { name: '📥 Acquisitions', value: addsStr || "None", inline: false },
+        { name: '📤 Releases', value: dropsStr || "None", inline: false },
+        { name: '📊 Cap Space Impact', value: impactStr || "Calculation unavailable", inline: false }
+      );
+
+      await channel.send({ embeds: [embed] });
+      processedTxIds.add(tx.transaction_id);
+    }
+  } catch (err) { console.error("Poller Error:", err); }
+}
+
+client.once('ready', () => { setInterval(pollSleeper, 60000); });
+
 client.login(process.env.DISCORD_TOKEN);
