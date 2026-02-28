@@ -232,7 +232,7 @@ client.on('interactionCreate', async (interaction) => {
 // --- SLEEPER TRANSACTION WATCHER ---
 client.on('messageCreate', async (message) => {
   // 1. Only listen in your specific transaction channel (Replace '00000' with your actual Channel ID)
-  if (message.channelId !== '000000000000000000') return;
+  if (message.channelId !== '1477395251181125684') return;
 
   // 2. Ignore messages from your own bot to prevent loops
   if (message.author.id === client.user.id) return;
