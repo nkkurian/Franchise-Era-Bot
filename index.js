@@ -373,15 +373,15 @@ async function pollSleeper() {
     // Sort to process oldest first
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
-      ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  // --- MUTE HISTORY LOGIC ---
-  // If the transaction happened BEFORE the bot started, skip it.
-  //if (tx.status_updated < BOT_START_TIME) {
-      //processedTxIds.add(tx.transaction_id); // Mark as seen so we don't check again
-      //continue;
-  //}
+  
       // If we've seen this ID, skip it
       for (const tx of transactions) {
+        // --- MUTE HISTORY LOGIC ---
+  // If the transaction happened BEFORE the bot started, skip it.
+        if (tx.status_updated < BOT_START_TIME) {
+          processedTxIds.add(tx.transaction_id); // Mark as seen so we don't check again
+          continue;
+        }
       if (processedTxIds.has(tx.transaction_id)) continue;
 
       let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
