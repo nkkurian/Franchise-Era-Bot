@@ -355,22 +355,20 @@ const getDetails = (pId, players, logs, idMap) => {
   };
 };
 
+let isFirstRun = true;
+
 // 2. The Main Poller
 async function pollSleeper() {
   const timestamp = new Date().toLocaleTimeString();
-  console.log(`[${timestamp}] 🔍 Checking Sleeper for new transactions...`);
+  console.log(`[${timestamp}] 🔍 Checking Sleeper...`);
 
   try {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // FETCH DATA
-// FETCH DATA - Added 'trade' and 'pending' to ensure we see proposals
     const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`Sleeper API Error: ${response.status}`);
-    
-    let transactions = await response.json();
+    const transactions = await response.json();
 
     // NEW: Console Log the last 5 trades found in the API for debugging
     console.log("--- 📋 RECENT API HISTORY (Last 5) ---");
@@ -381,35 +379,40 @@ async function pollSleeper() {
 
     // Sort to process oldest first
     // Sort to process oldest first
+   if (isFirstRun) {
+      console.log("🕒 Bot Restarted: Fetching last 3 historical trades for backfill...");
+      // Sort newest first to pick the top 3, then we'll process them
+      const recentThree = transactions
+        .sort((a, b) => b.status_updated - a.status_updated)
+        .slice(0, 3);
+        
+      // Temporarily lower the BOT_START_TIME for these 3 only
+      recentThree.forEach(tx => {
+          // We manually process these by ensuring they aren't in the skip set
+          processedTxIds.delete(tx.transaction_id); 
+      });
+      isFirstRun = false; 
+    }
+
+    // Sort to process oldest first (standard order)
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     for (const tx of transactions) {
-      // 1. Skip if already processed in this session
       if (processedTxIds.has(tx.transaction_id)) continue;
 
-      // 2. BACKFILL/MUTE LOGIC
-      // Only process "complete" OR "pending" transactions
+      // Filter: Only Complete or Pending
       if (tx.status !== 'complete' && tx.status !== 'pending') continue;
 
-      // 3. Skip if it's strictly older than our backfill window
-      if (tx.status_updated < BOT_START_TIME) {
+      // Skip if older than backfill window (unless it's one of our 'forced' ones from above)
+      if (tx.status_updated < BOT_START_TIME && !isFirstRun) {
         processedTxIds.add(tx.transaction_id); 
         continue;
       }
 
-      console.log(`🆕 PROCESSING TX: ${tx.transaction_id} | Status: ${tx.status}`);
-
-      // Continue with your existing EmbedBuilder logic...
-
-  // 2. Skip only if the transaction is older than our backfill window
-  if (tx.status_updated < BOT_START_TIME) {
-    processedTxIds.add(tx.transaction_id); // Mark as seen so we don't check again
-    continue;
-  }
+      console.log(`🆕 SENDING TO DISCORD: ${tx.transaction_id} | Status: ${tx.status}`);
 
   // 3. Log that we are processing a transaction (helps debug if it doesn't show in Discord)
   console.log(`processing TX: ${tx.transaction_id} | Type: ${tx.type} | Status: ${tx.status}`);
-      if (processedTxIds.has(tx.transaction_id)) continue;
 
       let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
       const embed = new EmbedBuilder().setTitle(title).setColor(tx.status === 'pending' ? 0xFFA500 : 0x2ecc71).setTimestamp(new Date(tx.status_updated));
@@ -458,12 +461,10 @@ async function pollSleeper() {
 
       await channel.send({ embeds: [embed] });
       processedTxIds.add(tx.transaction_id);
-      console.log(`✅ Message sent for TX: ${tx.transaction_id}`);
     }
       
   } catch (err) {
-    console.error(`❌ Poller Error at ${timestamp}:`, err.message);
+    console.error(`❌ Poller Error:`, err.message);
   }
 }
-
 client.login(process.env.DISCORD_TOKEN);
