@@ -202,25 +202,23 @@ client.on('interactionCreate', async (interaction) => {
       const pB_input = interaction.options.getString('teamb_players').split(',').map(p => p.trim().toLowerCase());
 
       const getSideData = async (teamName, playersIn) => {
-        const sh = doc.sheetsByIndex.find(s => 
-            s.title.toLowerCase().trim().includes(teamName.toLowerCase().trim())
-        );
-        
+        const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
         let cap = 0;
+        
         if (sh) {
-            // Optimizing: This is the slow part, we will handle it outside or pre-load
+            // This is the bottleneck. By using Promise.all below, we run these in parallel.
             await sh.loadCells('F2'); 
             cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
         }
-        
+
         let totalCapSent = 0;
         let playerDetails = [];
 
         playersIn.forEach(pn => {
-          const r = players.find(row => row._rawData[1]?.toLowerCase().includes(pn));
-          if (r) {
-            const hit = parseFloat((r._rawData[6] || "0").replace(/[$,]/g, ''));
-            totalCapSent += hit;
+            const r = players.find(row => row._rawData[1]?.toLowerCase().includes(pn));
+            if (r) {
+                const hit = parseFloat((r._rawData[6] || "0").replace(/[$,]/g, ''));
+                totalCapSent += hit;
             
             // Find Bonus Info for this specific player
             const tLogRow = logs.find(log => log._rawData[0]?.toLowerCase().includes(r._rawData[1].toLowerCase()));
@@ -237,10 +235,11 @@ client.on('interactionCreate', async (interaction) => {
           }
         });
 
-        return { title: sh ? sh.title : teamName, cap, totalCapSent, playerDetails };
-      };
+       return { title: sh ? sh.title : teamName, cap, totalCapSent, playerDetails };
+    };
 
-     const [sA, sB] = await Promise.all([
+    // 🚀 SPEED BOOST: Fetch both sides simultaneously
+    const [sA, sB] = await Promise.all([
         getSideData(tA, pA_input),
         getSideData(tB, pB_input)
     ]);
