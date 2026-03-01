@@ -202,11 +202,15 @@ client.on('interactionCreate', async (interaction) => {
       const pB_input = interaction.options.getString('teamb_players').split(',').map(p => p.trim().toLowerCase());
 
       const getSideData = async (teamName, playersIn) => {
-        const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
-        let cap = 0; 
-        if (sh) { 
+        const sh = doc.sheetsByIndex.find(s => 
+            s.title.toLowerCase().trim().includes(teamName.toLowerCase().trim())
+        );
+        
+        let cap = 0;
+        if (sh) {
+            // Optimizing: This is the slow part, we will handle it outside or pre-load
             await sh.loadCells('F2'); 
-            cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0; 
+            cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
         }
         
         let totalCapSent = 0;
@@ -236,8 +240,10 @@ client.on('interactionCreate', async (interaction) => {
         return { title: sh ? sh.title : teamName, cap, totalCapSent, playerDetails };
       };
 
-      const sA = await getSideData(tA, pA_input);
-      const sB = await getSideData(tB, pB_input);
+     const [sA, sB] = await Promise.all([
+        getSideData(tA, pA_input),
+        getSideData(tB, pB_input)
+    ]);
       
       const tradeEmbed = new EmbedBuilder()
         .setTitle('🤝 Detailed Trade Analysis')
