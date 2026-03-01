@@ -149,6 +149,50 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
 
+    if (interaction.commandName === 'team') {
+      const teamInput = interaction.options.getString('teamname');
+      
+      // 1. Find the correct sheet for the team
+      const sh = doc.sheetsByIndex.find(s => 
+        s.title.toLowerCase().trim().includes(teamInput.toLowerCase().trim())
+      );
+
+      if (!sh) {
+        return await interaction.editReply(`❌ Could not find a sheet for team: **${teamInput}**`);
+      }
+
+      // 2. Load Cap Cell (F2) and Player Rows simultaneously
+      await sh.loadCells('F2');
+      const capValue = sh.getCellByA1('F2').formattedValue || "$0.00";
+
+      // 3. Find top 5 earners for this team from the cached PlayerList
+      const teamPlayers = players
+        .filter(p => p._rawData[0]?.toLowerCase().trim() === sh.title.toLowerCase().trim())
+        .map(p => ({
+          name: p._rawData[1],
+          hit: parseFloat((p._rawData[6] || "0").replace(/[$,]/g, '')) || 0,
+          hitStr: p._rawData[6] || "$0.00"
+        }))
+        .sort((a, b) => b.hit - a.hit)
+        .slice(0, 5);
+
+      const earnerList = teamPlayers.length > 0 
+        ? teamPlayers.map((p, i) => `${i+1}. **${p.name}**: ${p.hitStr}`).join('\n')
+        : "No players found on roster.";
+
+      const teamEmbed = new EmbedBuilder()
+        .setTitle(`🏟️ Team Report: ${sh.title}`)
+        .setColor(0x3498db)
+        .addFields(
+          { name: '💰 Current Cap Space', value: `**${capValue}**`, inline: false },
+          { name: '🔝 Top 5 Cap Hits', value: earnerList, inline: false }
+        )
+        .setFooter({ text: `Data synced from Google Sheets` })
+        .setTimestamp();
+
+      return await interaction.editReply({ embeds: [teamEmbed] });
+    }
+    
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
       const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
