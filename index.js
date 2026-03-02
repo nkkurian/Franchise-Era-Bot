@@ -36,6 +36,8 @@ const CACHE_LIFESPAN = 30000;
 // This sets the "start time" to 2 hours ago, so the bot backfills recent trades
 const BACKFILL_MS = 2 * 60 * 60 * 1000; 
 const BOT_START_TIME = Date.now() - BACKFILL_MS;
+let processedTxIds = new Set();
+let isFirstRun = true; // NEW: Controls the one-time historical post
 
 // Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
 const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
@@ -415,35 +417,30 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
+    // FIX 1: Increased from /1 to /30 so Free Agent moves don't bury Trades
+    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/30`;
     const response = await fetch(url);
     const transactions = await response.json();
 
-    // NEW: Console Log the last 5 trades found in the API for debugging
     console.log("--- 📋 RECENT API HISTORY (Last 5) ---");
     transactions.slice(0, 5).forEach(t => {
        console.log(`ID: ${t.transaction_id} | Status: ${t.status} | Type: ${t.type} | Date: ${new Date(t.status_updated).toLocaleString()}`);
     });
     console.log("--------------------------------------");
 
-    // Sort to process oldest first
-    // Sort to process oldest first
-   if (isFirstRun) {
-      console.log("🕒 Bot Restarted: Fetching last 3 historical trades for backfill...");
-      // Sort newest first to pick the top 3, then we'll process them
-      const recentThree = transactions
-        .sort((a, b) => b.status_updated - a.status_updated)
-        .slice(0, 3);
-        
-      // Temporarily lower the BOT_START_TIME for these 3 only
-      recentThree.forEach(tx => {
-          // We manually process these by ensuring they aren't in the skip set
-          processedTxIds.delete(tx.transaction_id); 
-      });
-      isFirstRun = false; 
+    // FIX 2: Backfill Logic - Sends exactly the last 5 transactions on restart
+    if (isFirstRun) {
+      console.log("🚀 BOT RESET: Posting last 5 transactions...");
+      const backfill = transactions.slice(0, 5).reverse();
+      for (const tx of backfill) {
+        await processAndSend(tx, channel, players, logs, idMap);
+        processedTxIds.add(tx.transaction_id);
+      }
+      isFirstRun = false;
+      return; // End first run here to avoid double-processing
     }
 
-    // Sort to process oldest first (standard order)
+    // Sort newest to oldest for standard polling
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     for (const tx of transactions) {
@@ -452,65 +449,75 @@ async function pollSleeper() {
       // Filter: Only Complete or Pending
       if (tx.status !== 'complete' && tx.status !== 'pending') continue;
 
-      // Skip if older than backfill window (unless it's one of our 'forced' ones from above)
-      if (tx.status_updated < BOT_START_TIME && !isFirstRun) {
-        processedTxIds.add(tx.transaction_id); 
-        continue;
-      }
-
+      // FIX 3: Remove BOT_START_TIME block for 'pending' trades. 
+      // If we haven't seen this ID yet, we process it regardless of time.
       console.log(`🆕 SENDING TO DISCORD: ${tx.transaction_id} | Status: ${tx.status}`);
-
-  // 3. Log that we are processing a transaction (helps debug if it doesn't show in Discord)
-  console.log(`processing TX: ${tx.transaction_id} | Type: ${tx.type} | Status: ${tx.status}`);
-
-      let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
-      const embed = new EmbedBuilder().setTitle(title).setColor(tx.status === 'pending' ? 0xFFA500 : 0x2ecc71).setTimestamp(new Date(tx.status_updated));
-
-      let teamSummaries = {}; // Grouping: { "Team Name": { actions: [], net: 0 } }
-
-      const initTeam = (rId) => {
-        const tName = rosterToTeamName[rId];
-        if (!teamSummaries[tName]) teamSummaries[tName] = { actions: [], net: 0 };
-        return tName;
-      };
-
-      // 1. Process Assets Gained
-      for (const [pId, rId] of Object.entries(tx.adds || {})) {
-        const tName = initTeam(rId);
-        const d = getDetails(pId, players, logs, idMap);
-        teamSummaries[tName].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
-        teamSummaries[tName].net -= d.cap;
-      }
-
-      // 2. Process Assets Lost
-      for (const [pId, rId] of Object.entries(tx.drops || {})) {
-        const tName = initTeam(rId);
-        const d = getDetails(pId, players, logs, idMap);
-        teamSummaries[tName].actions.push(`📤 **Sends:** ${d.text.replace('• ', '')}`);
-        teamSummaries[tName].net += d.cap;
-      }
-
-      // 3. Build Team-Specific Embed Fields
-      for (const [tName, data] of Object.entries(teamSummaries)) {
-        const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
-        let capStr = "📊 Cap Impact Pending";
-        
-        if (sh) {
-          await sh.loadCells('F2');
-          const cur = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
-          capStr = `📊 $${cur.toLocaleString()} ➔ **$${(cur + data.net).toLocaleString()}**`;
-        }
-
-        embed.addFields({ 
-          name: `🏟️ ${tName.toUpperCase()}`, 
-          value: `${data.actions.join('\n')}\n${capStr}`, 
-          inline: false 
-        });
-      }
-
-      await channel.send({ embeds: [embed] });
+      
+      await processAndSend(tx, channel, players, logs, idMap);
       processedTxIds.add(tx.transaction_id);
     }
+      
+  } catch (err) {
+    console.error(`❌ Poller Error:`, err.message);
+  }
+}
+
+// FIX 4: Define the processAndSend helper so the code doesn't crash
+async function processAndSend(tx, channel, players, logs, idMap) {
+  let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
+  
+  // Pending = Orange, Processed/FA = Green
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(tx.status === 'pending' ? 0xFFA500 : 0x2ecc71)
+    .setTimestamp(new Date(tx.status_updated));
+
+  let teamSummaries = {}; 
+
+  const initTeam = (rId) => {
+    const tName = rosterToTeamName[rId] || `Team ${rId}`;
+    if (!teamSummaries[tName]) teamSummaries[tName] = { actions: [], net: 0 };
+    return tName;
+  };
+
+  // Process Assets Gained
+  for (const [pId, rId] of Object.entries(tx.adds || {})) {
+    const tName = initTeam(rId);
+    const d = getDetails(pId, players, logs, idMap);
+    teamSummaries[tName].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
+    teamSummaries[tName].net -= d.cap;
+  }
+
+  // Process Assets Lost
+  for (const [pId, rId] of Object.entries(tx.drops || {})) {
+    const tName = initTeam(rId);
+    const d = getDetails(pId, players, logs, idMap);
+    teamSummaries[tName].actions.push(`📤 **Sends:** ${d.text.replace('• ', '')}`);
+    teamSummaries[tName].net += d.cap;
+  }
+
+  // If there's no data (Sleeper sometimes sends empty pending packets), skip
+  if (Object.keys(teamSummaries).length === 0) return;
+
+  for (const [tName, data] of Object.entries(teamSummaries)) {
+    const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
+    let capStr = "📊 Cap Impact Pending";
+    
+    if (sh) {
+      await sh.loadCells('F2');
+      const cur = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
+      capStr = `📊 $${cur.toLocaleString()} ➔ **$${(cur + data.net).toLocaleString()}**`;
+    }
+
+    embed.addFields({ 
+      name: `🏟️ ${tName.toUpperCase()}`, 
+      value: `${data.actions.join('\n')}\n${capStr}`, 
+      inline: false 
+    });
+  }
+
+  await channel.send({ embeds: [embed] });
+}
       
   } catch (err) {
     console.error(`❌ Poller Error:`, err.message);
