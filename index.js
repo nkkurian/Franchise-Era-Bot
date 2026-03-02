@@ -108,8 +108,8 @@ client.once('ready', async () => {
 
     // 4. Start the Poller
     // (We will define/fix pollSleeper in the next step)
-    // await pollSleeper();         
-    // setInterval(pollSleeper, 60000); 
+     await pollSleeper();         
+     setInterval(pollSleeper, 60000); 
 
   } catch (err) { 
     console.error("Startup Error:", err); 
