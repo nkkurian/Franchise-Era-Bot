@@ -97,11 +97,17 @@ client.once('ready', async () => {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
 
-    await debugChannel(); // <--- ADD THIS LINE HERE
+    // 1. Verify Connection
+    await debugChannel(); 
     
-    await updateTeamMap(); // Maps Roster IDs to Team Names
-    pollSleeper();         // Runs immediately
-    setInterval(pollSleeper, 60000); // Checks every minute
+    // 2. CRITICAL: Wait for the team names to load from Sleeper first!
+    console.log("📥 Loading Sleeper Team Map...");
+    await updateTeamMap(); 
+    console.log(`✅ Team Map Loaded: ${Object.keys(rosterToTeamName).length} teams found.`);
+
+    // 3. Now start the poller after the map is ready
+    await pollSleeper();         
+    setInterval(pollSleeper, 60000); 
   } catch (err) { 
     console.error("Startup Error:", err); 
   }
