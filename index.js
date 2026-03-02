@@ -405,7 +405,6 @@ const getDetails = (pId, players, logs, idMap) => {
   };
 };
 
-let isFirstRun = true;
 
 // 2. The Main Poller
 async function pollSleeper() {
