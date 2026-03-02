@@ -506,48 +506,72 @@ async function pollSleeper() {
 
 // Helper to format and send the Discord Embed
 async function processAndSend(tx, channel, players, logs, idMap) {
-  // Determine Title and Color based on status and type
-  let title = "📝 TRANSACTION"; // Default title
-if (tx.type === 'trade') {
-  title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
-} else if (tx.type === 'waiver') {
-  title = "⏳ WAIVER CLAIM";
-} else if (tx.type === 'free_agent') {
-  title = "🏃 FREE AGENT PICKUP";
-}
-    
+  console.log(`DEBUG: Processing Tx ${tx.transaction_id} (Type: ${tx.type})`);
+
+  let title = "📝 TRANSACTION";
+  if (tx.type === 'trade') {
+    title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
+  } else if (tx.type === 'waiver') {
+    title = "⏳ WAIVER CLAIM";
+  } else if (tx.type === 'free_agent') {
+    title = "🏃 FREE AGENT PICKUP";
+  }
+
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setColor(tx.status === 'pending' ? 0xFFA500 : 0x2ecc71)
     .setTimestamp(new Date(tx.status_updated));
 
-  let teamSummaries = {}; 
+  let teamSummaries = {};
   const initTeam = (rId) => {
     const tName = rosterToTeamName[rId] || `Team ${rId}`;
     if (!teamSummaries[tName]) teamSummaries[tName] = { actions: [], net: 0 };
     return tName;
   };
 
-  // Map Adds
-  for (const [pId, rId] of Object.entries(tx.adds || {})) {
-    const tName = initTeam(rId);
-    const d = getDetails(pId, players, logs, idMap);
-    teamSummaries[tName].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
-    teamSummaries[tName].net -= d.cap;
-  }
-  // Map Drops
-  for (const [pId, rId] of Object.entries(tx.drops || {})) {
-    const tName = initTeam(rId);
-    const d = getDetails(pId, players, logs, idMap);
-    teamSummaries[tName].actions.push(`📤 **Sends:** ${d.text.replace('• ', '')}`);
-    teamSummaries[tName].net += d.cap;
+  // 1. Process ADDS
+  if (tx.adds) {
+    for (const [pId, rId] of Object.entries(tx.adds)) {
+      const tName = initTeam(rId);
+      const d = getDetails(pId, players, logs, idMap);
+      teamSummaries[tName].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
+      teamSummaries[tName].net -= d.cap;
+    }
   }
 
-  // Safety check for empty Sleeper packets
-  if (Object.keys(teamSummaries).length === 0) return;
+  // 2. Process DROPS
+  if (tx.drops) {
+    for (const [pId, rId] of Object.entries(tx.drops)) {
+      const tName = initTeam(rId);
+      const d = getDetails(pId, players, logs, idMap);
+      teamSummaries[tName].actions.push(`📤 **Sends:** ${d.text.replace('• ', '')}`);
+      teamSummaries[tName].net += d.cap;
+    }
+  }
+
+  // 3. Process DRAFT PICKS (Specific to trades)
+  if (tx.draft_picks && tx.draft_picks.length > 0) {
+    tx.draft_picks.forEach(pick => {
+      const tName = initTeam(pick.owner_id); // The one getting the pick
+      const sellerName = initTeam(pick.previous_owner_id); // The one sending the pick
+      
+      const pickText = `20${pick.season} ${pick.round}.${pick.order || 'X'} Pick`;
+      
+      teamSummaries[tName].actions.push(`✅ **Gets:** 🎫 ${pickText} ($0)`);
+      teamSummaries[sellerName].actions.push(`📤 **Sends:** 🎫 ${pickText} ($0)`);
+    });
+  }
+
+  const teamKeys = Object.keys(teamSummaries);
+  if (teamKeys.length === 0) {
+    console.log(`⚠️ Skipping Tx ${tx.transaction_id}: No teams found in data.`);
+    return;
+  }
+
+  console.log(`📦 Posting Tx ${tx.transaction_id} for teams: ${teamKeys.join(', ')}`);
 
   for (const [tName, data] of Object.entries(teamSummaries)) {
-    const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
+    const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
     let capStr = "📊 Cap Impact Pending"; 
     
     if (sh) {
@@ -563,7 +587,7 @@ if (tx.type === 'trade') {
     });
   }
 
-  await channel.send({ embeds: [embed] });
+  await channel.send({ embeds: [embed] }).catch(err => console.error("Discord Send Error:", err));
 }
       
 client.login(process.env.DISCORD_TOKEN);
