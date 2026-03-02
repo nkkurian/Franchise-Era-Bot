@@ -508,8 +508,5 @@ async function processAndSend(tx, channel, players, logs, idMap) {
   await channel.send({ embeds: [embed] });
 }
       
-  } catch (err) {
-    console.error(`❌ Poller Error:`, err.message);
-  }
 }
 client.login(process.env.DISCORD_TOKEN);
