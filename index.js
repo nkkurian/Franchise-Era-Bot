@@ -407,6 +407,9 @@ const getDetails = (pId, players, logs, idMap) => {
 
 
 // 2. The Main Poller
+// --- SLEEPER POLLING & TRANSACTION PROCESSING ---
+
+// 2. The Main Poller
 async function pollSleeper() {
   const timestamp = new Date().toLocaleTimeString();
   console.log(`[${timestamp}] 🔍 Checking Sleeper...`);
@@ -423,6 +426,7 @@ async function pollSleeper() {
     // BACKFILL: Post last 5 on restart
     if (isFirstRun) {
       console.log("🚀 BOT RESET: Posting last 5 transactions...");
+      // reverse() so they post in chronological order (oldest to newest)
       const backfill = transactions.slice(0, 5).reverse();
       for (const tx of backfill) {
         await processAndSend(tx, channel, players, logs, idMap);
@@ -452,7 +456,7 @@ async function pollSleeper() {
   }
 }
 
-// FIX 4: Define the processAndSend helper so the code doesn't crash
+// Helper to format and send the Discord Embed
 async function processAndSend(tx, channel, players, logs, idMap) {
   // Determine Title and Color based on status and type
   let title = tx.type === 'trade' 
@@ -471,13 +475,14 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     return tName;
   };
 
-  // Map Adds/Drops
+  // Map Adds
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
     teamSummaries[tName].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
     teamSummaries[tName].net -= d.cap;
   }
+  // Map Drops
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -490,7 +495,7 @@ async function processAndSend(tx, channel, players, logs, idMap) {
 
   for (const [tName, data] of Object.entries(teamSummaries)) {
     const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
-    let capStr = "📊 Cap Impact Pending"; //
+    let capStr = "📊 Cap Impact Pending"; 
     
     if (sh) {
       await sh.loadCells('F2');
