@@ -94,24 +94,47 @@ const commands = [
 client.once('ready', async () => {
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
+    // 1. Register Slash Commands
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
 
-    // 1. Verify Connection
-    await debugChannel(); 
+    // 2. SEND THE TEST MESSAGE IMMEDIATELY
+    await sendStartupTestMessage();
     
-    // 2. CRITICAL: Wait for the team names to load from Sleeper first!
+    // 3. Load Data
     console.log("📥 Loading Sleeper Team Map...");
     await updateTeamMap(); 
-    console.log(`✅ Team Map Loaded: ${Object.keys(rosterToTeamName).length} teams found.`);
+    console.log(`✅ Team Map Loaded.`);
 
-    // 3. Now start the poller after the map is ready
-    await pollSleeper();         
-    setInterval(pollSleeper, 60000); 
+    // 4. Start the Poller
+    // (We will define/fix pollSleeper in the next step)
+    // await pollSleeper();         
+    // setInterval(pollSleeper, 60000); 
+
   } catch (err) { 
     console.error("Startup Error:", err); 
   }
 });
+
+// Cleaned up Test Message Function
+async function sendStartupTestMessage() {
+  try {
+    const channel = await client.channels.fetch('1477399855541518366');
+    if (!channel) return console.error("❌ Test failed: Channel not found.");
+
+    const testEmbed = new EmbedBuilder()
+      .setTitle("🔄 Bot Rebooted")
+      .setDescription("The **Franchise Pro Bot** has successfully restarted and is reconnecting to Google Sheets.")
+      .setColor(0x5865F2)
+      .setFields({ name: 'Status', value: '🟢 Online & Listening', inline: true })
+      .setTimestamp();
+
+    await channel.send({ embeds: [testEmbed] });
+    console.log("✅ Startup test message sent to Discord.");
+  } catch (err) {
+    console.error("❌ Error sending startup message:", err);
+  }
+}
 
 // --- HELPER: CREATE PLAYER EMBED ---
 function createPlayerEmbed(pRow, logs) {
