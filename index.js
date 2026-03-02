@@ -419,8 +419,7 @@ const getDetails = (pId, players, logs, idMap) => {
     cap, 
     isDeadCap,
     text: `• ${name}: **$${cap.toLocaleString()}**` 
-  };
-};
+  }; 
 
   // 2. PLAYER DETECTION
   const idRow = idMap.find(row => row._rawData[0] === pId);
