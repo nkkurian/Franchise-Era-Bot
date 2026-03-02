@@ -405,15 +405,22 @@ async function updateTeamMap() {
 }
 
 const getDetails = (pId, players, logs, idMap) => {
-  // 1. DRAFT PICK DETECTION (Matches ID format like '2026_1_5')
-  if (isNaN(pId) || pId.includes('_')) {
-    const pickName = pId.replace(/_/g, ' ');
-    return { 
-      name: pickName, 
-      cap: 0, 
-      text: `• 🎫 **${pickName}** ($0 - Entry Level)` 
-    };
-  }
+  const idRow = idMap.find(row => row._rawData[0] === pId);
+  const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
+  const pData = players.find(p => p._rawData[1] === name);
+  
+  if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*`, isDeadCap: false };
+
+  const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
+  const isDeadCap = pData._rawData[9] === "TRUE" || pData._rawData[9] === true;
+  
+  return { 
+    name, 
+    cap, 
+    isDeadCap,
+    text: `• ${name}: **$${cap.toLocaleString()}**` 
+  };
+};
 
   // 2. PLAYER DETECTION
   const idRow = idMap.find(row => row._rawData[0] === pId);
@@ -435,6 +442,139 @@ const getDetails = (pId, players, logs, idMap) => {
     text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` 
   };
 };
+
+// --- DATABASE FOR TRACKING POSTED TRADES ---
+let processedTxIds = new Set();
+let isFirstRun = true;
+
+async function pollSleeper() {
+  console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for moves...`);
+
+  try {
+    const { players, logs, idMap } = await getSheetData();
+    const channel = await client.channels.fetch('1477399855541518366');
+    
+    // Fetch last 50 transactions to ensure we don't miss simultaneous moves
+    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/50`;
+    const response = await fetch(url);
+    const transactions = await response.json();
+
+    // On first run, we mark everything currently in Sleeper as "seen" 
+    // so the bot doesn't spam the channel with old history.
+    if (isFirstRun) {
+      transactions.forEach(tx => processedTxIds.add(tx.transaction_id));
+      isFirstRun = false;
+      console.log("✅ Initialized: Listening for NEW moves now.");
+      return;
+    }
+
+    // Sort by time so we process oldest to newest
+    transactions.sort((a, b) => a.status_updated - b.status_updated);
+
+    for (const tx of transactions) {
+      // Check if this specific version of the transaction was already posted
+      // We use a "Composite Key" (ID + Status) so 'pending' and 'complete' both post.
+      const txKey = `${tx.transaction_id}_${tx.status}`;
+      if (processedTxIds.has(txKey)) continue;
+
+      // Filter: We only care about completed pickups or pending/complete trades
+      const isTrade = tx.type === 'trade';
+      const isPickup = tx.type === 'free_agent' || tx.type === 'waiver';
+      
+      if (isTrade && (tx.status === 'complete' || tx.status === 'pending')) {
+        await processAndSend(tx, channel, players, logs, idMap);
+        processedTxIds.add(txKey);
+      } else if (isPickup && tx.status === 'complete') {
+        await processAndSend(tx, channel, players, logs, idMap);
+        processedTxIds.add(txKey);
+      }
+    }
+  } catch (err) {
+    console.error(`❌ Poller Error:`, err.message);
+  }
+}
+
+async function processAndSend(tx, channel, players, logs, idMap) {
+  let title = "📝 TRANSACTION";
+  let color = 0x2ecc71; // Green
+
+  if (tx.type === 'trade') {
+    title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
+    color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71; // Orange for Pending
+  } else {
+    title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(color)
+    .setTimestamp(new Date(tx.status_updated));
+
+  let teamSummaries = {};
+  const initTeam = (rId) => {
+    const tName = rosterToTeamName[rId] || `Team ${rId}`;
+    if (!teamSummaries[tName]) teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
+    return tName;
+  };
+
+  // 1. Handle Player ADDS
+  for (const [pId, rId] of Object.entries(tx.adds || {})) {
+    const tName = initTeam(rId);
+    const d = getDetails(pId, players, logs, idMap);
+    teamSummaries[tName].adds.push(d.text);
+    teamSummaries[tName].net -= d.cap;
+  }
+
+  // 2. Handle Player DROPS (and check for Dead Cap)
+  for (const [pId, rId] of Object.entries(tx.drops || {})) {
+    const tName = initTeam(rId);
+    const d = getDetails(pId, players, logs, idMap);
+    teamSummaries[tName].drops.push(d.text);
+    teamSummaries[tName].net += d.cap;
+    
+    // Check if player had "TRUE" in Dead Cap column (index 9)
+    if (d.isDeadCap) {
+        teamSummaries[tName].deadCap += d.cap;
+    }
+  }
+
+  // 3. Handle Draft Picks
+  if (tx.draft_picks) {
+    tx.draft_picks.forEach(pick => {
+      const gainer = initTeam(pick.owner_id);
+      const loser = initTeam(pick.previous_owner_id);
+      const pickName = `${pick.season} Rd ${pick.round}`;
+      teamSummaries[gainer].adds.push(`🎫 **${pickName}** ($0)`);
+      teamSummaries[loser].drops.push(`📤 **${pickName}** ($0)`);
+    });
+  }
+
+  // Build the Embed Fields
+  for (const [tName, data] of Object.entries(teamSummaries)) {
+    let description = "";
+    if (data.adds.length) description += `✅ **In:**\n${data.adds.join('\n')}\n`;
+    if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
+    
+    // Dead Cap Warning
+    if (data.deadCap > 0) {
+        description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
+    }
+
+    // Cap Shift Logic
+    const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
+    let capFooter = "📊 *Cap data pending sheet sync*";
+    if (sh) {
+        await sh.loadCells('F2');
+        const current = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
+        capFooter = `💰 $${current.toLocaleString()} ➔ **$${(current + data.net).toLocaleString()}**`;
+    }
+
+    embed.addFields({ name: `🏟️ ${tName.toUpperCase()}`, value: `${description}${capFooter}`, inline: false });
+  }
+
+  await channel.send({ embeds: [embed] });
+}
+
 
 
       
