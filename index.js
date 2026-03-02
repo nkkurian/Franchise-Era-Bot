@@ -417,18 +417,12 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // FIX 1: Increased from /1 to /30 so Free Agent moves don't bury Trades
+    // FETCH 30: Ensures trades aren't buried by FA moves
     const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/30`;
     const response = await fetch(url);
     const transactions = await response.json();
 
-    console.log("--- 📋 RECENT API HISTORY (Last 5) ---");
-    transactions.slice(0, 5).forEach(t => {
-       console.log(`ID: ${t.transaction_id} | Status: ${t.status} | Type: ${t.type} | Date: ${new Date(t.status_updated).toLocaleString()}`);
-    });
-    console.log("--------------------------------------");
-
-    // FIX 2: Backfill Logic - Sends exactly the last 5 transactions on restart
+    // BACKFILL: Post last 5 on restart
     if (isFirstRun) {
       console.log("🚀 BOT RESET: Posting last 5 transactions...");
       const backfill = transactions.slice(0, 5).reverse();
@@ -437,10 +431,10 @@ async function pollSleeper() {
         processedTxIds.add(tx.transaction_id);
       }
       isFirstRun = false;
-      return; // End first run here to avoid double-processing
+      return;
     }
 
-    // Sort newest to oldest for standard polling
+    // NORMAL POLLING: Sort oldest to newest
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     for (const tx of transactions) {
@@ -449,9 +443,7 @@ async function pollSleeper() {
       // Filter: Only Complete or Pending
       if (tx.status !== 'complete' && tx.status !== 'pending') continue;
 
-      // FIX 3: Remove BOT_START_TIME block for 'pending' trades. 
-      // If we haven't seen this ID yet, we process it regardless of time.
-      console.log(`🆕 SENDING TO DISCORD: ${tx.transaction_id} | Status: ${tx.status}`);
+      console.log(`🆕 SENDING: ${tx.transaction_id} | Type: ${tx.type} | Status: ${tx.status}`);
       
       await processAndSend(tx, channel, players, logs, idMap);
       processedTxIds.add(tx.transaction_id);
@@ -464,31 +456,30 @@ async function pollSleeper() {
 
 // FIX 4: Define the processAndSend helper so the code doesn't crash
 async function processAndSend(tx, channel, players, logs, idMap) {
-  let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") : "📝 TRANSACTION";
-  
-  // Pending = Orange, Processed/FA = Green
+  // Determine Title and Color based on status and type
+  let title = tx.type === 'trade' 
+    ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") 
+    : "📝 TRANSACTION";
+    
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setColor(tx.status === 'pending' ? 0xFFA500 : 0x2ecc71)
     .setTimestamp(new Date(tx.status_updated));
 
   let teamSummaries = {}; 
-
   const initTeam = (rId) => {
     const tName = rosterToTeamName[rId] || `Team ${rId}`;
     if (!teamSummaries[tName]) teamSummaries[tName] = { actions: [], net: 0 };
     return tName;
   };
 
-  // Process Assets Gained
+  // Map Adds/Drops
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
     teamSummaries[tName].actions.push(`✅ **Gets:** ${d.text.replace('• ', '')}`);
     teamSummaries[tName].net -= d.cap;
   }
-
-  // Process Assets Lost
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -496,12 +487,12 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     teamSummaries[tName].net += d.cap;
   }
 
-  // If there's no data (Sleeper sometimes sends empty pending packets), skip
+  // Safety check for empty Sleeper packets
   if (Object.keys(teamSummaries).length === 0) return;
 
   for (const [tName, data] of Object.entries(teamSummaries)) {
     const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(tName.toLowerCase()));
-    let capStr = "📊 Cap Impact Pending";
+    let capStr = "📊 Cap Impact Pending"; //
     
     if (sh) {
       await sh.loadCells('F2');
