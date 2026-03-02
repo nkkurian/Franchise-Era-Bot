@@ -440,6 +440,7 @@ async function debugChannel() {
   }
 }
 
+// 2. The Main Poller (Fixed for All Transaction Types)
 async function pollSleeper() {
   const timestamp = new Date().toLocaleTimeString();
   console.log(`[${timestamp}] 🔍 Checking Sleeper...`);
@@ -448,34 +449,45 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // FETCH 30: Ensures trades aren't buried by FA moves
-    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/30`;
+    // FETCH 100: This ensures we see enough history (Waivers/FA/Trades)
+    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/100`;
     const response = await fetch(url);
     const transactions = await response.json();
 
-    // BACKFILL: Post last 5 on restart
+    // --- STARTUP BACKFILL ---
     if (isFirstRun) {
-      console.log("🚀 BOT RESET: Posting last 5 transactions...");
-      // reverse() so they post in chronological order (oldest to newest)
+      console.log("🚀 BOT RESET: Posting the 5 most recent transactions (All Types)...");
+      
+      // 1. Get the 5 most recent transactions
+      // 2. Reverse them so they post from Oldest -> Newest
       const backfill = transactions.slice(0, 5).reverse();
+
       for (const tx of backfill) {
         await processAndSend(tx, channel, players, logs, idMap);
         processedTxIds.add(tx.transaction_id);
       }
+
+      // Mark ALL currently fetched transactions as "seen" 
+      // so the bot doesn't post them again in 60 seconds
+      transactions.forEach(tx => processedTxIds.add(tx.transaction_id));
+      
       isFirstRun = false;
+      console.log("✅ Backfill Complete.");
       return;
     }
 
-    // NORMAL POLLING: Sort oldest to newest
+    // --- NORMAL POLLING ---
+    // Sort oldest to newest so the chat flows naturally
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     for (const tx of transactions) {
+      // Skip if we already posted this ID
       if (processedTxIds.has(tx.transaction_id)) continue;
 
-      // Filter: Only Complete or Pending
+      // Only post transactions that are finished (complete) or being voted on (pending)
       if (tx.status !== 'complete' && tx.status !== 'pending') continue;
 
-      console.log(`🆕 SENDING: ${tx.transaction_id} | Type: ${tx.type} | Status: ${tx.status}`);
+      console.log(`🆕 NEW ACTIVITY: ${tx.transaction_id} | Type: ${tx.type}`);
       
       await processAndSend(tx, channel, players, logs, idMap);
       processedTxIds.add(tx.transaction_id);
@@ -489,9 +501,14 @@ async function pollSleeper() {
 // Helper to format and send the Discord Embed
 async function processAndSend(tx, channel, players, logs, idMap) {
   // Determine Title and Color based on status and type
-  let title = tx.type === 'trade' 
-    ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED") 
-    : "📝 TRANSACTION";
+  let title = "📝 TRANSACTION"; // Default title
+if (tx.type === 'trade') {
+  title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
+} else if (tx.type === 'waiver') {
+  title = "⏳ WAIVER CLAIM";
+} else if (tx.type === 'free_agent') {
+  title = "🏃 FREE AGENT PICKUP";
+}
     
   const embed = new EmbedBuilder()
     .setTitle(title)
