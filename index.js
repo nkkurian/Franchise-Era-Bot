@@ -357,7 +357,6 @@ client.on('messageCreate', async (message) => {
 // --- CONFIG & CACHE ---
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 const CHANNEL_ID = '1477399855541518366';
-let processedTxIds = new Set();
 let rosterToTeamName = {}; // Cache for mapping Roster ID -> "Team Name"
 
 // 1. Function to map Roster IDs to Team Names from Sleeper
