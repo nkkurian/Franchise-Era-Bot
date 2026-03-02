@@ -430,8 +430,6 @@ const getDetails = (pId, players, logs, idMap) => {
   // 2. PLAYER DETECTION
 
 // --- DATABASE FOR TRACKING POSTED TRADES ---
-let isFirstRun = true;
-
 async function pollSleeper() {
   console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for moves...`);
 
