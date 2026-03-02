@@ -412,38 +412,24 @@ const getDetails = (pId, players, logs, idMap) => {
   if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*`, isDeadCap: false };
 
   const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
+  const years = pData._rawData[3] || "0";
   const isDeadCap = pData._rawData[9] === "TRUE" || pData._rawData[9] === true;
   
+  // Find Bonus Info for the transaction log
+  const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
+  const bonus = tLogRow ? `\n    ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
+
   return { 
     name, 
     cap, 
     isDeadCap,
-    text: `• ${name}: **$${cap.toLocaleString()}**` 
+    text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` 
   }; 
+}; 
 
   // 2. PLAYER DETECTION
-  const idRow = idMap.find(row => row._rawData[0] === pId);
-  const name = idRow ? idRow._rawData[1] : `Unknown Player (${pId})`;
-  const pData = players.find(p => p._rawData[1] === name);
-  
-  if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*` };
-
-  const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
-  const years = pData._rawData[3] || "?";
-  
-  // 3. BONUS CHECK
-  const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
-  const bonus = tLogRow ? `\n   ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
-  
-  return { 
-    name, 
-    cap, 
-    text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` 
-  };
-};
 
 // --- DATABASE FOR TRACKING POSTED TRADES ---
-let processedTxIds = new Set();
 let isFirstRun = true;
 
 async function pollSleeper() {
