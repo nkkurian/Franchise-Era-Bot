@@ -96,6 +96,8 @@ client.once('ready', async () => {
   try {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
+
+    await debugChannel(); // <--- ADD THIS LINE HERE
     
     await updateTeamMap(); // Maps Roster IDs to Team Names
     pollSleeper();         // Runs immediately
@@ -410,6 +412,34 @@ const getDetails = (pId, players, logs, idMap) => {
 // --- SLEEPER POLLING & TRANSACTION PROCESSING ---
 
 // 2. The Main Poller
+
+// --- TEMPORARY DEBUG TEST ---
+async function debugChannel() {
+  try {
+    const CHANNEL_ID = '1477399855541518366'; // Your specific channel ID
+    console.log(`Checking connection to channel: ${CHANNEL_ID}...`);
+    
+    const channel = await client.channels.fetch(CHANNEL_ID);
+    
+    if (!channel) {
+      console.error("❌ ERROR: Channel not found. Is the ID correct?");
+      return;
+    }
+
+    const testEmbed = new EmbedBuilder()
+      .setTitle("🚨 System Connection Test")
+      .setDescription("If you can see this, the Bot's Channel ID and Permissions are **CORRECT**.")
+      .setColor(0x5865F2)
+      .setTimestamp();
+
+    await channel.send({ embeds: [testEmbed] });
+    console.log("✅ SUCCESS: Test message sent to Discord!");
+
+  } catch (err) {
+    console.error("❌ DEBUG ERROR:", err.message);
+  }
+}
+
 async function pollSleeper() {
   const timestamp = new Date().toLocaleTimeString();
   console.log(`[${timestamp}] 🔍 Checking Sleeper...`);
