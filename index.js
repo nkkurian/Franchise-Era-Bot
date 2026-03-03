@@ -112,7 +112,13 @@ client.once('ready', async () => {
 
     // 5. Start Poller (Now that maps are ready)
     await pollSleeper();          
-    setInterval(pollSleeper, 60000); 
+    const runPoller = async () => {
+    await pollSleeper();
+    setTimeout(runPoller, 60000); // Wait 60s AFTER the previous check finishes
+  };
+
+  runPoller();
+}); 
 
   } catch (err) { 
     console.error("Startup Error:", err); 
@@ -397,71 +403,76 @@ const getDetails = (pId, players, logs, idMap) => {
 // --- [REPLACE YOUR pollSleeper AND processAndSend FUNCTIONS WITH THESE] ---
 
 async function pollSleeper() {
-  console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for new moves...`);
+  const timestamp = new Date().toLocaleTimeString();
+  console.log(`[${timestamp}] 🔍 POLLER START: Pinging Sleeper...`);
+
   try {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // Get current league state to find the correct week
+    // 1. Get the NFL State
     const stateRes = await fetch(`https://api.sleeper.app/v1/state/nfl`);
     const leagueState = await stateRes.json();
-    let week = leagueState.display_week || 1;
+    const currentWeek = leagueState.display_week || 1;
+    
+    // 2. We will check multiple weeks to be safe during the Offseason
+    const weeksToCheck = [currentWeek, currentWeek - 1, 1].filter(w => w > 0);
+    let allTransactions = [];
 
-    // Fetch transactions for the current week
-    let url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/${week}`;
-    let response = await fetch(url);
-    let transactions = await response.json();
-
-    // Offseason Fallback: If current week is empty, check week 1
-    if (!Array.isArray(transactions) || transactions.length === 0) {
-      url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
-      response = await fetch(url);
-      transactions = await response.json();
+    for (const week of [...new Set(weeksToCheck)]) {
+      const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/${week}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (Array.isArray(data)) {
+        allTransactions = allTransactions.concat(data);
+      }
     }
 
-    if (!Array.isArray(transactions)) return;
+    console.log(`[${timestamp}] 📥 Found ${allTransactions.length} total raw transactions.`);
 
-    // Sort by time so we process oldest to newest
-    transactions.sort((a, b) => a.status_updated - b.status_updated);
+    if (allTransactions.length === 0) {
+      isFirstRun = false; 
+      return;
+    }
+
+    // Sort: Oldest first
+    allTransactions.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // Historical Backfill: Get the 3 most recent valid moves
-      const initialMoves = transactions.filter(tx => 
-        (tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) ||
-        ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')
-      ).slice(-3); // Get the latest 3
-
-      console.log(`📥 Initialized: Processing the 3 most recent moves...`);
-      for (const tx of initialMoves) {
+      console.log(`[${timestamp}] 📜 First Run: Processing recent history...`);
+      // Just post the last 2 items to verify it's working
+      const backfill = allTransactions.slice(-2);
+      for (const tx of backfill) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
-        await processAndSend(tx, channel, players, logs, idMap);
-        processedTxIds.add(txKey);
-      }
-      
-      // Mark everything currently in Sleeper as "seen" so we don't double post
-      transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
-      isFirstRun = false;
-      console.log("✅ Initialization Complete. Listening for NEW moves now.");
-    } else {
-      // Real-time loop
-      for (const tx of transactions) {
-        const txKey = `${tx.transaction_id}_${tx.status}`;
-        
-        // Only process if it's a new ID OR a status change (e.g., Pending -> Complete)
-        if (processedTxIds.has(txKey)) continue;
-
-        const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
-        const isFA = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
-
-        if (isTrade || isFA) {
+        if (!processedTxIds.has(txKey)) {
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(txKey);
-          console.log(`📢 New Transaction Posted: ${tx.transaction_id} (${tx.status})`);
+        }
+      }
+      // Mark all others as seen
+      allTransactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
+      isFirstRun = false;
+    } else {
+      // Real-time check
+      for (const tx of allTransactions) {
+        const txKey = `${tx.transaction_id}_${tx.status}`;
+        if (processedTxIds.has(txKey)) continue;
+
+        // Logic for what qualifies as a "notifiable" event
+        const isCompleteTrade = tx.type === 'trade' && tx.status === 'complete';
+        const isPendingTrade = tx.type === 'trade' && tx.status === 'pending';
+        const isFA = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
+
+        if (isCompleteTrade || isPendingTrade || isFA) {
+          console.log(`[${timestamp}] 📢 NEW MOVE DETECTED: ${tx.transaction_id}`);
+          await processAndSend(tx, channel, players, logs, idMap);
+          processedTxIds.add(txKey);
         }
       }
     }
+    console.log(`[${timestamp}] ✅ Poller Cycle Finished.`);
   } catch (err) {
-    console.error(`❌ Poller Error:`, err.message);
+    console.error(`[${timestamp}] ❌ POLLER CRITICAL ERROR:`, err.message);
   }
 }
 
