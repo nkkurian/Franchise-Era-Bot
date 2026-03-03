@@ -408,15 +408,25 @@ async function pollSleeper() {
         })
         .slice(0, 3); 
 
+      // We use a simple for-loop with a delay so we don't spam Discord/Google too fast
       for (const tx of initialMoves) {
-        await processAndSend(tx, channel, players, logs, idMap);
-        processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
+        try {
+          await processAndSend(tx, channel, players, logs, idMap);
+          processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
+          
+          // Wait 1.5 seconds between each post to prevent silent failures
+          await new Promise(resolve => setTimeout(resolve, 1500)); 
+        } catch (postErr) {
+          console.error(`⚠️ Error sending historical move ${tx.transaction_id}:`, postErr.message);
+        }
       }
 
+      // Mark the rest of the 50 as seen
       transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
+      
       isFirstRun = false;
-      console.log("✅ Initialized: Historical moves posted.");
-      return;
+      console.log("✅ Initialized: Historical moves processed.");
+      return; 
     }
 
     // Standard Polling Logic
