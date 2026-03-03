@@ -112,13 +112,7 @@ client.once('ready', async () => {
 
     // 5. Start Poller (Now that maps are ready)
     await pollSleeper();          
-    const runPoller = async () => {
-    await pollSleeper();
-    setTimeout(runPoller, 60000); // Wait 60s AFTER the previous check finishes
-  };
-
-  runPoller();
-}); 
+    setInterval(pollSleeper, 60000); 
 
   } catch (err) { 
     console.error("Startup Error:", err); 
