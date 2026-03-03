@@ -384,6 +384,7 @@ const getDetails = (pId, players, logs, idMap) => {
   // 2. PLAYER DETECTION
 
 // --- DATABASE FOR TRACKING POSTED TRADES ---
+// --- TRANSACTION POLLER ---
 async function pollSleeper() {
   console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for moves...`);
 
@@ -391,50 +392,58 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // Fetch last 50 transactions to ensure we don't miss simultaneous moves
     const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/50`;
     const response = await fetch(url);
     const transactions = await response.json();
 
-    // On first run, we mark everything currently in Sleeper as "seen" 
-    // so the bot doesn't spam the channel with old history.
-    // NEW LOGIC: Instead of staying silent, grab the 3 most recent moves
+    // NEW LOGIC: Fetch the 3 most recent moves on startup
     if (isFirstRun) {
       console.log("📥 First run: Fetching the 3 most recent transactions...");
       
-      // Filter the list for only Trades/Pickups, then take the top 3
       const initialMoves = transactions
         .filter(tx => {
           const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
           const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
           return isTrade || isPickup;
         })
-        .slice(0, 3); // Change this number if you want more than 3
+        .slice(0, 3); 
 
-      // Process them immediately
       for (const tx of initialMoves) {
         await processAndSend(tx, channel, players, logs, idMap);
-        const txKey = `${tx.transaction_id}_${tx.status}`;
-        processedTxIds.add(txKey);
+        processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
       }
 
-      // Now add EVERYTHING else to the "seen" list so we don't post them again in the next minute
-      transactions.forEach(tx => {
-        processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
-      });
-
+      transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
       isFirstRun = false;
-      console.log("✅ Initialized: Historical moves posted. Now listening for NEW moves.");
+      console.log("✅ Initialized: Historical moves posted.");
       return;
     }
 
+    // Standard Polling Logic
+    for (const tx of transactions) {
+      const txKey = `${tx.transaction_id}_${tx.status}`;
+      if (processedTxIds.has(txKey)) continue;
+
+      const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
+      const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
+      
+      if (isTrade || isPickup) {
+        await processAndSend(tx, channel, players, logs, idMap);
+        processedTxIds.add(txKey);
+      }
+    }
+  } catch (err) {
+    console.error(`❌ Poller Error:`, err.message);
+  }
+}
+
 async function processAndSend(tx, channel, players, logs, idMap) {
   let title = "📝 TRANSACTION";
-  let color = 0x2ecc71; // Green
+  let color = 0x2ecc71; 
 
   if (tx.type === 'trade') {
     title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
-    color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71; // Orange for Pending
+    color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
   } else {
     title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
   }
@@ -451,7 +460,6 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     return tName;
   };
 
-  // 1. Handle Player ADDS
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -459,20 +467,14 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     teamSummaries[tName].net -= d.cap;
   }
 
-  // 2. Handle Player DROPS (and check for Dead Cap)
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
     teamSummaries[tName].drops.push(d.text);
     teamSummaries[tName].net += d.cap;
-    
-    // Check if player had "TRUE" in Dead Cap column (index 9)
-    if (d.isDeadCap) {
-        teamSummaries[tName].deadCap += d.cap;
-    }
+    if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
   }
 
-  // 3. Handle Draft Picks
   if (tx.draft_picks) {
     tx.draft_picks.forEach(pick => {
       const gainer = initTeam(pick.owner_id);
@@ -483,18 +485,12 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     });
   }
 
-  // Build the Embed Fields
   for (const [tName, data] of Object.entries(teamSummaries)) {
     let description = "";
     if (data.adds.length) description += `✅ **In:**\n${data.adds.join('\n')}\n`;
     if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
-    
-    // Dead Cap Warning
-    if (data.deadCap > 0) {
-        description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
-    }
+    if (data.deadCap > 0) description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
 
-    // Cap Shift Logic
     const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
     let capFooter = "📊 *Cap data pending sheet sync*";
     if (sh) {
@@ -509,7 +505,4 @@ async function processAndSend(tx, channel, players, logs, idMap) {
   await channel.send({ embeds: [embed] });
 }
 
-
-
-      
 client.login(process.env.DISCORD_TOKEN);
