@@ -339,52 +339,6 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// --- SLEEPER TRANSACTION WATCHER ---
-client.on('messageCreate', async (message) => {
-  // 1. Log every message in the console to verify the bot is "hearing" the channel
-  console.log(`Message heard in ${message.channelId}: ${message.content.slice(0, 20)}...`);
-
-  if (message.channelId !== '1477399855541518366') return;
-  if (message.author.id === client.user.id) return;
-
-  try {
-    const { players, logs } = await getSheetData();
-    
-    // Check if Sleeper Link mentioned a player name from your sheet
-    const foundPlayer = players.find(p => {
-      const fullName = p._rawData[1];
-      if (!fullName) return false;
-      
-      // Standard format or "J. Jefferson" format
-      const initialFormat = `${fullName.charAt(0)}. ${fullName.split(' ').pop()}`;
-      
-      return message.content.includes(fullName) || 
-             message.embeds[0]?.description?.includes(fullName) ||
-             message.embeds[0]?.description?.includes(initialFormat);
-    });
-
-    if (foundPlayer) {
-      console.log(`✅ Player match found: ${foundPlayer._rawData[1]}. Adding reaction...`);
-      await message.react('💰').catch(err => console.error("Failed to react:", err));
-
-      const filter = (reaction, user) => reaction.emoji.name === '💰' && !user.bot;
-      const collector = message.createReactionCollector({ filter, time: 60000 });
-
-      collector.on('collect', async (reaction, user) => {
-        console.log(`💰 Reaction clicked by ${user.tag}`);
-        const embed = createPlayerEmbed(foundPlayer, logs);
-        await message.reply({ 
-          content: `📊 **Salary Insight for ${foundPlayer._rawData[1]}:**`, 
-          embeds: [embed] 
-        });
-        collector.stop();
-      });
-    }
-  } catch (err) {
-    console.error("Watcher Error:", err);
-  }
-});
-
 // --- CONFIG & CACHE ---
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 const CHANNEL_ID = '1477399855541518366';
