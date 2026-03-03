@@ -11,6 +11,7 @@ const app = express();
 app.get('/', (req, res) => res.send('Franchise Pro Bot: Buttons & Search Active'));
 app.listen(process.env.PORT || 10000);
 
+
 // Google Sheets Auth
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
