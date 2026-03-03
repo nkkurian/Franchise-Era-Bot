@@ -427,23 +427,29 @@ async function pollSleeper() {
     transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // Historical Backfill: Get the 3 most recent valid moves
+      // 1. Get the 3 most recent valid moves for the historical post
       const initialMoves = transactions.filter(tx => 
         (tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) ||
         ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')
-      ).slice(-3); // Get the latest 3
+      ).slice(-3);
 
-      console.log(`📥 Initialized: Processing the 3 most recent moves...`);
+      console.log(`📥 Initializing: Processing the 3 most recent moves...`);
       for (const tx of initialMoves) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         await processAndSend(tx, channel, players, logs, idMap);
         processedTxIds.add(txKey);
       }
       
-      // Mark everything currently in Sleeper as "seen" so we don't double post
-      transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
+      // 2. CRITICAL FIX: Only mark COMPLETED transactions as "seen"
+      // We leave 'pending' trades OUT of this list so the next loop finds them and posts them.
+      transactions.forEach(tx => {
+        if (tx.status === 'complete') {
+          processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
+        }
+      });
+
       isFirstRun = false;
-      console.log("✅ Initialization Complete. Listening for NEW moves now.");
+      console.log("✅ Initialization Complete. Listening for NEW and PENDING moves now.");
     } else {
       // Real-time loop
       for (const tx of transactions) {
