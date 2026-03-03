@@ -401,22 +401,30 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/50`;
+    // 1. Get the current league state to find the correct week/round
+    const stateRes = await fetch(`https://api.sleeper.app/v1/state/nfl`);
+    const leagueState = await stateRes.json();
+    const week = leagueState.display_week || 1;
+
+    // 2. Fetch transactions for the current week
+    console.log(`📡 Fetching transactions for Week ${week}...`);
+    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/${week}`;
     const response = await fetch(url);
     const transactions = await response.json();
 
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      console.log("⚠️ Sleeper returned 0 transactions for this week. Waiting for new moves...");
+      isFirstRun = false; 
+      return;
+    }
+
     if (isFirstRun) {
-      console.log(`📥 STARTUP: Analyzing ${transactions.length} total transactions from Sleeper...`);
+      console.log(`📥 STARTUP: Analyzing ${transactions.length} transactions from Sleeper...`);
       
       const initialMoves = transactions
         .filter(tx => {
           const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
           const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
-          
-          // DEBUG: Log why moves are being skipped
-          if (!(isTrade || isPickup)) {
-            // console.log(`⏩ Skipping TX ${tx.transaction_id}: Type=${tx.type}, Status=${tx.status}`);
-          }
           return isTrade || isPickup;
         })
         .slice(0, 3); 
@@ -424,29 +432,31 @@ async function pollSleeper() {
       console.log(`💡 Found ${initialMoves.length} valid moves to post.`);
 
       for (const tx of initialMoves) {
-        console.log(`⚙️ Attempting to process TX: ${tx.transaction_id} (${tx.type})`);
         try {
-          // Log the players involved before sending
-          const addNames = Object.keys(tx.adds || {}).map(id => idMap.find(r => r._rawData[0] === id)?._rawData[1] || id);
-          const dropNames = Object.keys(tx.drops || {}).map(id => idMap.find(r => r._rawData[0] === id)?._rawData[1] || id);
-          console.log(`   🏃 Players: [Adds: ${addNames.join(', ')}] [Drops: ${dropNames.join(', ')}]`);
+          // Log Player Names to Console as requested
+          const addNames = Object.keys(tx.adds || {}).map(id => {
+            const row = idMap.find(r => r._rawData[0] === id);
+            return row ? row._rawData[1] : `ID:${id}`;
+          });
+          console.log(`⚙️ Processing TX ${tx.transaction_id} | Players: ${addNames.join(', ')}`);
 
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
-          console.log(`   ✅ DISCORD SUCCESS: TX ${tx.transaction_id} is live.`);
+          console.log(`   ✅ DISCORD SUCCESS for ${tx.transaction_id}`);
           await new Promise(r => setTimeout(r, 2000)); 
         } catch (err) {
-          console.error(`   ❌ DISCORD FAIL for TX ${tx.transaction_id}:`, err.message);
+          console.error(`   ❌ DISCORD FAIL for ${tx.transaction_id}:`, err.message);
         }
       }
 
+      // Add the rest to the 'seen' list so they don't double-post
       transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
       isFirstRun = false;
       console.log("✅ Initialization Complete.");
       return;
     }
 
-    // Normal Polling
+    // Normal Polling for NEW moves
     for (const tx of transactions) {
       const txKey = `${tx.transaction_id}_${tx.status}`;
       if (processedTxIds.has(txKey)) continue;
