@@ -343,7 +343,7 @@ client.on('interactionCreate', async (interaction) => {
 });
 
 // --- CONFIG & CACHE ---
-const SLEEPER_LEAGUE_ID = '1312556169230815232';
+const SLEEPER_LEAGUE_ID = '1334625446184099840';
 const CHANNEL_ID = '1477399855541518366';
 let rosterToTeamName = {}; // Cache for mapping Roster ID -> "Team Name"
 
