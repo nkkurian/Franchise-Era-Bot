@@ -98,18 +98,21 @@ client.once('ready', async () => {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
 
-    // 2. SEND THE TEST MESSAGE IMMEDIATELY
-    await sendStartupTestMessage();
-    
-    // 3. Load Data
+    // 2. Load Sheets Data FIRST (Crucial for IDs)
+    console.log("📥 Pre-loading Sheet Data...");
+    await getSheetData(); 
+
+    // 3. Load Sleeper Team Map
     console.log("📥 Loading Sleeper Team Map...");
     await updateTeamMap(); 
     console.log(`✅ Team Map Loaded.`);
 
-    // 4. Start the Poller
-    // (We will define/fix pollSleeper in the next step)
-     await pollSleeper();         
-     setInterval(pollSleeper, 60000); 
+    // 4. Send Startup Message
+    await sendStartupTestMessage();
+
+    // 5. Start Poller (Now that maps are ready)
+    await pollSleeper();          
+    setInterval(pollSleeper, 60000); 
 
   } catch (err) { 
     console.error("Startup Error:", err); 
@@ -472,8 +475,11 @@ async function processAndSend(tx, channel, players, logs, idMap) {
 
   let teamSummaries = {};
   const initTeam = (rId) => {
-    const tName = rosterToTeamName[rId] || `Team ${rId}`;
-    if (!teamSummaries[tName]) teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
+    // Check if the ID exists in our map, otherwise use a placeholder
+    const tName = rosterToTeamName[rId] || `Roster ${rId}`;
+    if (!teamSummaries[tName]) {
+      teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
+    }
     return tName;
   };
 
