@@ -394,62 +394,75 @@ const getDetails = (pId, players, logs, idMap) => {
 
 // --- DATABASE FOR TRACKING POSTED TRADES ---
 // --- TRANSACTION POLLER ---
+// --- [REPLACE YOUR pollSleeper AND processAndSend FUNCTIONS WITH THESE] ---
+
 async function pollSleeper() {
-  console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper...`);
+  console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for new moves...`);
   try {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
+    // Get current league state to find the correct week
     const stateRes = await fetch(`https://api.sleeper.app/v1/state/nfl`);
     const leagueState = await stateRes.json();
     let week = leagueState.display_week || 1;
 
+    // Fetch transactions for the current week
     let url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/${week}`;
     let response = await fetch(url);
     let transactions = await response.json();
 
-    // FALLBACK: If current week is empty (common in offseason), check Week 1
+    // Offseason Fallback: If current week is empty, check week 1
     if (!Array.isArray(transactions) || transactions.length === 0) {
-      console.log(`Empty week ${week}, checking Week 1 fallback...`);
       url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
       response = await fetch(url);
       transactions = await response.json();
     }
 
-    if (!Array.isArray(transactions) || transactions.length === 0) {
-      console.log("⚠️ No transactions found in current week or Week 1.");
-      isFirstRun = false; return;
-    }
+    if (!Array.isArray(transactions)) return;
+
+    // Sort by time so we process oldest to newest
+    transactions.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
+      // Historical Backfill: Get the 3 most recent valid moves
       const initialMoves = transactions.filter(tx => 
         (tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) ||
         ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')
-      ).slice(0, 3);
+      ).slice(-3); // Get the latest 3
 
-      console.log(`💡 Found ${initialMoves.length} moves to post.`);
+      console.log(`📥 Initialized: Processing the 3 most recent moves...`);
       for (const tx of initialMoves) {
-        try {
-          await processAndSend(tx, channel, players, logs, idMap);
-          processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
-          console.log(`✅ Posted: ${tx.transaction_id}`);
-          await new Promise(r => setTimeout(r, 2000));
-        } catch (err) { console.error(`❌ Post Error:`, err.message); }
+        const txKey = `${tx.transaction_id}_${tx.status}`;
+        await processAndSend(tx, channel, players, logs, idMap);
+        processedTxIds.add(txKey);
       }
+      
+      // Mark everything currently in Sleeper as "seen" so we don't double post
       transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
       isFirstRun = false;
+      console.log("✅ Initialization Complete. Listening for NEW moves now.");
     } else {
+      // Real-time loop
       for (const tx of transactions) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
+        
+        // Only process if it's a new ID OR a status change (e.g., Pending -> Complete)
         if (processedTxIds.has(txKey)) continue;
-        if ((tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) || 
-            ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
+
+        const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
+        const isFA = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
+
+        if (isTrade || isFA) {
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(txKey);
+          console.log(`📢 New Transaction Posted: ${tx.transaction_id} (${tx.status})`);
         }
       }
     }
-  } catch (err) { console.error(`❌ Poller Error:`, err.message); }
+  } catch (err) {
+    console.error(`❌ Poller Error:`, err.message);
+  }
 }
 
 async function processAndSend(tx, channel, players, logs, idMap) {
@@ -457,7 +470,8 @@ async function processAndSend(tx, channel, players, logs, idMap) {
   let color = 0x2ecc71; 
 
   if (tx.type === 'trade') {
-    title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
+    // Distinct visual difference for Pending vs Complete
+    title = tx.status === 'pending' ? "🚨 PENDING TRADE OFFER" : "🤝 TRADE COMPLETED";
     color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
   } else {
     title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
@@ -475,6 +489,7 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     return tName;
   };
 
+  // Process Players Added
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -482,6 +497,7 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     teamSummaries[tName].net -= d.cap;
   }
 
+  // Process Players Dropped
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -490,13 +506,14 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
   }
 
+  // Process Draft Picks
   if (tx.draft_picks) {
     tx.draft_picks.forEach(pick => {
       const gainer = initTeam(pick.owner_id);
       const loser = initTeam(pick.previous_owner_id);
-      const pickName = `${pick.season} Rd ${pick.round}`;
-      teamSummaries[gainer].adds.push(`🎫 **${pickName}** ($0)`);
-      teamSummaries[loser].drops.push(`📤 **${pickName}** ($0)`);
+      const pickName = `${pick.season} Rd ${pick.round} (${rosterToTeamName[pick.roster_id] || 'Orig'})`;
+      teamSummaries[gainer].adds.push(`🎫 **${pickName}**`);
+      teamSummaries[loser].drops.push(`📤 **${pickName}**`);
     });
   }
 
@@ -506,6 +523,7 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
     if (data.deadCap > 0) description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
 
+    // Fetch the current cap from the specific team sheet
     const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
     let capFooter = "📊 *Cap data pending sheet sync*";
     if (sh) {
