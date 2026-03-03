@@ -406,24 +406,37 @@ async function pollSleeper() {
     const transactions = await response.json();
 
     if (isFirstRun) {
-      console.log("📥 STARTUP: Processing the 3 most recent moves...");
+      console.log(`📥 STARTUP: Analyzing ${transactions.length} total transactions from Sleeper...`);
       
       const initialMoves = transactions
         .filter(tx => {
           const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
           const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
+          
+          // DEBUG: Log why moves are being skipped
+          if (!(isTrade || isPickup)) {
+            // console.log(`⏩ Skipping TX ${tx.transaction_id}: Type=${tx.type}, Status=${tx.status}`);
+          }
           return isTrade || isPickup;
         })
         .slice(0, 3); 
 
+      console.log(`💡 Found ${initialMoves.length} valid moves to post.`);
+
       for (const tx of initialMoves) {
-        console.log(`⚙️ Attempting to process TX: ${tx.transaction_id}`);
+        console.log(`⚙️ Attempting to process TX: ${tx.transaction_id} (${tx.type})`);
         try {
+          // Log the players involved before sending
+          const addNames = Object.keys(tx.adds || {}).map(id => idMap.find(r => r._rawData[0] === id)?._rawData[1] || id);
+          const dropNames = Object.keys(tx.drops || {}).map(id => idMap.find(r => r._rawData[0] === id)?._rawData[1] || id);
+          console.log(`   🏃 Players: [Adds: ${addNames.join(', ')}] [Drops: ${dropNames.join(', ')}]`);
+
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
-          await new Promise(r => setTimeout(r, 2000)); // 2s delay for stability
+          console.log(`   ✅ DISCORD SUCCESS: TX ${tx.transaction_id} is live.`);
+          await new Promise(r => setTimeout(r, 2000)); 
         } catch (err) {
-          console.error(`❌ CRASH during TX ${tx.transaction_id}:`, err.message);
+          console.error(`   ❌ DISCORD FAIL for TX ${tx.transaction_id}:`, err.message);
         }
       }
 
@@ -438,10 +451,8 @@ async function pollSleeper() {
       const txKey = `${tx.transaction_id}_${tx.status}`;
       if (processedTxIds.has(txKey)) continue;
 
-      const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
-      const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
-      
-      if (isTrade || isPickup) {
+      if ((tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) || 
+          ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
         console.log(`🆕 New move detected: ${tx.transaction_id}`);
         await processAndSend(tx, channel, players, logs, idMap);
         processedTxIds.add(txKey);
@@ -450,86 +461,6 @@ async function pollSleeper() {
   } catch (err) {
     console.error(`❌ Poller Error:`, err.message);
   }
-}
-
-async function processAndSend(tx, channel, players, logs, idMap) {
-  let title = "📝 TRANSACTION";
-  let color = 0x2ecc71; 
-
-  if (tx.type === 'trade') {
-    title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
-    color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
-  } else {
-    title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
-  }
-
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(color)
-    .setTimestamp(tx.status_updated ? new Date(tx.status_updated) : new Date());
-
-  let teamSummaries = {};
-  const initTeam = (rId) => {
-    const tName = rosterToTeamName[rId] || `Team ${rId}`;
-    if (!teamSummaries[tName]) teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
-    return tName;
-  };
-
-  // Logic for Adds/Drops
-  for (const [pId, rId] of Object.entries(tx.adds || {})) {
-    const tName = initTeam(rId);
-    const d = getDetails(pId, players, logs, idMap);
-    teamSummaries[tName].adds.push(d.text);
-    teamSummaries[tName].net -= d.cap;
-  }
-  for (const [pId, rId] of Object.entries(tx.drops || {})) {
-    const tName = initTeam(rId);
-    const d = getDetails(pId, players, logs, idMap);
-    teamSummaries[tName].drops.push(d.text);
-    teamSummaries[tName].net += d.cap;
-    if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
-  }
-
-  // Logic for Draft Picks
-  if (tx.draft_picks) {
-    tx.draft_picks.forEach(pick => {
-      const gainer = initTeam(pick.owner_id);
-      const loser = initTeam(pick.previous_owner_id);
-      const pickName = `${pick.season} Rd ${pick.round}`;
-      teamSummaries[gainer].adds.push(`🎫 **${pickName}** ($0)`);
-      teamSummaries[loser].drops.push(`📤 **${pickName}** ($0)`);
-    });
-  }
-
-  console.log(`  🔍 Finalizing embed for teams: ${Object.keys(teamSummaries).join(', ')}`);
-
-  // Build the Fields
-  for (const [tName, data] of Object.entries(teamSummaries)) {
-    let description = "";
-    if (data.adds.length) description += `✅ **In:**\n${data.adds.join('\n')}\n`;
-    if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
-    if (data.deadCap > 0) description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
-
-    // SAFE SHEET FINDER: Prevents the "Cannot loadCells of undefined" crash
-    const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
-    let capFooter = "📊 *Cap data pending sheet sync*";
-    
-    if (sh) {
-      try {
-        await sh.loadCells('F2');
-        const current = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
-        capFooter = `💰 $${current.toLocaleString()} ➔ **$${(current + data.net).toLocaleString()}**`;
-      } catch (e) {
-        console.log(`  ⚠️ Could not read F2 for ${tName}, skipping cap calc.`);
-      }
-    }
-
-    embed.addFields({ name: `🏟️ ${tName.toUpperCase()}`, value: `${description}${capFooter}`, inline: false });
-  }
-
-  console.log(`  🚀 Sending to Discord...`);
-  await channel.send({ embeds: [embed] });
-  console.log(`  ✅ DISCORD MESSAGE SENT.`);
 }
 
 client.login(process.env.DISCORD_TOKEN);
