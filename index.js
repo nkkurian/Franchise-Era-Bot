@@ -361,24 +361,30 @@ async function updateTeamMap() {
 const getDetails = (pId, players, logs, idMap) => {
   const idRow = idMap.find(row => row._rawData[0] === pId);
   const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
+  
+  // Try to find the player in the Sheet
   const pData = players.find(p => p._rawData[1] === name);
   
-  if (!pData) return { name, cap: 0, text: `• ${name}: *No Contract Found*`, isDeadCap: false };
+  // FALLBACK: If player isn't in the sheet, don't crash! 
+  if (!pData) {
+    return { 
+      name, 
+      cap: 0, 
+      isDeadCap: false, 
+      text: `• **${name}**: $Unknown (Not in Sheet)` 
+    };
+  }
 
   const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
   const years = pData._rawData[3] || "0";
   const isDeadCap = pData._rawData[9] === "TRUE" || pData._rawData[9] === true;
   
-  // Find Bonus Info for the transaction log
-  const tLogRow = logs.find(l => l._rawData[0]?.toLowerCase().includes(name.toLowerCase()));
-  const bonus = tLogRow ? `\n    ┗ ✨ *${tLogRow._rawData[5] || ""} ${tLogRow._rawData[4] || ""}*` : "";
-
   return { 
     name, 
     cap, 
-    isDeadCap,
-    text: `• ${name}: **$${cap.toLocaleString()}** (${years}yrs)${bonus}` 
-  }; 
+    isDeadCap, 
+    text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)` 
+  };
 }; 
 
   // 2. PLAYER DETECTION
@@ -408,25 +414,26 @@ async function pollSleeper() {
         })
         .slice(0, 3); 
 
-      // We use a simple for-loop with a delay so we don't spam Discord/Google too fast
+      const channel = await client.channels.fetch('1477399855541518366');
+
       for (const tx of initialMoves) {
         try {
+          // Direct check: if processAndSend fails, this catch block will catch it
           await processAndSend(tx, channel, players, logs, idMap);
-          processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
+          console.log(`✅ Posted historical move: ${tx.transaction_id}`);
           
-          // Wait 1.5 seconds between each post to prevent silent failures
-          await new Promise(resolve => setTimeout(resolve, 1500)); 
-        } catch (postErr) {
-          console.error(`⚠️ Error sending historical move ${tx.transaction_id}:`, postErr.message);
+          // Small delay to ensure they stay in order
+          await new Promise(r => setTimeout(r, 1000));
+        } catch (err) {
+          console.error(`❌ Failed to post historical move ${tx.transaction_id}:`, err.message);
         }
       }
 
-      // Mark the rest of the 50 as seen
+      // Add all 50 to memory so they don't double-post
       transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
-      
       isFirstRun = false;
-      console.log("✅ Initialized: Historical moves processed.");
-      return; 
+      console.log("✅ Initialized: Listening for NEW moves now.");
+      return;
     }
 
     // Standard Polling Logic
