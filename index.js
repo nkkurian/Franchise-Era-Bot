@@ -398,38 +398,35 @@ async function pollSleeper() {
 
     // On first run, we mark everything currently in Sleeper as "seen" 
     // so the bot doesn't spam the channel with old history.
+    // NEW LOGIC: Instead of staying silent, grab the 3 most recent moves
     if (isFirstRun) {
-      transactions.forEach(tx => processedTxIds.add(tx.transaction_id));
-      isFirstRun = false;
-      console.log("✅ Initialized: Listening for NEW moves now.");
-      return;
-    }
-
-    // Sort by time so we process oldest to newest
-    transactions.sort((a, b) => a.status_updated - b.status_updated);
-
-    for (const tx of transactions) {
-      // Check if this specific version of the transaction was already posted
-      // We use a "Composite Key" (ID + Status) so 'pending' and 'complete' both post.
-      const txKey = `${tx.transaction_id}_${tx.status}`;
-      if (processedTxIds.has(txKey)) continue;
-
-      // Filter: We only care about completed pickups or pending/complete trades
-      const isTrade = tx.type === 'trade';
-      const isPickup = tx.type === 'free_agent' || tx.type === 'waiver';
+      console.log("📥 First run: Fetching the 3 most recent transactions...");
       
-      if (isTrade && (tx.status === 'complete' || tx.status === 'pending')) {
+      // Filter the list for only Trades/Pickups, then take the top 3
+      const initialMoves = transactions
+        .filter(tx => {
+          const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
+          const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
+          return isTrade || isPickup;
+        })
+        .slice(0, 3); // Change this number if you want more than 3
+
+      // Process them immediately
+      for (const tx of initialMoves) {
         await processAndSend(tx, channel, players, logs, idMap);
-        processedTxIds.add(txKey);
-      } else if (isPickup && tx.status === 'complete') {
-        await processAndSend(tx, channel, players, logs, idMap);
+        const txKey = `${tx.transaction_id}_${tx.status}`;
         processedTxIds.add(txKey);
       }
+
+      // Now add EVERYTHING else to the "seen" list so we don't post them again in the next minute
+      transactions.forEach(tx => {
+        processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
+      });
+
+      isFirstRun = false;
+      console.log("✅ Initialized: Historical moves posted. Now listening for NEW moves.");
+      return;
     }
-  } catch (err) {
-    console.error(`❌ Poller Error:`, err.message);
-  }
-}
 
 async function processAndSend(tx, channel, players, logs, idMap) {
   let title = "📝 TRANSACTION";
