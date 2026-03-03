@@ -395,82 +395,129 @@ const getDetails = (pId, players, logs, idMap) => {
 // --- DATABASE FOR TRACKING POSTED TRADES ---
 // --- TRANSACTION POLLER ---
 async function pollSleeper() {
-  console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for moves...`);
-
+  console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper...`);
   try {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // 1. Get the current league state to find the correct week/round
     const stateRes = await fetch(`https://api.sleeper.app/v1/state/nfl`);
     const leagueState = await stateRes.json();
-    const week = leagueState.display_week || 1;
+    let week = leagueState.display_week || 1;
 
-    // 2. Fetch transactions for the current week
-    console.log(`📡 Fetching transactions for Week ${week}...`);
-    const url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/${week}`;
-    const response = await fetch(url);
-    const transactions = await response.json();
+    let url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/${week}`;
+    let response = await fetch(url);
+    let transactions = await response.json();
+
+    // FALLBACK: If current week is empty (common in offseason), check Week 1
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+      console.log(`Empty week ${week}, checking Week 1 fallback...`);
+      url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
+      response = await fetch(url);
+      transactions = await response.json();
+    }
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
-      console.log("⚠️ Sleeper returned 0 transactions for this week. Waiting for new moves...");
-      isFirstRun = false; 
-      return;
+      console.log("⚠️ No transactions found in current week or Week 1.");
+      isFirstRun = false; return;
     }
 
     if (isFirstRun) {
-      console.log(`📥 STARTUP: Analyzing ${transactions.length} transactions from Sleeper...`);
-      
-      const initialMoves = transactions
-        .filter(tx => {
-          const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
-          const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
-          return isTrade || isPickup;
-        })
-        .slice(0, 3); 
+      const initialMoves = transactions.filter(tx => 
+        (tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) ||
+        ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')
+      ).slice(0, 3);
 
-      console.log(`💡 Found ${initialMoves.length} valid moves to post.`);
-
+      console.log(`💡 Found ${initialMoves.length} moves to post.`);
       for (const tx of initialMoves) {
         try {
-          // Log Player Names to Console as requested
-          const addNames = Object.keys(tx.adds || {}).map(id => {
-            const row = idMap.find(r => r._rawData[0] === id);
-            return row ? row._rawData[1] : `ID:${id}`;
-          });
-          console.log(`⚙️ Processing TX ${tx.transaction_id} | Players: ${addNames.join(', ')}`);
-
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
-          console.log(`   ✅ DISCORD SUCCESS for ${tx.transaction_id}`);
-          await new Promise(r => setTimeout(r, 2000)); 
-        } catch (err) {
-          console.error(`   ❌ DISCORD FAIL for ${tx.transaction_id}:`, err.message);
-        }
+          console.log(`✅ Posted: ${tx.transaction_id}`);
+          await new Promise(r => setTimeout(r, 2000));
+        } catch (err) { console.error(`❌ Post Error:`, err.message); }
       }
-
-      // Add the rest to the 'seen' list so they don't double-post
       transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
       isFirstRun = false;
-      console.log("✅ Initialization Complete.");
-      return;
-    }
-
-    // Normal Polling for NEW moves
-    for (const tx of transactions) {
-      const txKey = `${tx.transaction_id}_${tx.status}`;
-      if (processedTxIds.has(txKey)) continue;
-
-      if ((tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) || 
-          ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
-        console.log(`🆕 New move detected: ${tx.transaction_id}`);
-        await processAndSend(tx, channel, players, logs, idMap);
-        processedTxIds.add(txKey);
+    } else {
+      for (const tx of transactions) {
+        const txKey = `${tx.transaction_id}_${tx.status}`;
+        if (processedTxIds.has(txKey)) continue;
+        if ((tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) || 
+            ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
+          await processAndSend(tx, channel, players, logs, idMap);
+          processedTxIds.add(txKey);
+        }
       }
     }
-  } catch (err) {
-    console.error(`❌ Poller Error:`, err.message);
-  }
+  } catch (err) { console.error(`❌ Poller Error:`, err.message); }
 }
+
+async function processAndSend(tx, channel, players, logs, idMap) {
+  let title = "📝 TRANSACTION";
+  let color = 0x2ecc71; 
+
+  if (tx.type === 'trade') {
+    title = tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE PROCESSED";
+    color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
+  } else {
+    title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle(title)
+    .setColor(color)
+    .setTimestamp(tx.status_updated ? new Date(tx.status_updated) : new Date());
+
+  let teamSummaries = {};
+  const initTeam = (rId) => {
+    const tName = rosterToTeamName[rId] || `Team ${rId}`;
+    if (!teamSummaries[tName]) teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
+    return tName;
+  };
+
+  for (const [pId, rId] of Object.entries(tx.adds || {})) {
+    const tName = initTeam(rId);
+    const d = getDetails(pId, players, logs, idMap);
+    teamSummaries[tName].adds.push(d.text);
+    teamSummaries[tName].net -= d.cap;
+  }
+
+  for (const [pId, rId] of Object.entries(tx.drops || {})) {
+    const tName = initTeam(rId);
+    const d = getDetails(pId, players, logs, idMap);
+    teamSummaries[tName].drops.push(d.text);
+    teamSummaries[tName].net += d.cap;
+    if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
+  }
+
+  if (tx.draft_picks) {
+    tx.draft_picks.forEach(pick => {
+      const gainer = initTeam(pick.owner_id);
+      const loser = initTeam(pick.previous_owner_id);
+      const pickName = `${pick.season} Rd ${pick.round}`;
+      teamSummaries[gainer].adds.push(`🎫 **${pickName}** ($0)`);
+      teamSummaries[loser].drops.push(`📤 **${pickName}** ($0)`);
+    });
+  }
+
+  for (const [tName, data] of Object.entries(teamSummaries)) {
+    let description = "";
+    if (data.adds.length) description += `✅ **In:**\n${data.adds.join('\n')}\n`;
+    if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
+    if (data.deadCap > 0) description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
+
+    const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
+    let capFooter = "📊 *Cap data pending sheet sync*";
+    if (sh) {
+        await sh.loadCells('F2');
+        const current = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
+        capFooter = `💰 $${current.toLocaleString()} ➔ **$${(current + data.net).toLocaleString()}**`;
+    }
+    embed.addFields({ name: `🏟️ ${tName.toUpperCase()}`, value: `${description}${capFooter}`, inline: false });
+  }
+
+  await channel.send({ embeds: [embed] });
+}
+
 
 client.login(process.env.DISCORD_TOKEN);
