@@ -405,9 +405,8 @@ async function pollSleeper() {
     const response = await fetch(url);
     const transactions = await response.json();
 
-    // NEW LOGIC: Fetch the 3 most recent moves on startup
     if (isFirstRun) {
-      console.log("📥 First run: Fetching the 3 most recent transactions...");
+      console.log("📥 STARTUP: Processing the 3 most recent moves...");
       
       const initialMoves = transactions
         .filter(tx => {
@@ -417,29 +416,24 @@ async function pollSleeper() {
         })
         .slice(0, 3); 
 
-      const channel = await client.channels.fetch('1477399855541518366');
-
       for (const tx of initialMoves) {
+        console.log(`⚙️ Attempting to process TX: ${tx.transaction_id}`);
         try {
-          // Direct check: if processAndSend fails, this catch block will catch it
           await processAndSend(tx, channel, players, logs, idMap);
-          console.log(`✅ Posted historical move: ${tx.transaction_id}`);
-          
-          // Small delay to ensure they stay in order
-          await new Promise(r => setTimeout(r, 1000));
+          processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
+          await new Promise(r => setTimeout(r, 2000)); // 2s delay for stability
         } catch (err) {
-          console.error(`❌ Failed to post historical move ${tx.transaction_id}:`, err.message);
+          console.error(`❌ CRASH during TX ${tx.transaction_id}:`, err.message);
         }
       }
 
-      // Add all 50 to memory so they don't double-post
       transactions.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
       isFirstRun = false;
-      console.log("✅ Initialized: Listening for NEW moves now.");
+      console.log("✅ Initialization Complete.");
       return;
     }
 
-    // Standard Polling Logic
+    // Normal Polling
     for (const tx of transactions) {
       const txKey = `${tx.transaction_id}_${tx.status}`;
       if (processedTxIds.has(txKey)) continue;
@@ -448,6 +442,7 @@ async function pollSleeper() {
       const isPickup = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
       
       if (isTrade || isPickup) {
+        console.log(`🆕 New move detected: ${tx.transaction_id}`);
         await processAndSend(tx, channel, players, logs, idMap);
         processedTxIds.add(txKey);
       }
@@ -471,25 +466,22 @@ async function processAndSend(tx, channel, players, logs, idMap) {
   const embed = new EmbedBuilder()
     .setTitle(title)
     .setColor(color)
-    .setTimestamp(new Date(tx.status_updated));
+    .setTimestamp(tx.status_updated ? new Date(tx.status_updated) : new Date());
 
   let teamSummaries = {};
   const initTeam = (rId) => {
-    // Check if the ID exists in our map, otherwise use a placeholder
-    const tName = rosterToTeamName[rId] || `Roster ${rId}`;
-    if (!teamSummaries[tName]) {
-      teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
-    }
+    const tName = rosterToTeamName[rId] || `Team ${rId}`;
+    if (!teamSummaries[tName]) teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
     return tName;
   };
 
+  // Logic for Adds/Drops
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
     teamSummaries[tName].adds.push(d.text);
     teamSummaries[tName].net -= d.cap;
   }
-
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -498,6 +490,7 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
   }
 
+  // Logic for Draft Picks
   if (tx.draft_picks) {
     tx.draft_picks.forEach(pick => {
       const gainer = initTeam(pick.owner_id);
@@ -508,24 +501,35 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     });
   }
 
+  console.log(`  🔍 Finalizing embed for teams: ${Object.keys(teamSummaries).join(', ')}`);
+
+  // Build the Fields
   for (const [tName, data] of Object.entries(teamSummaries)) {
     let description = "";
     if (data.adds.length) description += `✅ **In:**\n${data.adds.join('\n')}\n`;
     if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
     if (data.deadCap > 0) description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
 
+    // SAFE SHEET FINDER: Prevents the "Cannot loadCells of undefined" crash
     const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
     let capFooter = "📊 *Cap data pending sheet sync*";
+    
     if (sh) {
+      try {
         await sh.loadCells('F2');
         const current = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
         capFooter = `💰 $${current.toLocaleString()} ➔ **$${(current + data.net).toLocaleString()}**`;
+      } catch (e) {
+        console.log(`  ⚠️ Could not read F2 for ${tName}, skipping cap calc.`);
+      }
     }
 
     embed.addFields({ name: `🏟️ ${tName.toUpperCase()}`, value: `${description}${capFooter}`, inline: false });
   }
 
+  console.log(`  🚀 Sending to Discord...`);
   await channel.send({ embeds: [embed] });
+  console.log(`  ✅ DISCORD MESSAGE SENT.`);
 }
 
 client.login(process.env.DISCORD_TOKEN);
