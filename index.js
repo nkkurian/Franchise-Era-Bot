@@ -417,7 +417,16 @@ async function pollSleeper() {
     if (!Array.isArray(transactions) || transactions.length === 0) {
       url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
       response = await fetch(url);
-      transactions = await response.json();
+    // Change this line:
+      let transactions = await response.json();
+      
+      // To this (Checking both current week and week 1 for offseason safety):
+      const week0Res = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`);
+      const week1Res = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`);
+      const t0 = await week0Res.json();
+      const t1 = await week1Res.json();
+      let transactions = [...(Array.isArray(t0) ? t0 : []), ...(Array.isArray(t1) ? t1 : [])];
+      console.log("Fetched transactions count:", transactions.length);
     }
 
     if (!Array.isArray(transactions)) return;
