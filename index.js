@@ -109,6 +109,8 @@ client.once('ready', async () => {
     // 4. Send Startup Message
     await sendStartupTestMessage();
 
+    await debugSleeperFeed(); 
+
     // 5. Start Poller (Now that maps are ready)
     await pollSleeper();          
     setInterval(pollSleeper, 60000); 
@@ -544,5 +546,31 @@ async function processAndSend(tx, channel, players, logs, idMap) {
   await channel.send({ embeds: [embed] });
 }
 
+async function debugSleeperFeed() {
+  console.log("📡 Attempting Hail Mary: Scanning League Feed...");
+  try {
+    const response = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/feed/nfl`);
+    const feed = await response.json();
+    
+    // We only want to see the most recent 3 items to avoid clutter
+    const recentFeed = feed.slice(0, 3);
+    
+    recentFeed.forEach((item, index) => {
+      console.log(`--- Feed Item #${index} ---`);
+      console.log(`Type: ${item.type}`);
+      console.log(`Status: ${item.status || 'No Status'}`);
+      console.log(`Data Keys: ${Object.keys(item).join(', ')}`);
+      
+      // This is the "Truth Test": Does it actually contain player IDs?
+      if (item.adds || item.drops) {
+        console.log("✅ SUCCESS: Found player data in the feed!");
+      } else {
+        console.log("❌ FAILURE: Feed entry is just text, no player IDs found.");
+      }
+    });
+  } catch (err) {
+    console.error("❌ Feed Scan Error:", err.message);
+  }
+}
 
 client.login(process.env.DISCORD_TOKEN);
