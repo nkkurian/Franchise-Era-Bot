@@ -477,11 +477,15 @@ async function processAndSend(tx, channel, players, logs, idMap) {
   let color = 0x2ecc71; 
 
   if (tx.type === 'trade') {
-    // Distinct visual difference for Pending vs Complete
-    title = tx.status === 'pending' ? "🚨 PENDING TRADE OFFER" : "🤝 TRADE COMPLETED";
+    title = tx.status === 'pending' ? "🚨 PENDING TRADE - ACTION REQUIRED" : "🤝 TRADE COMPLETED";
     color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
-  } else {
-    title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
+    
+    // Add this to ping the mods/commish when a trade needs a vote
+    if (tx.status === 'pending') {
+        await channel.send("<@&YOUR_COMMISH_ROLE_ID> 📢 A new trade has been submitted for review!");
+    }
+    } else {
+      title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
   }
 
   const embed = new EmbedBuilder()
