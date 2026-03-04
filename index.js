@@ -427,6 +427,13 @@ async function pollSleeper() {
       ).slice(-3);
 
       console.log(`📥 Initializing: Processing ${initialMoves.length} recent moves...`);
+      // Get current league state to find the correct week
+    const stateRes = await fetch(`https://api.sleeper.app/v1/state/nfl`);
+    const leagueState = await stateRes.json();
+    let week = leagueState.display_week || 1;
+
+    // ADD THIS LINE BELOW:
+      console.log(`📅 Sleeper is reporting: Week ${week}`);
       for (const tx of initialMoves) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         await processAndSend(tx, channel, players, logs, idMap);
@@ -439,6 +446,7 @@ async function pollSleeper() {
           processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
         }
       });
+    
 
       isFirstRun = false;
       console.log("✅ Initialization Complete.");
