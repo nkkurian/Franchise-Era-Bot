@@ -403,76 +403,60 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // Get current league state to find the correct week
-    const stateRes = await fetch(`https://api.sleeper.app/v1/state/nfl`);
-    const leagueState = await stateRes.json();
-    let week = leagueState.display_week || 1;
+    // 1. Offseason Strategy: Fetch Week 0 and Week 1 simultaneously
+    const [res0, res1] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`),
+      fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`)
+    ]);
 
-    // Fetch transactions for the current week
-    let url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/${week}`;
-    let response = await fetch(url);
-    let transactions = await response.json();
+    const t0 = await res0.json();
+    const t1 = await res1.json();
 
-    // Offseason Fallback: If current week is empty, check week 1
-    if (!Array.isArray(transactions) || transactions.length === 0) {
-      url = `https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`;
-      response = await fetch(url);
-    // Change this line:
-      let transactions = await response.json();
-      
-      // To this (Checking both current week and week 1 for offseason safety):
-      const week0Res = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`);
-      const week1Res = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`);
-      const t0 = await week0Res.json();
-      const t1 = await week1Res.json();
-      let transactions = [...(Array.isArray(t0) ? t0 : []), ...(Array.isArray(t1) ? t1 : [])];
-      console.log("Fetched transactions count:", transactions.length);
-    }
+    // Combine them into one list and filter out non-array responses
+    let allTransactions = [...(Array.isArray(t0) ? t0 : []), ...(Array.isArray(t1) ? t1 : [])];
+    
+    if (allTransactions.length === 0) return;
 
-    if (!Array.isArray(transactions)) return;
-
-    // Sort by time so we process oldest to newest
-    transactions.sort((a, b) => a.status_updated - b.status_updated);
+    // Sort by time (oldest to newest)
+    allTransactions.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // 1. Get the 3 most recent valid moves for the historical post
-      const initialMoves = transactions.filter(tx => 
+      // Process 3 most recent moves for historical context
+      const initialMoves = allTransactions.filter(tx => 
         (tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) ||
         ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')
       ).slice(-3);
 
-      console.log(`📥 Initializing: Processing the 3 most recent moves...`);
+      console.log(`📥 Initializing: Processing ${initialMoves.length} recent moves...`);
       for (const tx of initialMoves) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         await processAndSend(tx, channel, players, logs, idMap);
         processedTxIds.add(txKey);
       }
       
-      // 2. CRITICAL FIX: Only mark COMPLETED transactions as "seen"
-      // We leave 'pending' trades OUT of this list so the next loop finds them and posts them.
-      transactions.forEach(tx => {
+      // Mark existing completed trades as "seen"
+      allTransactions.forEach(tx => {
         if (tx.status === 'complete') {
           processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
         }
       });
 
       isFirstRun = false;
-      console.log("✅ Initialization Complete. Listening for NEW and PENDING moves now.");
+      console.log("✅ Initialization Complete.");
     } else {
-      // Real-time loop
-      for (const tx of transactions) {
+      // Real-time loop for NEW moves
+      for (const tx of allTransactions) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
-        
-        // Only process if it's a new ID OR a status change (e.g., Pending -> Complete)
         if (processedTxIds.has(txKey)) continue;
 
-        const isTrade = tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending');
+        // Broaden trade check to catch ANY status (including pending for commish review)
+        const isTrade = tx.type === 'trade'; 
         const isFA = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
 
         if (isTrade || isFA) {
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(txKey);
-          console.log(`📢 New Transaction Posted: ${tx.transaction_id} (${tx.status})`);
+          console.log(`📢 Posted: ${tx.transaction_id} (${tx.status})`);
         }
       }
     }
