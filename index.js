@@ -403,7 +403,7 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // 1. Offseason Strategy: Fetch Week 0 and Week 1 simultaneously
+    // FETCH BOTH WEEKS SIMULTANEOUSLY FOR OFFSEASON
     const [res0, res1] = await Promise.all([
       fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`),
       fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`)
@@ -412,17 +412,16 @@ async function pollSleeper() {
     const t0 = await res0.json();
     const t1 = await res1.json();
 
-    // Combine them into one list and filter out non-array responses
-    let allTransactions = [...(Array.isArray(t0) ? t0 : []), ...(Array.isArray(t1) ? t1 : [])];
+    // COMBINE INTO ONE VARIABLE (Fixes the "already declared" error)
+    let allTx = [...(Array.isArray(t0) ? t0 : []), ...(Array.isArray(t1) ? t1 : [])];
     
-    if (allTransactions.length === 0) return;
+    if (allTx.length === 0) return;
 
-    // Sort by time (oldest to newest)
-    allTransactions.sort((a, b) => a.status_updated - b.status_updated);
+    allTx.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // Process 3 most recent moves for historical context
-      const initialMoves = allTransactions.filter(tx => 
+      // Look for the 3 most recent moves (Completed OR Pending) to show the bot is working
+      const initialMoves = allTx.filter(tx => 
         (tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) ||
         ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')
       ).slice(-3);
@@ -434,8 +433,8 @@ async function pollSleeper() {
         processedTxIds.add(txKey);
       }
       
-      // Mark existing completed trades as "seen"
-      allTransactions.forEach(tx => {
+      // Mark all other COMPLETED moves as seen
+      allTx.forEach(tx => {
         if (tx.status === 'complete') {
           processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
         }
@@ -444,16 +443,12 @@ async function pollSleeper() {
       isFirstRun = false;
       console.log("✅ Initialization Complete.");
     } else {
-      // Real-time loop for NEW moves
-      for (const tx of allTransactions) {
+      for (const tx of allTx) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         if (processedTxIds.has(txKey)) continue;
 
-        // Broaden trade check to catch ANY status (including pending for commish review)
-        const isTrade = tx.type === 'trade'; 
-        const isFA = (tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete';
-
-        if (isTrade || isFA) {
+        // Process any trade (Pending or Complete) and FA pickups
+        if (tx.type === 'trade' || ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(txKey);
           console.log(`📢 Posted: ${tx.transaction_id} (${tx.status})`);
