@@ -165,12 +165,13 @@ function createPlayerEmbed(pRow, logs) {
 }
 
 // --- INTERACTION HANDLER ---
+// --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   await interaction.deferReply(); 
   
   try {
-    const { players, logs } = await getSheetData();
+    const { players } = await getSheetData();
 
     if (interaction.commandName === 'help') {
       const helpEmbed = new EmbedBuilder()
@@ -186,21 +187,13 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.commandName === 'team') {
       const teamInput = interaction.options.getString('teamname');
-      
-      // 1. Find the correct sheet for the team
-      const sh = doc.sheetsByIndex.find(s => 
-        s.title.toLowerCase().trim().includes(teamInput.toLowerCase().trim())
-      );
+      const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim().includes(teamInput.toLowerCase().trim()));
 
-      if (!sh) {
-        return await interaction.editReply(`❌ Could not find a sheet for team: **${teamInput}**`);
-      }
+      if (!sh) return await interaction.editReply(`❌ Could not find a sheet for team: **${teamInput}**`);
 
-      // 2. Load Cap Cell (F2) and Player Rows simultaneously
       await sh.loadCells('F2');
       const capValue = sh.getCellByA1('F2').formattedValue || "$0.00";
 
-      // 3. Find top 5 earners for this team from the cached PlayerList
       const teamPlayers = players
         .filter(p => p._rawData[0]?.toLowerCase().trim() === sh.title.toLowerCase().trim())
         .map(p => ({
@@ -222,7 +215,6 @@ client.on('interactionCreate', async (interaction) => {
           { name: '💰 Current Cap Space', value: `**${capValue}**`, inline: false },
           { name: '🔝 Top 5 Cap Hits', value: earnerList, inline: false }
         )
-        .setFooter({ text: `Data synced from Google Sheets` })
         .setTimestamp();
 
       return await interaction.editReply({ embeds: [teamEmbed] });
@@ -233,10 +225,7 @@ client.on('interactionCreate', async (interaction) => {
       const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
 
       if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
-
-      if (matches.length === 1) {
-        return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0])] });
-      }
+      if (matches.length === 1) return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0])] });
 
       const limitedMatches = matches.slice(0, 5); 
       const row = new ActionRowBuilder().addComponents(
@@ -248,29 +237,16 @@ client.on('interactionCreate', async (interaction) => {
         )
       );
 
-      const response = await interaction.editReply({
-        content: `🔍 Found multiple players. Select one:`,
-        components: [row]
-      });
-
-      const collector = response.createMessageComponentCollector({ 
-        componentType: ComponentType.Button, 
-        time: 30000 
-      });
+      const response = await interaction.editReply({ content: `🔍 Found multiple players. Select one:`, components: [row] });
+      const collector = response.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
 
       collector.on('collect', async (i) => {
         if (i.user.id !== interaction.user.id) return i.reply({ content: "Not your search!", ephemeral: true });
-        const selectedIndex = parseInt(i.customId.replace('select_player_', ''));
-        const selectedPlayer = limitedMatches[selectedIndex];
+        const selectedPlayer = limitedMatches[parseInt(i.customId.replace('select_player_', ''))];
         await i.update({ content: null, embeds: [createPlayerEmbed(selectedPlayer)], components: [] });
         collector.stop();
       });
 
-      collector.on('end', (collected, reason) => {
-        if (reason === 'time' && collected.size === 0) {
-          interaction.editReply({ content: "⏳ Selection timed out.", components: [] });
-        }
-      });
       return;
     }
 
@@ -283,9 +259,7 @@ client.on('interactionCreate', async (interaction) => {
       const getSideData = async (teamName, playersIn) => {
         const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
         let cap = 0;
-        
         if (sh) {
-            // This is the bottleneck. By using Promise.all below, we run these in parallel.
             await sh.loadCells('F2'); 
             cap = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
         }
@@ -298,28 +272,16 @@ client.on('interactionCreate', async (interaction) => {
             if (r) {
                 const hit = parseFloat((r._rawData[6] || "0").replace(/[$,]/g, ''));
                 totalCapSent += hit;
-            
-                // Pull from Column K (index 10) instead of searching the Transaction Log
-                let structureText = "";
-                if (r._rawData[10]) {
-                  // Displays the first 50 characters of the contract notes
-                  structureText = `\n    ┗ 📜 *${r._rawData[10].slice(0, 50)}${r._rawData[10].length > 50 ? "..." : ""}*`;
-                }
-
+                let structureText = r._rawData[10] ? `\n    ┗ 📜 *${r._rawData[10].slice(0, 50)}...*` : "";
                 playerDetails.push(`• ${r._rawData[1]}: **$${hit.toLocaleString()}**${structureText}`);
             } else {
                 playerDetails.push(`• ${pn}: *Not Found*`);
             }
         });
-
         return { title: sh ? sh.title : teamName, cap, totalCapSent, playerDetails };
-    };
+      };
 
-    // 🚀 SPEED BOOST: Fetch both sides simultaneously
-    const [sA, sB] = await Promise.all([
-        getSideData(tA, pA_input),
-        getSideData(tB, pB_input)
-    ]);
+      const [sA, sB] = await Promise.all([getSideData(tA, pA_input), getSideData(tB, pB_input)]);
       
       const tradeEmbed = new EmbedBuilder()
         .setTitle('🤝 Detailed Trade Analysis')
@@ -339,67 +301,44 @@ client.on('interactionCreate', async (interaction) => {
   }
 });
 
-// --- CONFIG & CACHE ---
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
-const CHANNEL_ID = '1477399855541518366';
-let rosterToTeamName = {}; // Cache for mapping Roster ID -> "Team Name"
+let rosterToTeamName = {}; 
 
-// 1. Function to map Roster IDs to Team Names from Sleeper
 async function updateTeamMap() {
-  const usersRes = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/users`);
-  const rostersRes = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/rosters`);
-  const users = await usersRes.json();
-  const rosters = await rostersRes.json();
+  try {
+    const [uRes, rRes] = await Promise.all([
+      fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/users`),
+      fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/rosters`)
+    ]);
+    const users = await uRes.json();
+    const rosters = await rRes.json();
 
-  rosters.forEach(r => {
-    const user = users.find(u => u.user_id === r.owner_id);
-    // Use metadata team_name or fallback to display_name
-    rosterToTeamName[r.roster_id] = user?.metadata?.team_name || user?.display_name || `Team ${r.roster_id}`;
-  });
+    rosters.forEach(r => {
+      const user = users.find(u => u.user_id === r.owner_id);
+      rosterToTeamName[r.roster_id] = user?.metadata?.team_name || user?.display_name || `Team ${r.roster_id}`;
+    });
+  } catch (e) { console.error("Team Map Error:", e); }
 }
 
 const getDetails = (pId, players, idMap) => {
   const idRow = idMap.find(row => row._rawData[0] === pId);
   const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
-  
   const pData = players.find(p => p._rawData[1] === name);
   
-  if (!pData) {
-    return { 
-      name, 
-      cap: 0, 
-      isDeadCap: false, 
-      text: `• **${name}**: $Unknown (Not in Sheet)` 
-    };
-  }
+  if (!pData) return { name, cap: 0, isDeadCap: false, text: `• **${name}**: $Unknown (Not in Sheet)` };
 
   const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
   const years = pData._rawData[3] || "0";
   const isDeadCap = pData._rawData[9] === "TRUE" || pData._rawData[9] === true;
-  
-  // New: Pull from Column K (index 10) for the automated alerts
   const structure = pData._rawData[10] ? `\n    ┗ 📜 *${pData._rawData[10]}*` : "";
   
-  return { 
-    name, 
-    cap, 
-    isDeadCap, 
-    text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` 
-  };
+  return { name, cap, isDeadCap, text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` };
 }; 
-
-  // 2. PLAYER DETECTION
-
-// --- DATABASE FOR TRACKING POSTED TRADES ---
-// --- TRANSACTION POLLER ---
-// --- [REPLACE YOUR pollSleeper AND processAndSend FUNCTIONS WITH THESE] ---
-
-// --- [REPLACE YOUR pollSleeper AND processAndSend FUNCTIONS WITH THESE] ---
 
 async function pollSleeper() {
   console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for new moves...`);
   try {
-    const { players, logs, idMap } = await getSheetData();
+    const { players, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
     const [res0, res1] = await Promise.all([
@@ -407,122 +346,68 @@ async function pollSleeper() {
       fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`)
     ]);
 
-    const t0 = await res0.json();
-    const t1 = await res1.json();
-
-    let allTx = [...(Array.isArray(t0) ? t0 : []), ...(Array.isArray(t1) ? t1 : [])];
-    
-    if (allTx.length === 0) return;
+    const allTx = [...(await res0.json() || []), ...(await res1.json() || [])];
+    if (!allTx.length) return;
 
     allTx.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // Mark existing moves as "seen" so they don't post on reboot
-      allTx.forEach(tx => {
-        const txKey = `${tx.transaction_id}_${tx.status}`;
-        processedTxIds.add(txKey);
-      });
-
+      allTx.forEach(tx => processedTxIds.add(`${tx.transaction_id}_${tx.status}`));
       isFirstRun = false;
       console.log("✅ Initialization Complete: Historical moves silenced.");
-      return; 
-      
     } else {
       for (const tx of allTx) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         if (processedTxIds.has(txKey)) continue;
 
         if (tx.type === 'trade' || ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
-          await processAndSend(tx, channel, players, logs, idMap);
+          await processAndSend(tx, channel, players, idMap);
           processedTxIds.add(txKey);
           console.log(`📢 Posted: ${tx.transaction_id} (${tx.status})`);
         }
       }
     }
-  } catch (err) {
-    console.error("Poll Error:", err);
-  }
-} // <--- Added missing brace
+  } catch (err) { console.error("Poll Error:", err); }
+}
 
-async function processAndSend(tx, channel, players, logs, idMap) {
-  let title = "📝 TRANSACTION";
-  let color = 0x2ecc71; 
-  let needsSalaryPing = false; // Track if we need to ping for missing data
+async function processAndSend(tx, channel, players, idMap) {
+  let title = tx.type === 'trade' ? (tx.status === 'pending' ? "🚨 PENDING TRADE" : "🤝 TRADE COMPLETED") : "📝 TRANSACTION";
+  let color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
+  let needsSalaryPing = false;
 
-  if (tx.type === 'trade') {
-    title = tx.status === 'pending' ? "🚨 PENDING TRADE - ACTION REQUIRED" : "🤝 TRADE COMPLETED";
-    color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
-  } else {
-    title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
-  }
-
-  const embed = new EmbedBuilder()
-    .setTitle(title)
-    .setColor(color)
-    .setTimestamp(tx.status_updated ? new Date(tx.status_updated) : new Date());
-
+  const embed = new EmbedBuilder().setTitle(title).setColor(color).setTimestamp();
   let teamSummaries = {};
+
   const initTeam = (rId) => {
     const tName = rosterToTeamName[rId] || `Team ${rId}`;
     if (!teamSummaries[tName]) teamSummaries[tName] = { adds: [], drops: [], net: 0, deadCap: 0 };
     return tName;
   };
 
-  // Process Players Added
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
-    const tName = initTeam(rId);
     const d = getDetails(pId, players, idMap);
+    const tName = initTeam(rId);
     teamSummaries[tName].adds.push(d.text);
     teamSummaries[tName].net -= d.cap;
-
-    // PING TRIGGER: If cap is 0 or "Unknown", flag it
     if (d.cap === 0) needsSalaryPing = true;
   }
 
-  // Process Players Dropped
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
-    const tName = initTeam(rId);
     const d = getDetails(pId, players, idMap);
+    const tName = initTeam(rId);
     teamSummaries[tName].drops.push(d.text);
     teamSummaries[tName].net += d.cap;
     if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
   }
 
-  if (tx.draft_picks) {
-    tx.draft_picks.forEach(pick => {
-      const gainer = initTeam(pick.owner_id);
-      const loser = initTeam(pick.previous_owner_id);
-      const pickName = `${pick.season} Rd ${pick.round} (${rosterToTeamName[pick.roster_id] || 'Orig'})`;
-      teamSummaries[gainer].adds.push(`🎫 **${pickName}**`);
-      teamSummaries[loser].drops.push(`📤 **${pickName}**`);
-    });
-  }
-
   for (const [tName, data] of Object.entries(teamSummaries)) {
-    let description = "";
-    if (data.adds.length) description += `✅ **In:**\n${data.adds.join('\n')}\n`;
-    if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
-    
-    // UI Feedback for missing salary
-    if (needsSalaryPing) description += `⚠️ **NOTICE:** Missing salary data for added player.\n`;
-
-    const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
-    let capFooter = "📊 *Cap data pending sheet sync*";
-    if (sh) {
-        await sh.loadCells('F2');
-        const current = parseFloat((sh.getCellByA1('F2').formattedValue || "0").replace(/[$,]/g, '')) || 0;
-        capFooter = `💰 $${current.toLocaleString()} ➔ **$${(current + data.net).toLocaleString()}**`;
-    }
-    embed.addFields({ name: `🏟️ ${tName.toUpperCase()}`, value: `${description}${capFooter}`, inline: false });
+    let desc = (data.adds.length ? `✅ **In:**\n${data.adds.join('\n')}\n` : "") + (data.drops.length ? `📤 **Out:**\n${data.drops.join('\n')}\n` : "");
+    if (needsSalaryPing) desc += `⚠️ **NOTICE:** Missing salary data.\n`;
+    embed.addFields({ name: `🏟️ ${tName.toUpperCase()}`, value: desc || "No player movement", inline: false });
   }
 
-  // Final Action: Send embed and ping if data is missing
   await channel.send({ embeds: [embed] });
-
-  if (needsSalaryPing) {
-    // Replace YOUR_ROLE_ID with the actual ID of the role you want to ping
-    await channel.send("⚠️ <@&1479107336617332787> **Missing Salary Alert:** A transaction occurred with a player who has $0.00 salary in the sheets.");
-  }
+  if (needsSalaryPing) await channel.send("⚠️ <@&1479107336617332787> **Missing Salary Alert:** A transaction occurred with $0.00 salary in the sheets.");
 }
 
 client.login(process.env.DISCORD_TOKEN);
