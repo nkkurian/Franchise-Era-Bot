@@ -403,7 +403,6 @@ async function pollSleeper() {
     const { players, logs, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
-    // FETCH BOTH WEEKS SIMULTANEOUSLY FOR OFFSEASON
     const [res0, res1] = await Promise.all([
       fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`),
       fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`)
@@ -412,7 +411,6 @@ async function pollSleeper() {
     const t0 = await res0.json();
     const t1 = await res1.json();
 
-    // COMBINE INTO ONE VARIABLE (Fixes the "already declared" error)
     let allTx = [...(Array.isArray(t0) ? t0 : []), ...(Array.isArray(t1) ? t1 : [])];
     
     if (allTx.length === 0) return;
@@ -420,7 +418,7 @@ async function pollSleeper() {
     allTx.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // 1. Mark all current moves (Pending or Complete) as "seen" so they don't post
+      // Mark existing moves as "seen" so they don't post on reboot
       allTx.forEach(tx => {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         processedTxIds.add(txKey);
@@ -428,16 +426,13 @@ async function pollSleeper() {
 
       isFirstRun = false;
       console.log("✅ Initialization Complete: Historical moves silenced.");
-      // We stop here for the first run so no historical trades are sent
       return; 
       
     } else {
-      // 2. This part only runs on the SECOND check and onwards
       for (const tx of allTx) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         if (processedTxIds.has(txKey)) continue;
 
-        // Process only NEW moves
         if (tx.type === 'trade' || ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(txKey);
@@ -445,6 +440,10 @@ async function pollSleeper() {
         }
       }
     }
+  } catch (err) {
+    console.error("Poll Error:", err);
+  }
+} // <--- Added missing brace
 
 async function processAndSend(tx, channel, players, logs, idMap) {
   let title = "📝 TRANSACTION";
@@ -454,11 +453,10 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     title = tx.status === 'pending' ? "🚨 PENDING TRADE - ACTION REQUIRED" : "🤝 TRADE COMPLETED";
     color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
     
-    // Add this to ping the mods/commish when a trade needs a vote
     if (tx.status === 'pending') {
-        await channel.send("<@&YOUR_COMMISH_ROLE_ID> 📢 A new trade has been submitted for review!");
+        await channel.send("📢 A new trade has been submitted for review!");
     }
-    } else {
+  } else {
       title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
   }
 
@@ -474,7 +472,6 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     return tName;
   };
 
-  // Process Players Added
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -482,7 +479,6 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     teamSummaries[tName].net -= d.cap;
   }
 
-  // Process Players Dropped
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
     const tName = initTeam(rId);
     const d = getDetails(pId, players, logs, idMap);
@@ -491,7 +487,6 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
   }
 
-  // Process Draft Picks
   if (tx.draft_picks) {
     tx.draft_picks.forEach(pick => {
       const gainer = initTeam(pick.owner_id);
@@ -508,7 +503,6 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
     if (data.deadCap > 0) description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
 
-    // Fetch the current cap from the specific team sheet
     const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
     let capFooter = "📊 *Cap data pending sheet sync*";
     if (sh) {
@@ -520,6 +514,6 @@ async function processAndSend(tx, channel, players, logs, idMap) {
   }
 
   await channel.send({ embeds: [embed] });
-}
+} // <--- Added missing brace
 
 client.login(process.env.DISCORD_TOKEN);
