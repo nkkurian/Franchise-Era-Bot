@@ -88,6 +88,11 @@ const commands = [
     .addStringOption(o => o.setName('teama_players').setDescription('Players from first team').setRequired(true))
     .addStringOption(o => o.setName('teamb').setDescription('Second team').setRequired(true))
     .addStringOption(o => o.setName('teamb_players').setDescription('Players from second team').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('top')
+    .setDescription('View the highest-paid players in the league')
+    .addIntegerOption(o => o.setName('count').setDescription('Number of players to show (e.g., 10 or 25)'))
+    .addStringOption(o => o.setName('position').setDescription('Filter by position (QB, RB, WR, etc.)')),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -180,6 +185,48 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
 
+    if (interaction.commandName === 'top') {
+      const count = interaction.options.getInteger('count') || 10; // Default to top 10
+      const posFilter = interaction.options.getString('position')?.toUpperCase();
+
+      // 1. Filter out empty rows and apply position filter if requested
+      let filteredPlayers = players.filter(p => p._rawData[1]); // Ensure player name exists
+      
+      if (posFilter) {
+        filteredPlayers = filteredPlayers.filter(p => p._rawData[2]?.toUpperCase() === posFilter);
+      }
+
+      // 2. Sort by Cap Hit (Column G / index 6)
+      const leaderboard = filteredPlayers
+        .map(p => ({
+          team: p._rawData[0] || "FA",
+          name: p._rawData[1],
+          pos: p._rawData[2],
+          hit: parseFloat((p._rawData[6] || "0").replace(/[$,]/g, '')) || 0,
+          hitStr: p._rawData[6] || "$0.00"
+        }))
+        .sort((a, b) => b.hit - a.hit)
+        .slice(0, count);
+
+      if (leaderboard.length === 0) {
+        return await interaction.editReply(`❌ No ${posFilter || ""} players found in the database.`);
+      }
+
+      // 3. Format the list
+      const listText = leaderboard.map((p, i) => 
+        `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.hitStr}**`
+      ).join('\n');
+
+      const topEmbed = new EmbedBuilder()
+        .setTitle(`🏆 League Top ${leaderboard.length} ${posFilter || "Overall"} Earners`)
+        .setColor(0xF1C40F) // Gold color
+        .setDescription(listText)
+        .setFooter({ text: "Data pulled from PlayerList" })
+        .setTimestamp();
+
+      return await interaction.editReply({ embeds: [topEmbed] });
+    }
+    
     if (interaction.commandName === 'team') {
       const teamInput = interaction.options.getString('teamname');
       const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim().includes(teamInput.toLowerCase().trim()));
