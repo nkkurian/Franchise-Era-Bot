@@ -235,7 +235,7 @@ client.on('interactionCreate', async (interaction) => {
       if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
 
       if (matches.length === 1) {
-        return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0], logs)] });
+        return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0])] });
       }
 
       const limitedMatches = matches.slice(0, 5); 
@@ -262,7 +262,7 @@ client.on('interactionCreate', async (interaction) => {
         if (i.user.id !== interaction.user.id) return i.reply({ content: "Not your search!", ephemeral: true });
         const selectedIndex = parseInt(i.customId.replace('select_player_', ''));
         const selectedPlayer = limitedMatches[selectedIndex];
-        await i.update({ content: null, embeds: [createPlayerEmbed(selectedPlayer, logs)], components: [] });
+        await i.update({ content: null, embeds: [createPlayerEmbed(selectedPlayer)], components: [] });
         collector.stop();
       });
 
