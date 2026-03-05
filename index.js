@@ -447,16 +447,13 @@ async function pollSleeper() {
 async function processAndSend(tx, channel, players, logs, idMap) {
   let title = "📝 TRANSACTION";
   let color = 0x2ecc71; 
+  let needsSalaryPing = false; // Track if we need to ping for missing data
 
   if (tx.type === 'trade') {
     title = tx.status === 'pending' ? "🚨 PENDING TRADE - ACTION REQUIRED" : "🤝 TRADE COMPLETED";
     color = tx.status === 'pending' ? 0xFFA500 : 0x2ecc71;
-    
-    if (tx.status === 'pending') {
-        await channel.send("📢 A new trade has been submitted for review!");
-    }
   } else {
-      title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
+    title = tx.type === 'free_agent' ? "🏃 FA PICKUP" : "⏳ WAIVER CLAIM";
   }
 
   const embed = new EmbedBuilder()
@@ -471,16 +468,21 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     return tName;
   };
 
+  // Process Players Added
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
     const tName = initTeam(rId);
-    const d = getDetails(pId, players, logs, idMap);
+    const d = getDetails(pId, players, idMap);
     teamSummaries[tName].adds.push(d.text);
     teamSummaries[tName].net -= d.cap;
+
+    // PING TRIGGER: If cap is 0 or "Unknown", flag it
+    if (d.cap === 0) needsSalaryPing = true;
   }
 
+  // Process Players Dropped
   for (const [pId, rId] of Object.entries(tx.drops || {})) {
     const tName = initTeam(rId);
-    const d = getDetails(pId, players, logs, idMap);
+    const d = getDetails(pId, players, idMap);
     teamSummaries[tName].drops.push(d.text);
     teamSummaries[tName].net += d.cap;
     if (d.isDeadCap) teamSummaries[tName].deadCap += d.cap;
@@ -500,7 +502,9 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     let description = "";
     if (data.adds.length) description += `✅ **In:**\n${data.adds.join('\n')}\n`;
     if (data.drops.length) description += `📤 **Out:**\n${data.drops.join('\n')}\n`;
-    if (data.deadCap > 0) description += `💀 **DEAD CAP WARNING:** $${data.deadCap.toLocaleString()}\n`;
+    
+    // UI Feedback for missing salary
+    if (needsSalaryPing) description += `⚠️ **NOTICE:** Missing salary data for added player.\n`;
 
     const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim() === tName.toLowerCase().trim());
     let capFooter = "📊 *Cap data pending sheet sync*";
@@ -512,7 +516,13 @@ async function processAndSend(tx, channel, players, logs, idMap) {
     embed.addFields({ name: `🏟️ ${tName.toUpperCase()}`, value: `${description}${capFooter}`, inline: false });
   }
 
+  // Final Action: Send embed and ping if data is missing
   await channel.send({ embeds: [embed] });
-} // <--- Added missing brace
+
+  if (needsSalaryPing) {
+    // Replace YOUR_ROLE_ID with the actual ID of the role you want to ping
+    await channel.send("⚠️ <@&1479107336617332787> **Missing Salary Alert:** A transaction occurred with a player who has $0.00 salary in the sheets.");
+  }
+}
 
 client.login(process.env.DISCORD_TOKEN);
