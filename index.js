@@ -106,6 +106,10 @@ const commands = [
       { name: '🧤 Defensive Back (DB)', value: 'DB' },
       { name: '👟 Kicker/Punter (K/P)', value: 'K/P' }
     )),
+  new SlashCommandBuilder()
+    .setName('extension')
+    .setDescription('Check historical contract extensions for a player')
+    .addStringOption(o => o.setName('name').setDescription('Enter player name').setRequired(true)),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -186,6 +190,20 @@ client.on('interactionCreate', async (interaction) => {
   try {
     const { players } = await getSheetData();
 
+    // Add this inside your interactionCreate handler to catch the history button clicks
+    if (interaction.isButton() && interaction.customId.startsWith('view_ext_')) {
+        const playerName = interaction.customId.replace('view_ext_', '');
+        const { logs } = await getSheetData();
+        
+        const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
+        
+        const histEmbed = new EmbedBuilder()
+            .setTitle(`📜 History: ${playerName}`)
+            .setColor(0x9b59b6)
+            .setDescription(history.map(h => `• **${h._rawData[2]}**: ${h._rawData[3]}M (Type: ${h._rawData[1]})`).join('\n'));
+    
+        return await interaction.reply({ embeds: [histEmbed], ephemeral: true });
+    }
     if (interaction.commandName === 'help') {
       const helpEmbed = new EmbedBuilder()
         .setTitle('📖 Franchise Pro Bot Help')
@@ -198,6 +216,44 @@ client.on('interactionCreate', async (interaction) => {
       return await interaction.editReply({ embeds: [helpEmbed] });
     }
 
+    if (interaction.commandName === 'extension') {
+      const inputName = interaction.options.getString('name').toLowerCase();
+      
+      // 1. Fetch fresh data to ensure we have the latest logs
+      const { logs } = await getSheetData();
+
+      // 2. Search Transaction Log (image_329c9c) for the player's name
+      // We assume Column A is Player Name, Column D is Annual Salary, Column E is Bonus Structure
+      const extensionHistory = logs.filter(row => 
+        row._rawData[0]?.toLowerCase().includes(inputName)
+      );
+
+      if (extensionHistory.length === 0) {
+        return await interaction.editReply(`❌ No extension records found for **${inputName}** in the Transaction Log.`);
+      }
+
+      // 3. Format the findings into an embed
+      const extensionEmbed = new EmbedBuilder()
+        .setTitle(`📝 Extension History: ${extensionHistory[0]._rawData[0]}`)
+        .setColor(0x9b59b6) // Purple color
+        .setTimestamp();
+
+      extensionHistory.forEach((entry, index) => {
+        const type = entry._rawData[1] || "N/A";
+        const year = entry._rawData[2] || "N/A";
+        const salary = entry._rawData[3] || "$0.00";
+        const bonus = entry._rawData[4] || "None listed";
+
+        extensionEmbed.addFields({
+          name: `Entry #${index + 1}: ${type} (${year})`,
+          value: `💰 **Annual Salary:** ${salary}M\n✨ **Bonus/Structure:** ${bonus}`,
+          inline: false
+        });
+      });
+
+      return await interaction.editReply({ embeds: [extensionEmbed] });
+    }
+    
     if (interaction.commandName === 'top') {
   const count = interaction.options.getInteger('count') || 10; 
   const posFilter = interaction.options.getString('position') || 'ALL';
@@ -278,44 +334,65 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     if (interaction.commandName === 'salary') {
-      const input = interaction.options.getString('player').toLowerCase();
-      const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
+    const input = interaction.options.getString('player').toLowerCase();
+    const { players, logs } = await getSheetData(); // Ensure logs are loaded
+    const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
 
-      if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
-      // For single matches
-      if (matches.length === 1) {
-        return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0])] });
-      }
-      
-      // Inside the button collector
-      collector.on('collect', async (i) => {
-        // ... existing code ...
-        await i.update({ content: null, embeds: [createPlayerEmbed(selectedPlayer)], components: [] });
-        collector.stop();
-      });
+    if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
 
-      const limitedMatches = matches.slice(0, 5); 
-      const row = new ActionRowBuilder().addComponents(
-        limitedMatches.map((m, index) => 
-          new ButtonBuilder()
-            .setCustomId(`select_player_${index}`)
-            .setLabel(m._rawData[1])
-            .setStyle(ButtonStyle.Primary)
-        )
-      );
+    // Helper to check for extensions and build the response
+    const sendSalaryResponse = async (targetInteraction, playerRow, isUpdate = false) => {
+        const pName = playerRow._rawData[1];
+        const embed = createPlayerEmbed(playerRow);
+        const components = [];
 
-      const response = await interaction.editReply({ content: `🔍 Found multiple players. Select one:`, components: [row] });
-      const collector = response.createMessageComponentCollector({ componentType: ComponentType.Button, time: 30000 });
+        // Check Transaction Log for this specific player
+        const hasHistory = logs.some(l => l._rawData[0]?.toLowerCase() === pName.toLowerCase());
 
-      collector.on('collect', async (i) => {
-        if (i.user.id !== interaction.user.id) return i.reply({ content: "Not your search!", ephemeral: true });
-        const selectedPlayer = limitedMatches[parseInt(i.customId.replace('select_player_', ''))];
-        await i.update({ content: null, embeds: [createPlayerEmbed(selectedPlayer)], components: [] });
-        collector.stop();
-      });
+        if (hasHistory) {
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`view_ext_${pName}`)
+                    .setLabel('View Extension History')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+            components.push(row);
+        }
 
-      return;
+        const payload = { content: null, embeds: [embed], components: components };
+        return isUpdate ? await targetInteraction.update(payload) : await targetInteraction.editReply(payload);
+    };
+
+    // Handle Single Match
+    if (matches.length === 1) {
+        return await sendSalaryResponse(interaction, matches[0]);
     }
+
+    // Handle Multiple Matches (Selection Menu)
+    const limitedMatches = matches.slice(0, 5);
+    const selectionRow = new ActionRowBuilder().addComponents(
+        limitedMatches.map((m, index) =>
+            new ButtonBuilder()
+                .setCustomId(`select_player_${index}`)
+                .setLabel(m._rawData[1])
+                .setStyle(ButtonStyle.Primary)
+        )
+    );
+
+    const response = await interaction.editReply({
+        content: `Multiple players found. Please select one:`,
+        components: [selectionRow]
+    });
+
+    const collector = response.createMessageComponentCollector({ time: 60000 });
+
+    collector.on('collect', async (i) => {
+        const index = parseInt(i.customId.split('_')[2]);
+        const selectedPlayer = limitedMatches[index];
+        await sendSalaryResponse(i, selectedPlayer, true);
+        collector.stop();
+    });
+}
 
     if (interaction.commandName === 'trade') {
       const tA = interaction.options.getString('teama');
