@@ -299,22 +299,20 @@ client.on('interactionCreate', async (interaction) => {
                 const hit = parseFloat((r._rawData[6] || "0").replace(/[$,]/g, ''));
                 totalCapSent += hit;
             
-            // Find Bonus Info for this specific player
-            const tLogRow = logs.find(log => log._rawData[0]?.toLowerCase().includes(r._rawData[1].toLowerCase()));
-            let bonusText = "";
-            if (tLogRow) {
-              const bonus = tLogRow._rawData[4] || ""; 
-              const kick = tLogRow._rawData[5] || "";
-              if (bonus || kick) bonusText = `\n   ┗ ✨ *${kick ? `Kick:${kick} ` : ""}${bonus.slice(0, 30)}...*`;
-            }
+                // Pull from Column K (index 10) instead of searching the Transaction Log
+                let structureText = "";
+                if (r._rawData[10]) {
+                  // Displays the first 50 characters of the contract notes
+                  structureText = `\n    ┗ 📜 *${r._rawData[10].slice(0, 50)}${r._rawData[10].length > 50 ? "..." : ""}*`;
+                }
 
-            playerDetails.push(`• ${r._rawData[1]}: **$${hit.toLocaleString()}**${bonusText}`);
-          } else {
-            playerDetails.push(`• ${pn}: *Not Found*`);
-          }
+                playerDetails.push(`• ${r._rawData[1]}: **$${hit.toLocaleString()}**${structureText}`);
+            } else {
+                playerDetails.push(`• ${pn}: *Not Found*`);
+            }
         });
 
-       return { title: sh ? sh.title : teamName, cap, totalCapSent, playerDetails };
+        return { title: sh ? sh.title : teamName, cap, totalCapSent, playerDetails };
     };
 
     // 🚀 SPEED BOOST: Fetch both sides simultaneously
@@ -360,14 +358,12 @@ async function updateTeamMap() {
   });
 }
 
-const getDetails = (pId, players, logs, idMap) => {
+const getDetails = (pId, players, idMap) => {
   const idRow = idMap.find(row => row._rawData[0] === pId);
   const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
   
-  // Try to find the player in the Sheet
   const pData = players.find(p => p._rawData[1] === name);
   
-  // FALLBACK: If player isn't in the sheet, don't crash! 
   if (!pData) {
     return { 
       name, 
@@ -381,11 +377,14 @@ const getDetails = (pId, players, logs, idMap) => {
   const years = pData._rawData[3] || "0";
   const isDeadCap = pData._rawData[9] === "TRUE" || pData._rawData[9] === true;
   
+  // New: Pull from Column K (index 10) for the automated alerts
+  const structure = pData._rawData[10] ? `\n    ┗ 📜 *${pData._rawData[10]}*` : "";
+  
   return { 
     name, 
     cap, 
     isDeadCap, 
-    text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)` 
+    text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` 
   };
 }; 
 
