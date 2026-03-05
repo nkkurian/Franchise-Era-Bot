@@ -261,11 +261,19 @@ client.on('interactionCreate', async (interaction) => {
         .setColor(0x9b59b6) // Purple color
         .setTimestamp();
 
-      extensionHistory.forEach((entry, index) => {
-        const type = entry._rawData[1] || "N/A";
-        const year = entry._rawData[2] || "N/A";
-        const salary = entry._rawData[3] || "$0.00";
-        const bonus = entry._rawData[4] || "None listed";
+          extensionHistory.forEach((entry) => {
+          const salary = entry._rawData[3]; // Column D
+          const bonus = entry._rawData[4];  // Column E
+        
+          // Only add the field if there is actually data to show
+          if (salary || bonus) {
+            extensionEmbed.addFields({
+              name: `💰 Annual Salary: ${salary ? salary + 'M' : 'Not Listed'}`,
+              value: `✨ **Bonus:** ${bonus || 'None'}`,
+              inline: false
+            });
+          }
+        });
 
         extensionEmbed.addFields({
           name: `Entry #${index + 1}: ${type} (${year})`,
