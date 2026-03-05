@@ -89,10 +89,23 @@ const commands = [
     .addStringOption(o => o.setName('teamb').setDescription('Second team').setRequired(true))
     .addStringOption(o => o.setName('teamb_players').setDescription('Players from second team').setRequired(true)),
   new SlashCommandBuilder()
-    .setName('top')
-    .setDescription('View the highest-paid players in the league')
-    .addIntegerOption(o => o.setName('count').setDescription('Number of players to show (e.g., 10 or 25)'))
-    .addStringOption(o => o.setName('position').setDescription('Filter by position (QB, RB, WR, etc.)')),
+  .setName('top')
+  .setDescription('View highest annual salaries in the league')
+  .addIntegerOption(o => o.setName('count').setDescription('Number of players to show (e.g., 10)'))
+  .addStringOption(o => o.setName('position')
+    .setDescription('Select a specific position or "ALL"')
+    .addChoices(
+      { name: '🌎 All Positions', value: 'ALL' },
+      { name: '🏈 Quarterback (QB)', value: 'QB' },
+      { name: '🏃 Running Back (RB)', value: 'RB' },
+      { name: '👐 Wide Receiver (WR)', value: 'WR' },
+      { name: '🛡️ Tight End (TE)', value: 'TE' },
+      { name: '🧱 Offensive Line (OL)', value: 'OL' },
+      { name: '⚔️ Defensive Line (DL)', value: 'DL' },
+      { name: '🏹 Linebacker (LB)', value: 'LB' },
+      { name: '🧤 Defensive Back (DB)', value: 'DB' },
+      { name: '👟 Kicker/Punter (K/P)', value: 'K/P' }
+    )),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
@@ -186,49 +199,48 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.commandName === 'top') {
-      const count = interaction.options.getInteger('count') || 10; 
-      const posFilter = interaction.options.getString('position')?.toUpperCase();
+  const count = interaction.options.getInteger('count') || 10; 
+  const posFilter = interaction.options.getString('position') || 'ALL';
 
-      // 1. Filter players who have a name
-      let filteredPlayers = players.filter(p => p._rawData[1]); 
-      
-      if (posFilter) {
-        filteredPlayers = filteredPlayers.filter(p => p._rawData[2]?.toUpperCase() === posFilter);
-      }
+  // 1. Initial filter for players with names
+  let filteredPlayers = players.filter(p => p._rawData[1]); 
+  
+  // 2. Apply position filter only if 'ALL' is NOT selected
+  if (posFilter !== 'ALL') {
+    filteredPlayers = filteredPlayers.filter(p => p._rawData[2]?.toUpperCase() === posFilter);
+  }
 
-      // 2. Map and sort by Column E (Yearly Salary / index 4)
-      const leaderboard = filteredPlayers
-        .map(p => {
-          const salaryStr = p._rawData[4] || "$0.00";
-          return {
-            team: p._rawData[0] || "FA",
-            name: p._rawData[1],
-            pos: p._rawData[2],
-            // Convert currency string to number for sorting
-            salaryNum: parseFloat(salaryStr.replace(/[$,]/g, '')) || 0,
-            salaryStr: salaryStr
-          };
-        })
-        .sort((a, b) => b.salaryNum - a.salaryNum)
-        .slice(0, count);
+  // 3. Sort by Column E (Yearly Salary / index 4)
+  const leaderboard = filteredPlayers
+    .map(p => {
+      const salaryStr = p._rawData[4] || "$0.00";
+      return {
+        team: p._rawData[0] || "FA",
+        name: p._rawData[1],
+        pos: p._rawData[2],
+        salaryNum: parseFloat(salaryStr.replace(/[$,]/g, '')) || 0,
+        salaryStr: salaryStr
+      };
+    })
+    .sort((a, b) => b.salaryNum - a.salaryNum)
+    .slice(0, count);
 
-      if (leaderboard.length === 0) {
-        return await interaction.editReply(`❌ No ${posFilter || ""} players found.`);
-      }
+  if (leaderboard.length === 0) {
+    return await interaction.editReply(`❌ No players found for the selection: **${posFilter}**.`);
+  }
 
-      // 3. Format the response
-      const listText = leaderboard.map((p, i) => 
-        `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
-      ).join('\n');
+  const listText = leaderboard.map((p, i) => 
+    `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
+  ).join('\n');
 
-      const topEmbed = new EmbedBuilder()
-        .setTitle(`💰 League Top ${leaderboard.length} ${posFilter || "Overall"} Salaries (Annual)`)
-        .setColor(0x2ecc71)
-        .setDescription(listText)
-        .setTimestamp();
+  const topEmbed = new EmbedBuilder()
+    .setTitle(`💰 League Top ${leaderboard.length} ${posFilter === 'ALL' ? 'Overall' : posFilter} Salaries`)
+    .setColor(0x2ecc71)
+    .setDescription(listText)
+    .setTimestamp();
 
-      return await interaction.editReply({ embeds: [topEmbed] });
-    }
+  return await interaction.editReply({ embeds: [topEmbed] });
+}
     
     if (interaction.commandName === 'team') {
       const teamInput = interaction.options.getString('teamname');
