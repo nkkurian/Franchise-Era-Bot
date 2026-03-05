@@ -420,8 +420,7 @@ async function pollSleeper() {
     allTx.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // Just mark all existing completed/pending moves as "seen" 
-      // so the bot doesn't spam the chat on restart
+      // 1. Mark all current moves (Pending or Complete) as "seen" so they don't post
       allTx.forEach(tx => {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         processedTxIds.add(txKey);
@@ -429,25 +428,16 @@ async function pollSleeper() {
 
       isFirstRun = false;
       console.log("✅ Initialization Complete: Historical moves silenced.");
-      return; // Exit here so it doesn't process anything else this first time
-    }
+      // We stop here for the first run so no historical trades are sent
+      return; 
       
-      // Mark all other COMPLETED moves as seen
-      allTx.forEach(tx => {
-        if (tx.status === 'complete') {
-          processedTxIds.add(`${tx.transaction_id}_${tx.status}`);
-        }
-      });
-    
-
-      isFirstRun = false;
-      console.log("✅ Initialization Complete.");
     } else {
+      // 2. This part only runs on the SECOND check and onwards
       for (const tx of allTx) {
         const txKey = `${tx.transaction_id}_${tx.status}`;
         if (processedTxIds.has(txKey)) continue;
 
-        // Process any trade (Pending or Complete) and FA pickups
+        // Process only NEW moves
         if (tx.type === 'trade' || ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')) {
           await processAndSend(tx, channel, players, logs, idMap);
           processedTxIds.add(txKey);
@@ -455,10 +445,6 @@ async function pollSleeper() {
         }
       }
     }
-  } catch (err) {
-    console.error(`❌ Poller Error:`, err.message);
-  }
-}
 
 async function processAndSend(tx, channel, players, logs, idMap) {
   let title = "📝 TRANSACTION";
