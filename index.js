@@ -241,45 +241,34 @@ client.on('interactionCreate', async (interaction) => {
 
     if (interaction.commandName === 'extension') {
       const inputName = interaction.options.getString('name').toLowerCase();
-      
-      // 1. Fetch fresh data to ensure we have the latest logs
       const { logs } = await getSheetData();
 
-      // 2. Search Transaction Log (image_329c9c) for the player's name
-      // We assume Column A is Player Name, Column D is Annual Salary, Column E is Bonus Structure
+      // Filter logs where Column A matches the name
       const extensionHistory = logs.filter(row => 
         row._rawData[0]?.toLowerCase().includes(inputName)
       );
 
       if (extensionHistory.length === 0) {
-        return await interaction.editReply(`❌ No extension records found for **${inputName}** in the Transaction Log.`);
+        return await interaction.editReply(`❌ No records found for **${inputName}** in the Transaction Log.`);
       }
 
-      // 3. Format the findings into an embed
       const extensionEmbed = new EmbedBuilder()
-        .setTitle(`📝 Extension History: ${extensionHistory[0]._rawData[0]}`)
-        .setColor(0x9b59b6) // Purple color
+        .setTitle(`📝 History: ${extensionHistory[0]._rawData[0]}`)
+        .setColor(0x9b59b6)
         .setTimestamp();
 
-          extensionHistory.forEach((entry) => {
-          const salary = entry._rawData[3]; // Column D
-          const bonus = entry._rawData[4];  // Column E
+      extensionHistory.forEach((entry) => {
+        const salary = entry._rawData[3]; // Column D
+        const bonus = entry._rawData[4];  // Column E
         
-          // Only add the field if there is actually data to show
-          if (salary || bonus) {
-            extensionEmbed.addFields({
-              name: `💰 Annual Salary: ${salary ? salary + 'M' : 'Not Listed'}`,
-              value: `✨ **Bonus:** ${bonus || 'None'}`,
-              inline: false
-            });
-          }
-        });
-
-        extensionEmbed.addFields({
-          name: `Entry #${index + 1}: ${type} (${year})`,
-          value: `💰 **Annual Salary:** ${salary}M\n✨ **Bonus/Structure:** ${bonus}`,
-          inline: false
-        });
+        // Strictly only listing Salary and Bonus
+        if (salary || bonus) {
+          extensionEmbed.addFields({
+            name: `💰 Annual Salary: ${salary ? salary + 'M' : 'N/A'}`,
+            value: `✨ **Bonus:** ${bonus || 'None listed'}`,
+            inline: false
+          });
+        }
       });
 
       return await interaction.editReply({ embeds: [extensionEmbed] });
