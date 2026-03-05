@@ -186,42 +186,45 @@ client.on('interactionCreate', async (interaction) => {
     }
 
     if (interaction.commandName === 'top') {
-      const count = interaction.options.getInteger('count') || 10; // Default to top 10
+      const count = interaction.options.getInteger('count') || 10; 
       const posFilter = interaction.options.getString('position')?.toUpperCase();
 
-      // 1. Filter out empty rows and apply position filter if requested
-      let filteredPlayers = players.filter(p => p._rawData[1]); // Ensure player name exists
+      // 1. Filter players who have a name
+      let filteredPlayers = players.filter(p => p._rawData[1]); 
       
       if (posFilter) {
         filteredPlayers = filteredPlayers.filter(p => p._rawData[2]?.toUpperCase() === posFilter);
       }
 
-      // 2. Sort by Cap Hit (Column G / index 6)
+      // 2. Map and sort by Column E (Yearly Salary / index 4)
       const leaderboard = filteredPlayers
-        .map(p => ({
-          team: p._rawData[0] || "FA",
-          name: p._rawData[1],
-          pos: p._rawData[2],
-          hit: parseFloat((p._rawData[6] || "0").replace(/[$,]/g, '')) || 0,
-          hitStr: p._rawData[6] || "$0.00"
-        }))
-        .sort((a, b) => b.hit - a.hit)
+        .map(p => {
+          const salaryStr = p._rawData[4] || "$0.00";
+          return {
+            team: p._rawData[0] || "FA",
+            name: p._rawData[1],
+            pos: p._rawData[2],
+            // Convert currency string to number for sorting
+            salaryNum: parseFloat(salaryStr.replace(/[$,]/g, '')) || 0,
+            salaryStr: salaryStr
+          };
+        })
+        .sort((a, b) => b.salaryNum - a.salaryNum)
         .slice(0, count);
 
       if (leaderboard.length === 0) {
-        return await interaction.editReply(`❌ No ${posFilter || ""} players found in the database.`);
+        return await interaction.editReply(`❌ No ${posFilter || ""} players found.`);
       }
 
-      // 3. Format the list
+      // 3. Format the response
       const listText = leaderboard.map((p, i) => 
-        `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.hitStr}**`
+        `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
       ).join('\n');
 
       const topEmbed = new EmbedBuilder()
-        .setTitle(`🏆 League Top ${leaderboard.length} ${posFilter || "Overall"} Earners`)
-        .setColor(0xF1C40F) // Gold color
+        .setTitle(`💰 League Top ${leaderboard.length} ${posFilter || "Overall"} Salaries (Annual)`)
+        .setColor(0x2ecc71)
         .setDescription(listText)
-        .setFooter({ text: "Data pulled from PlayerList" })
         .setTimestamp();
 
       return await interaction.editReply({ embeds: [topEmbed] });
