@@ -420,25 +420,17 @@ async function pollSleeper() {
     allTx.sort((a, b) => a.status_updated - b.status_updated);
 
     if (isFirstRun) {
-      // Look for the 3 most recent moves (Completed OR Pending) to show the bot is working
-      const initialMoves = allTx.filter(tx => 
-        (tx.type === 'trade' && (tx.status === 'complete' || tx.status === 'pending')) ||
-        ((tx.type === 'free_agent' || tx.type === 'waiver') && tx.status === 'complete')
-      ).slice(-3);
-
-      console.log(`📥 Initializing: Processing ${initialMoves.length} recent moves...`);
-      // Get current league state to find the correct week
-    const stateRes = await fetch(`https://api.sleeper.app/v1/state/nfl`);
-    const leagueState = await stateRes.json();
-    let week = leagueState.display_week || 1;
-
-    // ADD THIS LINE BELOW:
-      console.log(`📅 Sleeper is reporting: Week ${week}`);
-      for (const tx of initialMoves) {
+      // Just mark all existing completed/pending moves as "seen" 
+      // so the bot doesn't spam the chat on restart
+      allTx.forEach(tx => {
         const txKey = `${tx.transaction_id}_${tx.status}`;
-        await processAndSend(tx, channel, players, logs, idMap);
         processedTxIds.add(txKey);
-      }
+      });
+
+      isFirstRun = false;
+      console.log("✅ Initialization Complete: Historical moves silenced.");
+      return; // Exit here so it doesn't process anything else this first time
+    }
       
       // Mark all other COMPLETED moves as seen
       allTx.forEach(tx => {
