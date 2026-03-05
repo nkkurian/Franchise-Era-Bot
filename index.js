@@ -139,18 +139,13 @@ async function sendStartupTestMessage() {
 }
 
 // --- HELPER: CREATE PLAYER EMBED ---
-function createPlayerEmbed(pRow, logs) {
+function createPlayerEmbed(pRow) {
   const teamName = pRow._rawData[0] || "Free Agent";
   const playerName = pRow._rawData[1];
   const deadCapStatus = pRow._rawData[9] === "TRUE" || pRow._rawData[9] === true ? "✅ Yes" : "❌ No";
-  const tLogRow = logs.find(r => r._rawData[0]?.toLowerCase().includes(playerName.toLowerCase()));
   
-  let bonusDisplay = "None";
-  if (tLogRow) {
-    const bonus = tLogRow._rawData[4] || ""; 
-    const kick = tLogRow._rawData[5] || "";
-    if (bonus || kick) bonusDisplay = `${kick ? `**Kick In:** ${kick}\n` : ""}${bonus ? `**Details:** ${bonus}` : ""}`;
-  }
+  // Pull directly from Column K (index 10)
+  const structure = pRow._rawData[10] || "No additional contract notes.";
 
   return new EmbedBuilder()
     .setTitle(`📊 Player Report: ${playerName} (${teamName})`)
@@ -160,7 +155,7 @@ function createPlayerEmbed(pRow, logs) {
       { name: '🧢 Cap Hit', value: pRow._rawData[6] || "$0.00", inline: true },
       { name: '⏳ Years Left', value: pRow._rawData[3] || "0", inline: true },
       { name: '💀 Dead Cap', value: deadCapStatus, inline: true },
-      { name: '✨ Bonus Info', value: bonusDisplay, inline: false }
+      { name: '📜 Contract Structure', value: structure, inline: false }
     );
 }
 
@@ -225,7 +220,17 @@ client.on('interactionCreate', async (interaction) => {
       const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
 
       if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
-      if (matches.length === 1) return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0])] });
+      // For single matches
+      if (matches.length === 1) {
+        return await interaction.editReply({ embeds: [createPlayerEmbed(matches[0])] });
+      }
+      
+      // Inside the button collector
+      collector.on('collect', async (i) => {
+        // ... existing code ...
+        await i.update({ content: null, embeds: [createPlayerEmbed(selectedPlayer)], components: [] });
+        collector.stop();
+      });
 
       const limitedMatches = matches.slice(0, 5); 
       const row = new ActionRowBuilder().addComponents(
