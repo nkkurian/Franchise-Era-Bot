@@ -79,7 +79,7 @@ app.post('/fa-report', async (req, res) => {
       .setColor(0xFF0000)
       .addFields(
         { name: '⏳ Extensions Remaining', value: `**${extensionsLeft}**`, inline: true },
-        { name: '🛠️ Support', value: `Questions? Ping <@&1479107336617332787>`, inline: false }
+        { name: '🛠️ Errors?', value: `Ping <@&1479107336617332787> to be fixed`, inline: false }
       )
       .setFooter({ text: "Franchise Era Front Office • Official Roster Report" })
       .setTimestamp();
