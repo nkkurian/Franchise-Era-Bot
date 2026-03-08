@@ -349,48 +349,51 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     if (interaction.commandName === 'top') {
-  const count = interaction.options.getInteger('count') || 10; 
-  const posFilter = interaction.options.getString('position') || 'ALL';
+      const count = interaction.options.getInteger('count') || 10; 
+      const posFilter = interaction.options.getString('position') || 'ALL';
 
-  // 1. Initial filter for players with names
-  let filteredPlayers = players.filter(p => p._rawData[1]); 
-  
-  // 2. Apply position filter only if 'ALL' is NOT selected
-  if (posFilter !== 'ALL') {
-    filteredPlayers = filteredPlayers.filter(p => p._rawData[2]?.toUpperCase() === posFilter);
-  }
+      let filteredPlayers = players.filter(p => p._rawData[1]); 
+      
+      if (posFilter !== 'ALL') {
+        filteredPlayers = filteredPlayers.filter(p => p._rawData[2]?.toUpperCase() === posFilter);
+      }
 
-  // 3. Sort by Column E (Yearly Salary / index 4)
-  const leaderboard = filteredPlayers
-    .map(p => {
-      const salaryStr = p._rawData[4] || "$0.00";
-      return {
-        team: p._rawData[0] || "FA",
-        name: p._rawData[1],
-        pos: p._rawData[2],
-        salaryNum: parseFloat(salaryStr.replace(/[$,]/g, '')) || 0,
-        salaryStr: salaryStr
-      };
-    })
-    .sort((a, b) => b.salaryNum - a.salaryNum)
-    .slice(0, count);
+      const leaderboard = filteredPlayers
+        .map(p => {
+          const salaryStr = p._rawData[4] || "$0.00";
+          // FIX: Handle both "$16,500,000" and "16.5M" formats
+          let salaryNum = parseFloat(salaryStr.replace(/[$,]/g, '')) || 0;
+          if (salaryStr.toLowerCase().includes('m') && salaryNum < 1000) {
+            salaryNum *= 1000000;
+          }
 
-  if (leaderboard.length === 0) {
-    return await interaction.editReply(`❌ No players found for the selection: **${posFilter}**.`);
-  }
+          return {
+            team: p._rawData[0] || "FA",
+            name: p._rawData[1],
+            pos: p._rawData[2],
+            salaryNum: salaryNum,
+            salaryStr: salaryStr
+          };
+        })
+        .sort((a, b) => b.salaryNum - a.salaryNum)
+        .slice(0, count);
 
-  const listText = leaderboard.map((p, i) => 
-    `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
-  ).join('\n');
+      if (leaderboard.length === 0) {
+        return await interaction.editReply(`❌ No players found for: **${posFilter}**.`);
+      }
 
-  const topEmbed = new EmbedBuilder()
-    .setTitle(`💰 League Top ${leaderboard.length} ${posFilter === 'ALL' ? 'Overall' : posFilter} Salaries`)
-    .setColor(0x2ecc71)
-    .setDescription(listText)
-    .setTimestamp();
+      const listText = leaderboard.map((p, i) => 
+        `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
+      ).join('\n');
 
-  return await interaction.editReply({ embeds: [topEmbed] });
-}
+      const topEmbed = new EmbedBuilder()
+        .setTitle(`💰 League Top ${leaderboard.length} ${posFilter === 'ALL' ? 'Overall' : posFilter} Salaries`)
+        .setColor(0x2ecc71)
+        .setDescription(listText)
+        .setTimestamp();
+
+      return await interaction.editReply({ embeds: [topEmbed] });
+    }
     
     if (interaction.commandName === 'team') {
       const teamInput = interaction.options.getString('teamname');
@@ -398,8 +401,10 @@ client.on('interactionCreate', async (interaction) => {
 
       if (!sh) return await interaction.editReply(`❌ Could not find a sheet for team: **${teamInput}**`);
 
-      await sh.loadCells('F2');
+      // Load both Cap Space (F2) and Extensions (J2)
+      await sh.loadCells(['F2', 'J2']);
       const capValue = sh.getCellByA1('F2').formattedValue || "$0.00";
+      const extensionsLeft = sh.getCellByA1('J2').value ?? "0";
 
       const teamPlayers = players
         .filter(p => p._rawData[0]?.toLowerCase().trim() === sh.title.toLowerCase().trim())
@@ -419,9 +424,11 @@ client.on('interactionCreate', async (interaction) => {
         .setTitle(`🏟️ Team Report: ${sh.title}`)
         .setColor(0x3498db)
         .addFields(
-          { name: '💰 Current Cap Space', value: `**${capValue}**`, inline: false },
+          { name: '💰 Current Cap Space', value: `**${capValue}**`, inline: true },
+          { name: '⏳ Extensions Left', value: `**${extensionsLeft}**`, inline: true }, // Added this back!
           { name: '🔝 Top 5 Cap Hits', value: earnerList, inline: false }
         )
+        .setFooter({ text: "Use /salary [player] for contract details" })
         .setTimestamp();
 
       return await interaction.editReply({ embeds: [teamEmbed] });
