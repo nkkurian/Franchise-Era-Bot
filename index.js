@@ -26,6 +26,65 @@ const client = new Client({
   ] 
 });
 
+// --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
+app.use(express.json()); // Essential to read the data sent from Google
+
+app.post('/fa-report', async (req, res) => {
+  const { teamName, channelId, ownerPings } = req.body;
+
+  try {
+    console.log(`📡 FA Request Received for: ${teamName}`);
+    
+    // 1. Ensure the sheet is loaded
+    await doc.loadInfo();
+    const teamSheet = doc.sheetsByTitle[teamName];
+
+    if (!teamSheet) {
+      console.error(`❌ Sheet not found for team: ${teamName}`);
+      return res.status(404).send("Team sheet not found.");
+    }
+
+    // 2. Fetch all rows from the team's specific tab
+    const rows = await teamSheet.getRows();
+    
+    // 3. Filter for players entering Free Agency (0 years left)
+    // Based on your previous logic: Column A (0) is Name, B (1) is Pos, C (2) is Years
+    const faPlayers = rows.filter(row => {
+      const years = row._rawData[2]; 
+      const name = row._rawData[0];
+      return name && years === "0";
+    });
+
+    // 4. Format the list for Discord
+    const playerList = faPlayers.length > 0 
+      ? faPlayers.map(p => `• **${p._rawData[0]}** (${p._rawData[1]})`).join('\n')
+      : "✅ All players are currently under contract for 2026.";
+
+    // 5. Send the message via the REAL Bot
+    const channel = await client.channels.fetch(channelId);
+    if (!channel) throw new Error("Channel not found");
+
+    const faEmbed = new EmbedBuilder()
+      .setTitle(`🚨 2026 Expiring Contracts: ${teamName}`)
+      .setDescription(playerList)
+      .setColor(0xFF0000) // Red for expiring/danger
+      .setFooter({ text: "NFFL Front Office • Official Roster Report" })
+      .setTimestamp();
+
+    await channel.send({
+      content: `🚨 Attention ${ownerPings}! 🚨\nYour offseason roster report has arrived.`,
+      embeds: [faEmbed]
+    });
+
+    console.log(`✅ FA Report Posted for ${teamName}`);
+    res.status(200).send("Report Sent Successfully");
+
+  } catch (err) {
+    console.error("❌ FA Webhook Error:", err);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
 // --- CACHE SYSTEM ---
 let cachedPlayers = [];
 let cachedLogs = [];
