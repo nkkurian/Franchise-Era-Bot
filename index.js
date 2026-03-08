@@ -79,6 +79,7 @@ app.post('/fa-report', async (req, res) => {
       .setColor(0xFF0000)
       .addFields(
         { name: '⏳ Extensions Remaining', value: `**${extensionsLeft}**`, inline: true },
+        {name: 'Final Date:', value: 'The last date to resign is March 23. Resign before or they will be dropped'}, 
         { name: '🛠️ Errors?', value: `Ping <@&1479107336617332787> to be fixed`, inline: false }
       )
       .setFooter({ text: "Franchise Era Front Office • Official Roster Report" })
