@@ -317,6 +317,31 @@ function createPlayerEmbed(pRow) {
 // --- INTERACTION HANDLER ---
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
+  if (interaction.isButton()) {
+        // Handle "View Extension History" Button from /salary
+        if (interaction.customId.startsWith('view_ext_')) {
+            // We do NOT defer here because we want an ephemeral reply
+            const playerName = interaction.customId.replace('view_ext_', '');
+            const { logs } = await getSheetData();
+            
+            const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
+            
+            if (history.length === 0) {
+                return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
+            }
+
+            const histEmbed = new EmbedBuilder()
+                .setTitle(`📜 History: ${playerName}`)
+                .setColor(0x9b59b6)
+                .setDescription(history.map(h => `• **${h._rawData[2]}**: ${h._rawData[3]}M (Type: ${h._rawData[1]})`).join('\n'));
+    
+            return await interaction.reply({ embeds: [histEmbed], ephemeral: true });
+        }
+        
+        // Note: 'select_player_' buttons are handled by the collector inside the /salary command logic
+        return; 
+    }
+  
   if (!interaction.isChatInputCommand()) return;
   await interaction.deferReply(); 
   
@@ -519,9 +544,10 @@ client.on('interactionCreate', async (interaction) => {
             components.push(row);
         }
 
-        const payload = { content: null, embeds: [embed], components: components };
-        return isUpdate ? await targetInteraction.update(payload) : await targetInteraction.editReply(payload);
-    };
+               const payload = { content: null, embeds: [embed], components: components };
+                // FIX: Use editReply if not an update, update if it is a button interaction
+                return isUpdate ? await targetInteraction.update(payload) : await targetInteraction.editReply(payload);
+            };
 
     // Handle Single Match
     if (matches.length === 1) {
