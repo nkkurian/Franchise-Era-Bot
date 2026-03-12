@@ -317,63 +317,68 @@ function createPlayerEmbed(pRow) {
 }
 
 // --- INTERACTION HANDLER ---
-// --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
-  // 1. HANDLE BUTTON CLICKS (History & Selection)
-  if (interaction.isButton()) {
-    if (interaction.customId.startsWith('view_ext_')) {
-      const playerName = interaction.customId.replace('view_ext_', '');
-      const { logs } = await getSheetData();
+    // 1. HANDLE BUTTON CLICKS (History & Selection)
+    if (interaction.isButton()) {
+        // Handle the History Button
+        if (interaction.customId.startsWith('view_ext_')) {
+            const playerName = interaction.customId.replace('view_ext_', '');
+            const { logs } = await getSheetData();
+            const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
 
-      const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
+            if (history.length === 0) {
+                return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
+            }
 
-      if (history.length === 0) {
-        return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
-      }
+            const histEmbed = new EmbedBuilder()
+                .setTitle(`📜 History: ${playerName}`)
+                .setColor(0x9b59b6)
+                .setTimestamp();
 
-      const histEmbed = new EmbedBuilder()
-        .setTitle(`📜 History: ${playerName}`)
-        .setColor(0x9b59b6)
-        .setTimestamp();
+            history.forEach((entry) => {
+                const years = entry._rawData[2];  // Column C
+                const salary = entry._rawData[3]; // Column D
+                const bonus = entry._rawData[4];  // Column E
 
-      history.forEach((entry) => {
-        const years = entry._rawData[2];  // Column C
-        const salary = entry._rawData[3]; // Column D
-        const bonus = entry._rawData[4];  // Column E
+                histEmbed.addFields({
+                    name: `📅 Contract Year: ${years ? years + ' yrs' : 'N/A'}`,
+                    value: `💰 **Salary:** ${salary ? salary + 'M' : 'N/A'}\n✨ **Bonus:** ${bonus || 'None listed'}`,
+                    inline: false
+                });
+            });
 
-        histEmbed.addFields({
-          name: `📅 Contract Year: ${years ? years + ' yrs' : 'N/A'}`,
-          value: `💰 **Salary:** ${salary ? salary + 'M' : 'N/A'}\n✨ **Bonus:** ${bonus || 'None listed'}`,
-          inline: false
-        });
-      });
-
-      // Public message using followUp
-      return await interaction.reply({ embeds: [histEmbed] });
+            // This is now PUBLIC (No ephemeral tag)
+            return await interaction.reply({ embeds: [histEmbed] });
+        }
+        // Selection buttons (from multiple search results) are handled by the collector in the /salary logic below
+        return; 
     }
-    // No return here so selection buttons can still be handled by collectors below
-  }
-  
-  if (!interaction.isChatInputCommand()) return;
-  await interaction.deferReply();
 
-  try {
-    const { players, logs } = await getSheetData();
-
-    // Add this inside your interactionCreate handler to catch the history button clicks
-    if (interaction.isButton() && interaction.customId.startsWith('view_ext_')) {
-        const playerName = interaction.customId.replace('view_ext_', '');
-        const { logs } = await getSheetData();
-        
-        const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
-        
-        const histEmbed = new EmbedBuilder()
-            .setTitle(`📜 History: ${playerName}`)
-            .setColor(0x9b59b6)
-            .setDescription(history.map(h => `• **${h._rawData[2]}**: ${h._rawData[3]}M (Type: ${h._rawData[1]})`).join('\n'));
+    if (!interaction.isChatInputCommand()) return;
     
-        return await interaction.reply({ embeds: [histEmbed], ephemeral: true });
-    }
+    // 2. HANDLE SLASH COMMANDS
+    await interaction.deferReply();
+
+    try {
+        const { players, logs } = await getSheetData();
+
+        if (interaction.commandName === 'help') {
+            const helpEmbed = new EmbedBuilder()
+                .setTitle('📚 Franchise Pro Bot: Command Guide')
+                .setColor(0x00AAFF)
+                .setDescription('Manage league salaries and contracts.')
+                .addFields(
+                    { name: '🤝 `/trade`', value: 'Analyze trade cap impact.' },
+                    { name: '💰 `/salary`', value: 'Check player contract & history.' },
+                    { name: '🔄 `/extension`', value: 'View historical log data.' },
+                    { name: '📊 `/team`', value: 'View team cap and top earners.' },
+                    { name: '🏆 `/top`', value: 'View highest salaries in the league.' }
+                )
+                .setFooter({ text: `Tracking ${players.length} players and ${logs.length} transactions.` })
+                .setTimestamp();
+
+            return await interaction.editReply({ embeds: [helpEmbed] });
+        }
     if (interaction.commandName === 'help') {
       const { players, logs } = await getSheetData();
       
