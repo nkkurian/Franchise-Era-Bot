@@ -345,19 +345,19 @@ client.on('interactionCreate', async (interaction) => {
   //   }
 
     // 2. HANDLE MODAL SUBMISSIONS
-    if (interaction.isModalSubmit()) {
-        // Member DM Login
-        if (interaction.customId === 'userLoginModal') {
-            const pass = interaction.fields.getTextInputValue('dmPassword');
-            if (pass === 'Franchise2026') { // Set your DM password here
-                return await interaction.reply({ 
-                    content: "✅ Access Granted. You can now use commands in DMs for this session.", 
-                    ephemeral: true 
-                });
-            } else {
-                return await interaction.reply({ content: "❌ Incorrect password.", ephemeral: true });
-            }
-        }
+    // if (interaction.isModalSubmit()) {
+    //     // Member DM Login
+    //     if (interaction.customId === 'userLoginModal') {
+    //         const pass = interaction.fields.getTextInputValue('dmPassword');
+    //         if (pass === 'Franchise2026') { // Set your DM password here
+    //             return await interaction.reply({ 
+    //                 content: "✅ Access Granted. You can now use commands in DMs for this session.", 
+    //                 ephemeral: true 
+    //             });
+    //         } else {
+    //             return await interaction.reply({ content: "❌ Incorrect password.", ephemeral: true });
+    //         }
+    //     }
   
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'adminLoginModal') {
