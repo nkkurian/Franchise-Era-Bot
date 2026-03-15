@@ -320,6 +320,13 @@ function createPlayerEmbed(pRow) {
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
     // 1. HANDLE BUTTON CLICKS (History & Selection)
+  if (!interaction.guild) {
+        return await interaction.reply({ 
+            content: "❌ My commands only work inside the league server.", 
+            ephemeral: true 
+        }).catch(() => null); // catch in case DM replies are totally disabled
+    }
+  
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'adminLoginModal') {
       const password = interaction.fields.getTextInputValue('adminPassword');
