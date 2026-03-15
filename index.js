@@ -26,6 +26,26 @@ const client = new Client({
   ] 
 });
 
+const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require('discord.js');
+
+if (interaction.commandName === 'admin') {
+  const modal = new ModalBuilder()
+    .setCustomId('adminLoginModal')
+    .setTitle('Admin Access');
+
+  const passwordInput = new TextInputBuilder()
+    .setCustomId('adminPassword')
+    .setLabel("Enter Admin Password")
+    .setStyle(TextInputStyle.Short) // Single line input
+    .setPlaceholder('Enter secret key...')
+    .setRequired(true);
+
+  const firstActionRow = new ActionRowBuilder().addComponents(passwordInput);
+  modal.addComponents(firstActionRow);
+
+  await interaction.showModal(modal);
+}
+
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
 app.use(express.json()); // Essential to read the data sent from Google
 
@@ -319,7 +339,45 @@ function createPlayerEmbed(pRow) {
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
     // 1. HANDLE BUTTON CLICKS (History & Selection)
-    if (interaction.isButton()) {
+  if (interaction.isModalSubmit()) {
+  if (interaction.customId === 'adminLoginModal') {
+    const password = interaction.fields.getTextInputValue('adminPassword');
+
+    // CHANGE THIS to whatever password you want
+    if (password === 'LeagueAdmin2026') {
+      
+      const adminEmbed = new EmbedBuilder()
+        .setTitle('🛠️ Admin Command Center')
+        .setDescription('Authentication successful. Select an admin action below.')
+        .setColor(0xe74c3c);
+
+      // Example Admin Buttons
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('run_sync')
+          .setLabel('Force Roster Sync')
+          .setStyle(ButtonStyle.Danger),
+        new ButtonBuilder()
+          .setCustomId('clear_ghosts')
+          .setLabel('Clear All Ghosts')
+          .setStyle(ButtonStyle.Secondary)
+      );
+
+      return await interaction.reply({ 
+        embeds: [adminEmbed], 
+        components: [row], 
+        ephemeral: true // Only YOU can see this menu
+      });
+
+    } else {
+      return await interaction.reply({ 
+        content: '❌ Incorrect password. Access denied.', 
+        ephemeral: true 
+      });
+    }
+  }
+}  
+  if (interaction.isButton()) {
         // Handle the History Button
         if (interaction.customId.startsWith('view_ext_')) {
             const playerName = interaction.customId.replace('view_ext_', '');
