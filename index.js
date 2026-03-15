@@ -360,7 +360,21 @@ client.on('interactionCreate', async (interaction) => {
 }  
   if (interaction.isButton()) {
         // Handle the History Button
-        if (interaction.customId.startsWith('view_ext_')) {
+    if (interaction.customId === 'trigger_admin_modal') {
+        const modal = new ModalBuilder()
+            .setCustomId('adminLoginModal')
+            .setTitle('Commissioner Authentication');
+
+        const passwordInput = new TextInputBuilder()
+            .setCustomId('adminPassword')
+            .setLabel("Enter Admin Password")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
+        return await interaction.showModal(modal);
+    }
+    if (interaction.customId.startsWith('view_ext_')) {
             const playerName = interaction.customId.replace('view_ext_', '');
             const { logs } = await getSheetData();
             const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
@@ -791,5 +805,29 @@ async function processAndSend(tx, channel, players, idMap) {
   await channel.send({ embeds: [embed] });
   if (needsSalaryPing) await channel.send("⚠️ <@&1479107336617332787> **Missing Salary Alert:** A transaction occurred with $0.00 salary in the sheets.");
 }
+
+client.on('messageCreate', async (message) => {
+    // 1. Only respond to your secret phrase
+    if (message.content.toLowerCase() === '!vault' && !message.author.bot) {
+        
+        // 2. Delete your message immediately so others don't see the command
+        await message.delete().catch(() => null); 
+
+        // 3. Send a "Ghost Button" that only the person who typed !vault can see
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('trigger_admin_modal')
+                .setLabel('🔓 Open Admin Vault')
+                .setStyle(ButtonStyle.Danger)
+        );
+
+        // This message is ephemeral (invisible to others)
+        return await message.channel.send({ 
+            content: "🔒 **Secure Access Point Detected.** Click below to authenticate.", 
+            components: [row],
+            ephemeral: true 
+        });
+    }
+});
 
 client.login(process.env.DISCORD_TOKEN);
