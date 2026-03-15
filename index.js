@@ -360,59 +360,63 @@ client.on('interactionCreate', async (interaction) => {
     //     }
   
   if (interaction.isModalSubmit()) {
-    if (interaction.customId === 'adminLoginModal') {
-      const password = interaction.fields.getTextInputValue('adminPassword');
-  
-      // CHANGE THIS to whatever password you want
-      if (password === 'LeagueAdmin2026') {
-        
-        const adminEmbed = new EmbedBuilder()
-          .setTitle('🛠️ Admin Command Center')
-          .setDescription('Authentication successful. Select an admin action below.')
-          .setColor(0xe74c3c);
-  
-        // Example Admin Buttons
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId('run_sync')
-            .setLabel('Force Roster Sync')
-            .setStyle(ButtonStyle.Danger),
-          new ButtonBuilder()
-            .setCustomId('clear_ghosts')
-            .setLabel('Clear All Ghosts')
-            .setStyle(ButtonStyle.Secondary)
-        );
-  
-        return await interaction.reply({ 
-          embeds: [adminEmbed], 
-          components: [row], 
-          ephemeral: true // Only YOU can see this menu
-        });
+    if (interaction.isModalSubmit()) {
+  if (interaction.customId === 'adminLoginModal') {
+    const password = interaction.fields.getTextInputValue('adminPassword');
 
-    } else {
+    if (password === 'LeagueAdmin2026') {
+      const adminEmbed = new EmbedBuilder()
+        .setTitle('🛠️ Admin Command Center')
+        .setDescription('Authentication successful. Choose an automated task below.')
+        .setColor(0xe74c3c);
+
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId('run_sync')
+          .setLabel('🔄 Sync Sheets & Reload Cache')
+          .setStyle(ButtonStyle.Danger)
+      );
+
       return await interaction.reply({ 
-        content: '❌ Incorrect password. Access denied.', 
+        embeds: [adminEmbed], 
+        components: [row], 
+        ephemeral: true 
+      });
+    } else {
+      return await interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
+    }
+  }
+} 
+  if (interaction.isButton()) {
+  if (interaction.customId === 'run_sync') {
+    await interaction.deferUpdate(); // Prevents "Interaction Failed" error
+
+    try {
+      // 1. Pings your Google Apps Script to run the backend sync
+      // Replace with your actual Deployed Web App URL
+      const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL';
+      await fetch(GAS_URL);
+
+      // 2. Force the Bot to dump the old cache and fetch new data
+      lastFetchTime = 0; 
+      cachedPlayers = []; 
+      const { players } = await getSheetData();
+
+      return await interaction.followUp({ 
+        content: `✅ **Sync Complete.** Google Apps Script triggered and **${players.length}** players reloaded into bot memory.`, 
+        ephemeral: true 
+      });
+    } catch (err) {
+      console.error("Sync Error:", err);
+      return await interaction.followUp({ 
+        content: "⚠️ Connection to Google Apps Script failed. Check your Web App URL.", 
         ephemeral: true 
       });
     }
   }
-}  
-  if (interaction.isButton()) {
-        // Handle the History Button
-    if (interaction.customId === 'trigger_admin_modal') {
-        const modal = new ModalBuilder()
-            .setCustomId('adminLoginModal')
-            .setTitle('Commissioner Authentication');
-
-        const passwordInput = new TextInputBuilder()
-            .setCustomId('adminPassword')
-            .setLabel("Enter Admin Password")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
-        return await interaction.showModal(modal);
-    }
+  
+  // (Your existing view_ext_ button logic follows below...)
+}
   // } 
     if (interaction.customId.startsWith('view_ext_')) {
             const playerName = interaction.customId.replace('view_ext_', '');
@@ -446,6 +450,7 @@ client.on('interactionCreate', async (interaction) => {
         // Selection buttons (from multiple search results) are handled by the collector in the /salary logic below
         return; 
     }
+} 
 
     if (!interaction.isChatInputCommand()) return;
       if (interaction.commandName === 'admin') {
