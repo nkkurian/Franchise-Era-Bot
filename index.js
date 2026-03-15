@@ -450,90 +450,71 @@ client.on('interactionCreate', async (interaction) => {
     }
     
     if (interaction.commandName === 'top') {
-      const count = interaction.options.getInteger('count') || 10; 
-      const posFilter = interaction.options.getString('position') || 'ALL';
+  const count = interaction.options.getInteger('count') || 10; 
+  const posFilter = interaction.options.getString('position') || 'ALL';
 
-      let filteredPlayers = players.filter(p => p._rawData[1]); 
+  let filteredPlayers = players.filter(p => p._rawData[1]); 
+  
+  if (posFilter !== 'ALL') {
+    filteredPlayers = filteredPlayers.filter(p => {
+      const playerPos = p._rawData[2]?.toUpperCase();
       
-      if (posFilter !== 'ALL') {
-        filteredPlayers = filteredPlayers.filter(p => p._rawData[2]?.toUpperCase() === posFilter);
+      // Handle Defensive Line grouping
+      if (posFilter === 'DL') {
+        return ['DL', 'DE', 'DT'].includes(playerPos);
+      }
+      
+      // Handle Defensive Back grouping
+      if (posFilter === 'DB') {
+        return ['DB', 'CB', 'S'].includes(playerPos);
+      }
+      
+      // Standard exact match for QB, RB, WR, TE, LB, K
+      return playerPos === posFilter;
+    });
+  }
+
+  const leaderboard = filteredPlayers
+    .map(p => {
+      const salaryStr = p._rawData[4] || "$0.00";
+      let salaryNum = parseFloat(salaryStr.replace(/[$,]/g, '')) || 0;
+      if (salaryStr.toLowerCase().includes('m') && salaryNum < 1000) {
+        salaryNum *= 1000000;
       }
 
-      const leaderboard = filteredPlayers
-        .map(p => {
-          const salaryStr = p._rawData[4] || "$0.00";
-          // FIX: Handle both "$16,500,000" and "16.5M" formats
-          let salaryNum = parseFloat(salaryStr.replace(/[$,]/g, '')) || 0;
-          if (salaryStr.toLowerCase().includes('m') && salaryNum < 1000) {
-            salaryNum *= 1000000;
-          }
+      return {
+        team: p._rawData[0] || "FA",
+        name: p._rawData[1],
+        pos: p._rawData[2],
+        salaryNum: salaryNum,
+        salaryStr: salaryStr
+      };
+    })
+    .sort((a, b) => b.salaryNum - a.salaryNum)
+    .slice(0, count);
 
-          return {
-            team: p._rawData[0] || "FA",
-            name: p._rawData[1],
-            pos: p._rawData[2],
-            salaryNum: salaryNum,
-            salaryStr: salaryStr
-          };
-        })
-        .sort((a, b) => b.salaryNum - a.salaryNum)
-        .slice(0, count);
+  if (leaderboard.length === 0) {
+    return await interaction.editReply(`❌ No players found for: **${posFilter}**.`);
+  }
 
-      if (leaderboard.length === 0) {
-        return await interaction.editReply(`❌ No players found for: **${posFilter}**.`);
-      }
+  const listText = leaderboard.map((p, i) => 
+    `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
+  ).join('\n');
 
-      const listText = leaderboard.map((p, i) => 
-        `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
-      ).join('\n');
+  // Dynamic Title logic for the embed
+  let displayPos = posFilter;
+  if (posFilter === 'DL') displayPos = 'DL/DE/DT';
+  if (posFilter === 'DB') displayPos = 'DB/CB/S';
+  if (posFilter === 'ALL') displayPos = 'Overall';
 
-      const topEmbed = new EmbedBuilder()
-        .setTitle(`💰 League Top ${leaderboard.length} ${posFilter === 'ALL' ? 'Overall' : posFilter} Salaries`)
-        .setColor(0x2ecc71)
-        .setDescription(listText)
-        .setTimestamp();
+  const topEmbed = new EmbedBuilder()
+    .setTitle(`💰 League Top ${leaderboard.length} ${displayPos} Salaries`)
+    .setColor(0x2ecc71)
+    .setDescription(listText)
+    .setTimestamp();
 
-      return await interaction.editReply({ embeds: [topEmbed] });
-    }
-    
-    if (interaction.commandName === 'team') {
-      const teamInput = interaction.options.getString('teamname');
-      const sh = doc.sheetsByIndex.find(s => s.title.toLowerCase().trim().includes(teamInput.toLowerCase().trim()));
-
-      if (!sh) return await interaction.editReply(`❌ Could not find a sheet for team: **${teamInput}**`);
-
-      // Load both Cap Space (F2) and Extensions (J2)
-      await sh.loadCells(['F2', 'J2']);
-      const capValue = sh.getCellByA1('F2').formattedValue || "$0.00";
-      const extensionsLeft = sh.getCellByA1('J2').value ?? "0";
-
-      const teamPlayers = players
-        .filter(p => p._rawData[0]?.toLowerCase().trim() === sh.title.toLowerCase().trim())
-        .map(p => ({
-          name: p._rawData[1],
-          hit: parseFloat((p._rawData[6] || "0").replace(/[$,]/g, '')) || 0,
-          hitStr: p._rawData[6] || "$0.00"
-        }))
-        .sort((a, b) => b.hit - a.hit)
-        .slice(0, 5);
-
-      const earnerList = teamPlayers.length > 0 
-        ? teamPlayers.map((p, i) => `${i+1}. **${p.name}**: ${p.hitStr}`).join('\n')
-        : "No players found on roster.";
-
-      const teamEmbed = new EmbedBuilder()
-        .setTitle(`🏟️ Team Report: ${sh.title}`)
-        .setColor(0x3498db)
-        .addFields(
-          { name: '💰 Current Cap Space', value: `**${capValue}**`, inline: true },
-          { name: '⏳ Extensions Left', value: `**${extensionsLeft}**`, inline: true }, // Added this back!
-          { name: '🔝 Top 5 Cap Hits', value: earnerList, inline: false }
-        )
-        .setFooter({ text: "Use /salary [player] for contract details" })
-        .setTimestamp();
-
-      return await interaction.editReply({ embeds: [teamEmbed] });
-    }
+  return await interaction.editReply({ embeds: [topEmbed] });
+}
     
     if (interaction.commandName === 'salary') {
       const input = interaction.options.getString('player').toLowerCase();
