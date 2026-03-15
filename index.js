@@ -27,24 +27,6 @@ const client = new Client({
   ] 
 });
 
-if (interaction.commandName === 'admin') {
-  const modal = new ModalBuilder()
-    .setCustomId('adminLoginModal')
-    .setTitle('Admin Access');
-
-  const passwordInput = new TextInputBuilder()
-    .setCustomId('adminPassword')
-    .setLabel("Enter Admin Password")
-    .setStyle(TextInputStyle.Short) // Single line input
-    .setPlaceholder('Enter secret key...')
-    .setRequired(true);
-
-  const firstActionRow = new ActionRowBuilder().addComponents(passwordInput);
-  modal.addComponents(firstActionRow);
-
-  await interaction.showModal(modal);
-}
-
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
 app.use(express.json()); // Essential to read the data sent from Google
 
