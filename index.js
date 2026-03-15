@@ -413,6 +413,7 @@ client.on('interactionCreate', async (interaction) => {
         modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
         return await interaction.showModal(modal);
     }
+  } 
     if (interaction.customId.startsWith('view_ext_')) {
             const playerName = interaction.customId.replace('view_ext_', '');
             const { logs } = await getSheetData();
