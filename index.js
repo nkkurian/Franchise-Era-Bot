@@ -320,29 +320,29 @@ function createPlayerEmbed(pRow) {
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
     // 1. HANDLE BUTTON CLICKS (History & Selection)
-  if (!interaction.guild) {
-        // Allow the login modal and password submission to go through
-        const isLoginAttempt = interaction.isModalSubmit() && interaction.customId === 'userLoginModal';
-        const isTriggeringLogin = interaction.isChatInputCommand() || interaction.isButton();
+  // if (!interaction.guild) {
+  //       // Allow the login modal and password submission to go through
+  //       const isLoginAttempt = interaction.isModalSubmit() && interaction.customId === 'userLoginModal';
+  //       const isTriggeringLogin = interaction.isChatInputCommand() || interaction.isButton();
 
-        // If they aren't authenticated yet (you could use a Set or Database to track this)
-        // For simplicity, let's just force a Modal if they try to use a command in DMs
-        if (isTriggeringLogin) {
-            const modal = new ModalBuilder()
-                .setCustomId('userLoginModal')
-                .setTitle('DM Access Required');
+  //       // If they aren't authenticated yet (you could use a Set or Database to track this)
+  //       // For simplicity, let's just force a Modal if they try to use a command in DMs
+  //       if (isTriggeringLogin) {
+  //           const modal = new ModalBuilder()
+  //               .setCustomId('userLoginModal')
+  //               .setTitle('DM Access Required');
 
-            const passInput = new TextInputBuilder()
-                .setCustomId('dmPassword')
-                .setLabel("Enter Member Password")
-                .setStyle(TextInputStyle.Short)
-                .setPlaceholder("Password required for DM use...")
-                .setRequired(true);
+  //           const passInput = new TextInputBuilder()
+  //               .setCustomId('dmPassword')
+  //               .setLabel("Enter Member Password")
+  //               .setStyle(TextInputStyle.Short)
+  //               .setPlaceholder("Password required for DM use...")
+  //               .setRequired(true);
 
-            modal.addComponents(new ActionRowBuilder().addComponents(passInput));
-            return await interaction.showModal(modal);
-        }
-    }
+  //           modal.addComponents(new ActionRowBuilder().addComponents(passInput));
+  //           return await interaction.showModal(modal);
+  //       }
+  //   }
 
     // 2. HANDLE MODAL SUBMISSIONS
     if (interaction.isModalSubmit()) {
@@ -413,7 +413,7 @@ client.on('interactionCreate', async (interaction) => {
         modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
         return await interaction.showModal(modal);
     }
-  } 
+  // } 
     if (interaction.customId.startsWith('view_ext_')) {
             const playerName = interaction.customId.replace('view_ext_', '');
             const { logs } = await getSheetData();
