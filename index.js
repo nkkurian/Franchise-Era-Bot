@@ -321,11 +321,43 @@ function createPlayerEmbed(pRow) {
 client.on('interactionCreate', async (interaction) => {
     // 1. HANDLE BUTTON CLICKS (History & Selection)
   if (!interaction.guild) {
-        return await interaction.reply({ 
-            content: "❌ My commands only work inside the league server.", 
-            ephemeral: true 
-        }).catch(() => null); // catch in case DM replies are totally disabled
+        // Allow the login modal and password submission to go through
+        const isLoginAttempt = interaction.isModalSubmit() && interaction.customId === 'userLoginModal';
+        const isTriggeringLogin = interaction.isChatInputCommand() || interaction.isButton();
+
+        // If they aren't authenticated yet (you could use a Set or Database to track this)
+        // For simplicity, let's just force a Modal if they try to use a command in DMs
+        if (isTriggeringLogin) {
+            const modal = new ModalBuilder()
+                .setCustomId('userLoginModal')
+                .setTitle('DM Access Required');
+
+            const passInput = new TextInputBuilder()
+                .setCustomId('dmPassword')
+                .setLabel("Enter Member Password")
+                .setStyle(TextInputStyle.Short)
+                .setPlaceholder("Password required for DM use...")
+                .setRequired(true);
+
+            modal.addComponents(new ActionRowBuilder().addComponents(passInput));
+            return await interaction.showModal(modal);
+        }
     }
+
+    // 2. HANDLE MODAL SUBMISSIONS
+    if (interaction.isModalSubmit()) {
+        // Member DM Login
+        if (interaction.customId === 'userLoginModal') {
+            const pass = interaction.fields.getTextInputValue('dmPassword');
+            if (pass === 'Franchise2026') { // Set your DM password here
+                return await interaction.reply({ 
+                    content: "✅ Access Granted. You can now use commands in DMs for this session.", 
+                    ephemeral: true 
+                });
+            } else {
+                return await interaction.reply({ content: "❌ Incorrect password.", ephemeral: true });
+            }
+        }
   
   if (interaction.isModalSubmit()) {
     if (interaction.customId === 'adminLoginModal') {
