@@ -389,6 +389,20 @@ client.on('interactionCreate', async (interaction) => {
   } 
   
   if (interaction.isButton()) {
+    if (interaction.customId === 'trigger_admin_modal') {
+        const modal = new ModalBuilder()
+            .setCustomId('adminLoginModal')
+            .setTitle('Admin Access');
+
+        const passwordInput = new TextInputBuilder()
+            .setCustomId('adminPassword')
+            .setLabel("Enter Admin Password")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
+        return await interaction.showModal(modal);
+    }
     if (interaction.customId === 'run_sync') {
       await interaction.deferUpdate(); // Prevents "Interaction Failed" error
   
@@ -876,13 +890,9 @@ async function processAndSend(tx, channel, players, idMap) {
 }
 
 client.on('messageCreate', async (message) => {
-    // 1. Only respond to your secret phrase
     if (message.content.toLowerCase() === '!vault' && !message.author.bot) {
-        
-        // 2. Delete your message immediately so others don't see the command
         await message.delete().catch(() => null); 
 
-        // 3. Send a "Ghost Button" that only the person who typed !vault can see
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('trigger_admin_modal')
@@ -890,12 +900,15 @@ client.on('messageCreate', async (message) => {
                 .setStyle(ButtonStyle.Danger)
         );
 
-        // This message is ephemeral (invisible to others)
-        return await message.channel.send({ 
-            content: "🔒 **Secure Access Point Detected.** Click below to authenticate.", 
-            components: [row],
-            ephemeral: true 
+        // NOTE: This cannot be ephemeral because it's a standard message.
+        // It will be visible to everyone until the admin clicks it.
+        const vaultMsg = await message.channel.send({ 
+            content: "🔒 **Secure Access Point Detected.**", 
+            components: [row] 
         });
+
+        // Optional: Auto-delete the button after 30 seconds so it doesn't stay in the chat
+        // setTimeout(() => vaultMsg.delete().catch(() => null), 30000);
     }
 });
 
