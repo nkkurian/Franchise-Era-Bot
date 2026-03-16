@@ -385,8 +385,9 @@ client.on('interactionCreate', async (interaction) => {
     } else {
       return await interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
+  }
   } 
-}  
+  
   if (interaction.isButton()) {
     if (interaction.customId === 'run_sync') {
       await interaction.deferUpdate(); // Prevents "Interaction Failed" error
