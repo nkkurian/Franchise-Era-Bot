@@ -388,68 +388,68 @@ client.on('interactionCreate', async (interaction) => {
   } 
 }  
   if (interaction.isButton()) {
-  if (interaction.customId === 'run_sync') {
-    await interaction.deferUpdate(); // Prevents "Interaction Failed" error
-
-    try {
-      // 1. Pings your Google Apps Script to run the backend sync
-      // Replace with your actual Deployed Web App URL
-      const GAS_URL = 'https://script.google.com/macros/s/AKfycbx5B3peiWwgfv6KRvrp71z1u2bQiByv8bMCO4XhHjFcsmttCnu3eW70_H2fFmf5Pn24Mw/exec';
-      await fetch(GAS_URL);
-
-      // 2. Force the Bot to dump the old cache and fetch new data
-      lastFetchTime = 0; 
-      cachedPlayers = []; 
-      const { players } = await getSheetData();
-
-      return await interaction.followUp({ 
-        content: `✅ **Sync Complete.** Google Apps Script triggered and **${players.length}** players reloaded into bot memory.`, 
-        ephemeral: true 
-      });
-    } catch (err) {
-      console.error("Sync Error:", err);
-      return await interaction.followUp({ 
-        content: "⚠️ Connection to Google Apps Script failed. Check your Web App URL.", 
-        ephemeral: true 
-      });
-    }
+    if (interaction.customId === 'run_sync') {
+      await interaction.deferUpdate(); // Prevents "Interaction Failed" error
   
+      try {
+        // 1. Pings your Google Apps Script to run the backend sync
+        // Replace with your actual Deployed Web App URL
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbx5B3peiWwgfv6KRvrp71z1u2bQiByv8bMCO4XhHjFcsmttCnu3eW70_H2fFmf5Pn24Mw/exec';
+        await fetch(GAS_URL);
   
-  // (Your existing view_ext_ button logic follows below...)
-
-  // } 
-  if (interaction.customId.startsWith('view_ext_')) {
-            const playerName = interaction.customId.replace('view_ext_', '');
-            const { logs } = await getSheetData();
-            const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
-
-            if (history.length === 0) {
-                return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
-            }
-
-            const histEmbed = new EmbedBuilder()
-                .setTitle(`📜 History: ${playerName}`)
-                .setColor(0x9b59b6)
-                .setTimestamp();
-
-            history.forEach((entry) => {
-                const years = entry._rawData[2];  // Column C
-                const salary = entry._rawData[3]; // Column D
-                const bonus = entry._rawData[4];  // Column E
-
-                histEmbed.addFields({
-                    name: `📅 Contract Year: ${years ? years + ' yrs' : 'N/A'}`,
-                    value: `💰 **Salary:** ${salary ? salary + 'M' : 'N/A'}\n✨ **Bonus:** ${bonus || 'None listed'}`,
-                    inline: false
-                });
-            });
-
-            // This is now PUBLIC (No ephemeral tag)
-            return await interaction.reply({ embeds: [histEmbed] });
-        }
-        // Selection buttons (from multiple search results) are handled by the collector in the /salary logic below
-        return; 
-  } 
+        // 2. Force the Bot to dump the old cache and fetch new data
+        lastFetchTime = 0; 
+        cachedPlayers = []; 
+        const { players } = await getSheetData();
+  
+        return await interaction.followUp({ 
+          content: `✅ **Sync Complete.** Google Apps Script triggered and **${players.length}** players reloaded into bot memory.`, 
+          ephemeral: true 
+        });
+      } catch (err) {
+        console.error("Sync Error:", err);
+        return await interaction.followUp({ 
+          content: "⚠️ Connection to Google Apps Script failed. Check your Web App URL.", 
+          ephemeral: true 
+        });
+      }
+    
+    
+    // (Your existing view_ext_ button logic follows below...)
+  
+    // } 
+    elseif (interaction.customId.startsWith('view_ext_')) {
+              const playerName = interaction.customId.replace('view_ext_', '');
+              const { logs } = await getSheetData();
+              const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
+  
+              if (history.length === 0) {
+                  return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
+              }
+  
+              const histEmbed = new EmbedBuilder()
+                  .setTitle(`📜 History: ${playerName}`)
+                  .setColor(0x9b59b6)
+                  .setTimestamp();
+  
+              history.forEach((entry) => {
+                  const years = entry._rawData[2];  // Column C
+                  const salary = entry._rawData[3]; // Column D
+                  const bonus = entry._rawData[4];  // Column E
+  
+                  histEmbed.addFields({
+                      name: `📅 Contract Year: ${years ? years + ' yrs' : 'N/A'}`,
+                      value: `💰 **Salary:** ${salary ? salary + 'M' : 'N/A'}\n✨ **Bonus:** ${bonus || 'None listed'}`,
+                      inline: false
+                  });
+              });
+  
+              // This is now PUBLIC (No ephemeral tag)
+              return await interaction.reply({ embeds: [histEmbed] });
+          }
+          // Selection buttons (from multiple search results) are handled by the collector in the /salary logic below
+          return; 
+    } 
   } 
 
     if (!interaction.isChatInputCommand()) return;
@@ -469,7 +469,7 @@ client.on('interactionCreate', async (interaction) => {
 
         return await interaction.showModal(modal);
     }
-  } 
+   
 
     // Defer for all other commands
     await interaction.deferReply();
