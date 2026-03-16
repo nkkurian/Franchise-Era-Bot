@@ -360,7 +360,7 @@ client.on('interactionCreate', async (interaction) => {
     //     }
   
   if (interaction.isModalSubmit()) {
-    if (interaction.isModalSubmit()) {
+    
   if (interaction.customId === 'adminLoginModal') {
     const password = interaction.fields.getTextInputValue('adminPassword');
 
@@ -385,7 +385,7 @@ client.on('interactionCreate', async (interaction) => {
     } else {
       return await interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
-  }
+  
 } 
   if (interaction.isButton()) {
   if (interaction.customId === 'run_sync') {
@@ -413,7 +413,7 @@ client.on('interactionCreate', async (interaction) => {
         ephemeral: true 
       });
     }
-  }
+  
   
   // (Your existing view_ext_ button logic follows below...)
 }
@@ -449,8 +449,7 @@ client.on('interactionCreate', async (interaction) => {
         }
         // Selection buttons (from multiple search results) are handled by the collector in the /salary logic below
         return; 
-    }
-} 
+  }  
 
     if (!interaction.isChatInputCommand()) return;
       if (interaction.commandName === 'admin') {
@@ -469,6 +468,7 @@ client.on('interactionCreate', async (interaction) => {
 
         return await interaction.showModal(modal);
     }
+  } 
 
     // Defer for all other commands
     await interaction.deferReply();
