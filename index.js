@@ -385,8 +385,8 @@ client.on('interactionCreate', async (interaction) => {
     } else {
       return await interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
     }
-  
-} 
+  } 
+}  
   if (interaction.isButton()) {
   if (interaction.customId === 'run_sync') {
     await interaction.deferUpdate(); // Prevents "Interaction Failed" error
@@ -416,7 +416,7 @@ client.on('interactionCreate', async (interaction) => {
   
   
   // (Your existing view_ext_ button logic follows below...)
-}
+
   // } 
   if (interaction.customId.startsWith('view_ext_')) {
             const playerName = interaction.customId.replace('view_ext_', '');
@@ -449,7 +449,8 @@ client.on('interactionCreate', async (interaction) => {
         }
         // Selection buttons (from multiple search results) are handled by the collector in the /salary logic below
         return; 
-  }  
+  } 
+  } 
 
     if (!interaction.isChatInputCommand()) return;
       if (interaction.commandName === 'admin') {
