@@ -418,7 +418,7 @@ client.on('interactionCreate', async (interaction) => {
     // (Your existing view_ext_ button logic follows below...)
   
     // } 
-    elseif (interaction.customId.startsWith('view_ext_')) {
+    } elseif (interaction.customId.startsWith('view_ext_')) {
               const playerName = interaction.customId.replace('view_ext_', '');
               const { logs } = await getSheetData();
               const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
