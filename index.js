@@ -394,7 +394,7 @@ client.on('interactionCreate', async (interaction) => {
     try {
       // 1. Pings your Google Apps Script to run the backend sync
       // Replace with your actual Deployed Web App URL
-      const GAS_URL = 'YOUR_GOOGLE_APPS_SCRIPT_WEB_APP_URL';
+      const GAS_URL = 'https://script.google.com/macros/s/AKfycbx5B3peiWwgfv6KRvrp71z1u2bQiByv8bMCO4XhHjFcsmttCnu3eW70_H2fFmf5Pn24Mw/exec';
       await fetch(GAS_URL);
 
       // 2. Force the Bot to dump the old cache and fetch new data
