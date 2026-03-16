@@ -418,7 +418,7 @@ client.on('interactionCreate', async (interaction) => {
   // (Your existing view_ext_ button logic follows below...)
 }
   // } 
-    if (interaction.customId.startsWith('view_ext_')) {
+  if (interaction.customId.startsWith('view_ext_')) {
             const playerName = interaction.customId.replace('view_ext_', '');
             const { logs } = await getSheetData();
             const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
@@ -476,23 +476,6 @@ client.on('interactionCreate', async (interaction) => {
     try {
         const { players, logs } = await getSheetData();
 
-        if (interaction.commandName === 'help') {
-            const helpEmbed = new EmbedBuilder()
-                .setTitle('📚 Franchise Pro Bot: Command Guide')
-                .setColor(0x00AAFF)
-                .setDescription('Manage league salaries and contracts.')
-                .addFields(
-                    { name: '🤝 `/trade`', value: 'Analyze trade cap impact.' },
-                    { name: '💰 `/salary`', value: 'Check player contract & history.' },
-                    { name: '🔄 `/extension`', value: 'View historical log data.' },
-                    { name: '📊 `/team`', value: 'View team cap and top earners.' },
-                    { name: '🏆 `/top`', value: 'View highest salaries in the league.' }
-                )
-                .setFooter({ text: `Tracking ${players.length} players and ${logs.length} transactions.` })
-                .setTimestamp();
-
-            return await interaction.editReply({ embeds: [helpEmbed] });
-        }
     if (interaction.commandName === 'help') {
       const { players, logs } = await getSheetData();
       
