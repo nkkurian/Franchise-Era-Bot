@@ -418,42 +418,38 @@ client.on('interactionCreate', async (interaction) => {
     // (Your existing view_ext_ button logic follows below...)
   
     // } 
-    } else if (interaction.customId.startsWith('view_ext_')) {
-              const playerName = interaction.customId.replace('view_ext_', '');
-              const { logs } = await getSheetData();
-              const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
-  
-              if (history.length === 0) {
-                  return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
-              }
-  
-              const histEmbed = new EmbedBuilder()
-                  .setTitle(`📜 History: ${playerName}`)
-                  .setColor(0x9b59b6)
-                  .setTimestamp();
-  
-              history.forEach((entry) => {
-                  const years = entry._rawData[2];  // Column C
-                  const salary = entry._rawData[3]; // Column D
-                  const bonus = entry._rawData[4];  // Column E
-  
-                  histEmbed.addFields({
-                      name: `📅 Contract Year: ${years ? years + ' yrs' : 'N/A'}`,
-                      value: `💰 **Salary:** ${salary ? salary + 'M' : 'N/A'}\n✨ **Bonus:** ${bonus || 'None listed'}`,
-                      inline: false
-                  });
-              });
-  
-              // This is now PUBLIC (No ephemeral tag)
-              return await interaction.reply({ embeds: [histEmbed] });
-          }
-          // Selection buttons (from multiple search results) are handled by the collector in the /salary logic below
-          return; 
-    } 
-  } 
+    } else if (interaction.customId.startsWith('view_ext_')) { // Fixed 'else if'
+        const playerName = interaction.customId.replace('view_ext_', '');
+        const { logs } = await getSheetData();
+        const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
 
-    if (!interaction.isChatInputCommand()) return;
-      if (interaction.commandName === 'admin') {
+        if (history.length === 0) {
+            return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
+        }
+
+        const histEmbed = new EmbedBuilder()
+            .setTitle(`📜 History: ${playerName}`)
+            .setColor(0x9b59b6)
+            .setTimestamp();
+
+        history.forEach((entry) => {
+            const salary = entry._rawData[3]; 
+            const bonus = entry._rawData[4];  
+            histEmbed.addFields({
+                name: `📅 Entry`,
+                value: `💰 **Salary:** ${salary || 'N/A'}\n✨ **Bonus:** ${bonus || 'None'}`,
+                inline: false
+            });
+        });
+
+        return await interaction.reply({ embeds: [histEmbed] });
+    } 
+} // <--- THIS ends the "isButton" check. 
+
+// --- SLASH COMMANDS START HERE ---
+if (!interaction.isChatInputCommand()) return;
+
+if (interaction.commandName === 'admin') {
         const modal = new ModalBuilder()
             .setCustomId('adminLoginModal')
             .setTitle('Admin Access');
