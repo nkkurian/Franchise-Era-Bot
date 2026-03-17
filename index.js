@@ -421,15 +421,12 @@ client.on('interactionCreate', async (interaction) => {
         // 1. Define the embed FIRST
         const embed = EmbedBuilder.from(interaction.message.embeds[0]);
         
-        // 2. Now you can safely pull the footer text
+        // 2. Safely pull the footer text
         const footerText = embed.data.footer?.text || ""; 
-        
         let count = parseInt(interaction.customId.split('_')[2]);
-        
-        // 3. Extract the Submitter ID from the footer
         const submitterId = footerText.replace("Submitter ID: ", "");
-    
-        // 4. CHECK: Is the person clicking the same as the person who submitted?
+
+        // 3. Prevent self-seconding
         if (interaction.user.id === submitterId) {
             return await interaction.reply({ 
                 content: "❌ You cannot second your own appeal!", 
@@ -437,58 +434,65 @@ client.on('interactionCreate', async (interaction) => {
             });
         }
         
-        const LOG_CHANNEL_ID = '1477399855541518366'; // <--- Put your log channel ID here
-        
-        let currentDesc = embed.data.description || "";
         const userName = interaction.user.displayName;
+        let currentDesc = embed.data.description || "";
 
-        // Anti-Spam: Check if the user's name is already in the list
+        // 4. Anti-Spam: Check if user already seconded
         if (currentDesc.includes(`• ${userName}`)) {
             return await interaction.reply({ content: "❌ You already seconded this!", ephemeral: true });
         }
 
+        // Increment count
         count++;
 
-        // Update the list of names in the description
+        // Update the list of names
         if (!currentDesc.includes("**Seconded by:**")) {
             currentDesc += `\n\n**Seconded by:**\n• ${userName}`;
         } else {
             currentDesc += `\n• ${userName}`;
         }
-        
         embed.setDescription(currentDesc);
 
+        // --- BRANCH LOGIC: Are we finished or still counting? ---
         if (count < 1) {
+            // STILL NEED MORE SECONDS
             embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder().setCustomId(`second_appeal_${count}`).setLabel(`Second (${count}/4)`).setStyle(ButtonStyle.Primary)
-            );
-            return await interaction.update({ embeds: [embed], components: [row] });
-        } else {
-          // --- SUCCESS: 4 SECONDS REACHED ---
-              embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
-              await interaction.update({ embeds: [embed], components: [] });
-              
-              // SEND TO LOG CHANNEL WITH A REAL PING
-              try {
-                  const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID);
-                  const logEmbed = EmbedBuilder.from(embed)
-                      .setTitle('📄 Finalized Appeal Report')
-                      .setColor(0x3498DB);
-              
-                  await logChannel.send({ 
-                      // THIS IS THE FIX: Putting the role mention in the content pings everyone
-                      content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@&1399502952506458252> - This appeal has been seconded by the community.`,
-                      embeds: [logEmbed] 
-                  });
-              } catch (err) {
-                  console.error("Log Channel Error:", err);
-              }
-            // --- SUCCESS: 4 SECONDS REACHED ---
             
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`second_appeal_${count}`)
+                    .setLabel(`Second (${count}/4)`)
+                    .setStyle(ButtonStyle.Primary)
+            );
 
+            return await interaction.update({ embeds: [embed], components: [row] });
+
+        } else {
+            // SUCCESS: 4 SECONDS REACHED
+            embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
+            
+            // Update the original message and remove the button
+            await interaction.update({ embeds: [embed], components: [] });
+            
+            // Send the Log Ping
+            try {
+                const LOG_CHANNEL_ID = '1477399855541518366';
+                const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID);
+                const logEmbed = EmbedBuilder.from(embed)
+                    .setTitle('📄 Finalized Appeal Report')
+                    .setColor(0x3498DB);
+            
+                await logChannel.send({ 
+                    content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@&1399502952506458252> - This appeal has been seconded by the community.`,
+                    embeds: [logEmbed] 
+                });
+            } catch (err) {
+                console.error("Log Channel Error:", err);
+            }
+
+            // Final confirmation message (Non-ephemeral so everyone sees the success)
             return await interaction.followUp({ 
-                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal is now official. Commitee will be realeasing the poll soon to vote.` 
+                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal has reached 4 seconds and is now official. Committee has been notified.` 
             });
         }
     }
