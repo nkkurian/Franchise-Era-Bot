@@ -440,7 +440,7 @@ client.on('interactionCreate', async (interaction) => {
         
         embed.setDescription(currentDesc);
 
-        if (count < 4) {
+        if (count < 1) {
             embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder().setCustomId(`second_appeal_${count}`).setLabel(`Second (${count}/4)`).setStyle(ButtonStyle.Primary)
