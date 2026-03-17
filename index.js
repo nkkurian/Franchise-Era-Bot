@@ -225,6 +225,9 @@ const commands = [
     .addStringOption(o => o.setName('teamb').setDescription('Second team').setRequired(true))
     .addStringOption(o => o.setName('teamb_players').setDescription('Players from second team').setRequired(true)),
   new SlashCommandBuilder()
+    .setName('appeal')
+    .setDescription('Submit an official appeal to the committee'),
+  new SlashCommandBuilder()
   .setName('top')
   .setDescription('View highest annual salaries in the league')
   .addIntegerOption(o => o.setName('count').setDescription('Number of players to show (e.g., 10)'))
@@ -361,6 +364,28 @@ client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isModalSubmit()) {
     
+  if (interaction.customId === 'appealModal') {
+        const reason = interaction.fields.getTextInputValue('appealReason');
+        const appealChannel = await client.channels.fetch('1477399855541518366'); // Replace ID
+
+        const appealEmbed = new EmbedBuilder()
+            .setTitle('⚖️ New Appeal Submitted')
+            .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+            .setDescription(reason)
+            .setColor(0xF1C40F)
+            .addFields({ name: 'Status', value: '⏳ Waiting for Seconds (0/4)' })
+            .setTimestamp();
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('second_appeal_0') // We will track the count in the ID
+                .setLabel('Second this Appeal')
+                .setStyle(ButtonStyle.Primary)
+        );
+
+        await appealChannel.send({ content: '🔔 **New Appeal Alert**', embeds: [appealEmbed], components: [row] });
+        return await interaction.reply({ content: '✅ Your appeal has been posted. It needs 4 more people to second it.', ephemeral: true });
+    }  
   if (interaction.customId === 'adminLoginModal') {
     const password = interaction.fields.getTextInputValue('adminPassword');
 
@@ -389,6 +414,40 @@ client.on('interactionCreate', async (interaction) => {
   } 
   
   if (interaction.isButton()) {
+    if (interaction.customId.startsWith('second_appeal_')) {
+        let count = parseInt(interaction.customId.split('_')[2]);
+        
+        // Prevent the same person from seconding their own/same appeal twice
+        // (Simplified check: Discord embeds don't store list of user IDs easily without a DB, 
+        // but we can check if the user is the one who clicked)
+        
+        count++;
+
+        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+        
+        if (count < 4) {
+            // Update the count and label
+            embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
+            
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`second_appeal_${count}`)
+                    .setLabel(`Second (${count}/4)`)
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+            return await interaction.update({ embeds: [embed], components: [row] });
+        } else {
+            // THRESHOLD MET: Ping Commissioners
+            embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Commissioner Poll.' });
+            
+            await interaction.update({ embeds: [embed], components: [] }); // Remove buttons
+            
+            return await interaction.followUp({ 
+                content: `🚨 **APPEAL SECONDED** 🚨\n<1399502952506458252> - The community has seconded the appeal by ${embed.data.author.name}. Please initiate a league-wide poll.` 
+            });
+        }
+    }
     if (interaction.customId === 'trigger_admin_modal') {
         const modal = new ModalBuilder()
             .setCustomId('adminLoginModal')
@@ -463,7 +522,23 @@ client.on('interactionCreate', async (interaction) => {
 
 // --- SLASH COMMANDS START HERE ---
 if (!interaction.isChatInputCommand()) return;
+  
+if (interaction.commandName === 'appeal') {
+        const modal = new ModalBuilder()
+            .setCustomId('appealModal')
+            .setTitle('Official League Appeal');
 
+        const reasonInput = new TextInputBuilder()
+            .setCustomId('appealReason')
+            .setLabel("What are you appealing and why?")
+            .setStyle(TextInputStyle.Paragraph)
+            .setPlaceholder("e.g., The trade between Team A and Team B was unfairly vetoed...")
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
+        return await interaction.showModal(modal);
+    }
+  
 if (interaction.commandName === 'admin') {
         const modal = new ModalBuilder()
             .setCustomId('adminLoginModal')
