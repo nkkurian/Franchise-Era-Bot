@@ -478,7 +478,7 @@ client.on('interactionCreate', async (interaction) => {
               
                   await logChannel.send({ 
                       // THIS IS THE FIX: Putting the role mention in the content pings everyone
-                      content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@1400988676653056070> - This appeal has been seconded by the community.`,
+                      content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@&1399502952506458252> - This appeal has been seconded by the community.`,
                       embeds: [logEmbed] 
                   });
               } catch (err) {
@@ -488,7 +488,7 @@ client.on('interactionCreate', async (interaction) => {
             
 
             return await interaction.followUp({ 
-                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal is now official. A report has been sent to the <#${LOG_CHANNEL_ID}> channel for the committee.` 
+                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal is now official. Commitee will be realeasing the poll soon to vote.` 
             });
         }
     }
