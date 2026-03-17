@@ -420,9 +420,11 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('second_appeal_')) {
         // 1. Define the embed FIRST
-        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+        const messageEmbed = interaction.message.embeds[0];
+        if (!messageEmbed) return; // Safety check
+    
+        const embed = EmbedBuilder.from(messageEmbed); // Ensure this variable name is consistent
         
-        // 2. Safely pull the footer text
         const footerText = embed.data.footer?.text || ""; 
         let count = parseInt(interaction.customId.split('_')[2]);
         const submitterId = footerText.replace("Submitter ID: ", "");
