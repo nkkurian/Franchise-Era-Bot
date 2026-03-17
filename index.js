@@ -418,20 +418,24 @@ client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('second_appeal_')) {
-        let count = parseInt(interaction.customId.split('_')[2]);
-        const footerText = embed.footer?.text || "";
+        // 1. Define the embed FIRST
         const embed = EmbedBuilder.from(interaction.message.embeds[0]);
-      
-      // 1. Extract the Submitter ID from the footer
-          const submitterId = footerText.replace("Submitter ID: ", "");
-  
-      // 2. CHECK: Is the person clicking the same as the person who submitted?
-          if (interaction.user.id === submitterId) {
-              return await interaction.reply({ 
-                  content: "❌ You cannot second your own appeal!", 
-                  ephemeral: true 
-              });
-          }
+        
+        // 2. Now you can safely pull the footer text
+        const footerText = embed.data.footer?.text || ""; 
+        
+        let count = parseInt(interaction.customId.split('_')[2]);
+        
+        // 3. Extract the Submitter ID from the footer
+        const submitterId = footerText.replace("Submitter ID: ", "");
+    
+        // 4. CHECK: Is the person clicking the same as the person who submitted?
+        if (interaction.user.id === submitterId) {
+            return await interaction.reply({ 
+                content: "❌ You cannot second your own appeal!", 
+                ephemeral: true 
+            });
+        }
         
         const LOG_CHANNEL_ID = '1477399855541518366'; // <--- Put your log channel ID here
         
