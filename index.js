@@ -282,7 +282,7 @@ client.once('ready', async () => {
 // Cleaned up Test Message Function
 async function sendStartupTestMessage() {
   try {
-    const channel = await client.channels.fetch('1477399855541518366');
+    const channel = await client.channels.fetch('1483467245970657413');
     if (!channel) return console.error("❌ Test failed: Channel not found.");
 
     const testEmbed = new EmbedBuilder()
@@ -368,10 +368,12 @@ client.on('interactionCreate', async (interaction) => {
         const reason = interaction.fields.getTextInputValue('appealReason');
         const appealChannel = await client.channels.fetch('1477399855541518366'); // Replace ID
 
+        // Inside your appealModal handler
         const appealEmbed = new EmbedBuilder()
             .setTitle('⚖️ New Appeal Submitted')
             .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
-            .setDescription(reason)
+            // We add a hidden mention at the bottom so we can "scrape" it for the logs later
+            .setDescription(`**Appeal Reason:**\n${reason}\n\n**Submitted by:** <@${interaction.user.id}>`) 
             .setColor(0xF1C40F)
             .addFields({ name: 'Status', value: '⏳ Waiting for Seconds (0/4)' })
             .setTimestamp();
@@ -416,35 +418,57 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('second_appeal_')) {
         let count = parseInt(interaction.customId.split('_')[2]);
+        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+        const LOG_CHANNEL_ID = 'YOUR_LOG_CHANNEL_ID_HERE'; // <--- Put your log channel ID here
         
-        // Prevent the same person from seconding their own/same appeal twice
-        // (Simplified check: Discord embeds don't store list of user IDs easily without a DB, 
-        // but we can check if the user is the one who clicked)
-        
+        let currentDesc = embed.data.description || "";
+        const userName = interaction.user.displayName;
+
+        // Anti-Spam: Check if the user's name is already in the list
+        if (currentDesc.includes(`• ${userName}`)) {
+            return await interaction.reply({ content: "❌ You already seconded this!", ephemeral: true });
+        }
+
         count++;
 
-        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+        // Update the list of names in the description
+        if (!currentDesc.includes("**Seconded by:**")) {
+            currentDesc += `\n\n**Seconded by:**\n• ${userName}`;
+        } else {
+            currentDesc += `\n• ${userName}`;
+        }
         
-        if (count < 4) {
-            // Update the count and label
-            embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
-            
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`second_appeal_${count}`)
-                    .setLabel(`Second (${count}/4)`)
-                    .setStyle(ButtonStyle.Primary)
-            );
+        embed.setDescription(currentDesc);
 
+        if (count < 4) {
+            embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId(`second_appeal_${count}`).setLabel(`Second (${count}/4)`).setStyle(ButtonStyle.Primary)
+            );
             return await interaction.update({ embeds: [embed], components: [row] });
         } else {
-            // THRESHOLD MET: Ping Commissioners
-            embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Commissioner Poll.' });
-            
-            await interaction.update({ embeds: [embed], components: [] }); // Remove buttons
-            
+            // --- SUCCESS: 4 SECONDS REACHED ---
+            embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
+            await interaction.update({ embeds: [embed], components: [] });
+
+            // SEND TO LOG CHANNEL
+            try {
+                const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID);
+                const logEmbed = EmbedBuilder.from(embed)
+                    .setTitle('📄 Finalized Appeal Report')
+                    .setColor(0x3498DB)
+                    .setFooter({ text: `Appeal ID: ${interaction.message.id}` });
+
+                await logChannel.send({ 
+                    content: `📜 **Official Appeal Log**\nAn appeal has reached the required 4 seconds and is ready for committee review.`,
+                    embeds: [logEmbed] 
+                });
+            } catch (err) {
+                console.error("Log Channel Error:", err);
+            }
+
             return await interaction.followUp({ 
-                content: `🚨 **APPEAL SECONDED** 🚨\n<1399502952506458252> - The community has seconded the appeal by ${embed.data.author.name}. Please initiate a league-wide poll.` 
+                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal is now official. A report has been sent to the <#${LOG_CHANNEL_ID}> channel for the committee.` 
             });
         }
     }
