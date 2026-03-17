@@ -369,14 +369,15 @@ client.on('interactionCreate', async (interaction) => {
         const appealChannel = await client.channels.fetch('1483467245970657413'); // Replace ID
 
         // Inside your appealModal handler
-        const appealEmbed = new EmbedBuilder()
-            .setTitle('⚖️ New Appeal Submitted')
-            .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
-            // We add a hidden mention at the bottom so we can "scrape" it for the logs later
-            .setDescription(`**Appeal Reason:**\n${reason}\n\n**Submitted by:** <@${interaction.user.id}>`) 
-            .setColor(0xF1C40F)
-            .addFields({ name: 'Status', value: '⏳ Waiting for Seconds (0/4)' })
-            .setTimestamp();
+              const appealEmbed = new EmbedBuilder()
+                .setTitle('⚖️ New Appeal Submitted')
+                .setAuthor({ name: interaction.user.tag, iconURL: interaction.user.displayAvatarURL() })
+                .setDescription(`**Appeal Reason:**\n${reason}\n\n**Submitted by:** <@${interaction.user.id}>`) 
+                .setColor(0xF1C40F)
+                .addFields({ name: 'Status', value: '⏳ Waiting for Seconds (0/4)' })
+                // ADD THIS LINE: This "hides" the ID in the footer for the bot to check later
+                .setFooter({ text: `Submitter ID: ${interaction.user.id}` }) 
+                .setTimestamp();
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
@@ -418,6 +419,18 @@ client.on('interactionCreate', async (interaction) => {
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('second_appeal_')) {
         let count = parseInt(interaction.customId.split('_')[2]);
+        const footerText = embed.footer?.text || "";
+      
+      // 1. Extract the Submitter ID from the footer
+          const submitterId = footerText.replace("Submitter ID: ", "");
+  
+      // 2. CHECK: Is the person clicking the same as the person who submitted?
+          if (interaction.user.id === submitterId) {
+              return await interaction.reply({ 
+                  content: "❌ You cannot second your own appeal!", 
+                  ephemeral: true 
+              });
+          }
         const embed = EmbedBuilder.from(interaction.message.embeds[0]);
         const LOG_CHANNEL_ID = '1477399855541518366'; // <--- Put your log channel ID here
         
@@ -460,7 +473,7 @@ client.on('interactionCreate', async (interaction) => {
               
                   await logChannel.send({ 
                       // THIS IS THE FIX: Putting the role mention in the content pings everyone
-                      content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@1399502952506458252> - This appeal has been seconded by the community.`,
+                      content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@1400988676653056070> - This appeal has been seconded by the community.`,
                       embeds: [logEmbed] 
                   });
               } catch (err) {
