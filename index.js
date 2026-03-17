@@ -457,7 +457,7 @@ client.on('interactionCreate', async (interaction) => {
         embed.setDescription(currentDesc);
 
         // --- BRANCH LOGIC: Are we finished or still counting? ---
-        if (count < 1) {
+        if (count < 4) {
             // STILL NEED MORE SECONDS
             embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
             
