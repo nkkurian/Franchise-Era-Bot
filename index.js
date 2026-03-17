@@ -225,9 +225,6 @@ const commands = [
     .addStringOption(o => o.setName('teamb').setDescription('Second team').setRequired(true))
     .addStringOption(o => o.setName('teamb_players').setDescription('Players from second team').setRequired(true)),
   new SlashCommandBuilder()
-    .setName('appeal')
-    .setDescription('Submit an official appeal to the committee'),
-  new SlashCommandBuilder()
   .setName('top')
   .setDescription('View highest annual salaries in the league')
   .addIntegerOption(o => o.setName('count').setDescription('Number of players to show (e.g., 10)'))
@@ -249,6 +246,9 @@ const commands = [
     .setName('extension')
     .setDescription('Check historical contract extensions for a player')
     .addStringOption(o => o.setName('name').setDescription('Enter player name').setRequired(true)),
+  new SlashCommandBuilder()
+    .setName('appeal')
+    .setDescription('Submit an official appeal to the committee'),
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
