@@ -282,7 +282,7 @@ client.once('ready', async () => {
 // Cleaned up Test Message Function
 async function sendStartupTestMessage() {
   try {
-    const channel = await client.channels.fetch('1483467245970657413');
+    const channel = await client.channels.fetch('1477399855541518366');
     if (!channel) return console.error("❌ Test failed: Channel not found.");
 
     const testEmbed = new EmbedBuilder()
@@ -366,7 +366,7 @@ client.on('interactionCreate', async (interaction) => {
     
   if (interaction.customId === 'appealModal') {
         const reason = interaction.fields.getTextInputValue('appealReason');
-        const appealChannel = await client.channels.fetch('1477399855541518366'); // Replace ID
+        const appealChannel = await client.channels.fetch('1483467245970657413'); // Replace ID
 
         // Inside your appealModal handler
         const appealEmbed = new EmbedBuilder()
@@ -419,7 +419,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId.startsWith('second_appeal_')) {
         let count = parseInt(interaction.customId.split('_')[2]);
         const embed = EmbedBuilder.from(interaction.message.embeds[0]);
-        const LOG_CHANNEL_ID = 'YOUR_LOG_CHANNEL_ID_HERE'; // <--- Put your log channel ID here
+        const LOG_CHANNEL_ID = '1477399855541518366'; // <--- Put your log channel ID here
         
         let currentDesc = embed.data.description || "";
         const userName = interaction.user.displayName;
@@ -447,25 +447,27 @@ client.on('interactionCreate', async (interaction) => {
             );
             return await interaction.update({ embeds: [embed], components: [row] });
         } else {
+          // --- SUCCESS: 4 SECONDS REACHED ---
+              embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
+              await interaction.update({ embeds: [embed], components: [] });
+              
+              // SEND TO LOG CHANNEL WITH A REAL PING
+              try {
+                  const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID);
+                  const logEmbed = EmbedBuilder.from(embed)
+                      .setTitle('📄 Finalized Appeal Report')
+                      .setColor(0x3498DB);
+              
+                  await logChannel.send({ 
+                      // THIS IS THE FIX: Putting the role mention in the content pings everyone
+                      content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@1399502952506458252> - This appeal has been seconded by the community.`,
+                      embeds: [logEmbed] 
+                  });
+              } catch (err) {
+                  console.error("Log Channel Error:", err);
+              }
             // --- SUCCESS: 4 SECONDS REACHED ---
-            embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
-            await interaction.update({ embeds: [embed], components: [] });
-
-            // SEND TO LOG CHANNEL
-            try {
-                const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID);
-                const logEmbed = EmbedBuilder.from(embed)
-                    .setTitle('📄 Finalized Appeal Report')
-                    .setColor(0x3498DB)
-                    .setFooter({ text: `Appeal ID: ${interaction.message.id}` });
-
-                await logChannel.send({ 
-                    content: `📜 **Official Appeal Log**\nAn appeal has reached the required 4 seconds and is ready for committee review.`,
-                    embeds: [logEmbed] 
-                });
-            } catch (err) {
-                console.error("Log Channel Error:", err);
-            }
+            
 
             return await interaction.followUp({ 
                 content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal is now official. A report has been sent to the <#${LOG_CHANNEL_ID}> channel for the committee.` 
