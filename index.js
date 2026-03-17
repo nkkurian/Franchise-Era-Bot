@@ -420,6 +420,7 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId.startsWith('second_appeal_')) {
         let count = parseInt(interaction.customId.split('_')[2]);
         const footerText = embed.footer?.text || "";
+        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
       
       // 1. Extract the Submitter ID from the footer
           const submitterId = footerText.replace("Submitter ID: ", "");
@@ -431,7 +432,7 @@ client.on('interactionCreate', async (interaction) => {
                   ephemeral: true 
               });
           }
-        const embed = EmbedBuilder.from(interaction.message.embeds[0]);
+        
         const LOG_CHANNEL_ID = '1477399855541518366'; // <--- Put your log channel ID here
         
         let currentDesc = embed.data.description || "";
