@@ -1046,7 +1046,8 @@ const cron = require('node-cron');
 
 // Every Wednesday at 10:00 AM
 //cron.schedule('0 10 * * 3', async () => {
-cron.schedule('0 10 * * 3', async () => { // Changed back to Wednesday 10AM
+//cron.schedule('* * * * *', async () => { <- use for testing ONLY
+cron.schedule('* * * * *', async () => { // Changed back to Wednesday 10AM
     console.log("⏳ Running Weekly Cap Compliance Audit...");
     try {
         // Fetch players AND the doc object together
