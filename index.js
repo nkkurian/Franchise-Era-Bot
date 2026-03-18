@@ -1091,7 +1091,7 @@ cron.schedule('* * * * *', async () => { // Testing every minute
 
         let pingContent = "";
         if (nonCompliant.length > 0) {
-            pingContent = "⚠️ <@&1479107336617332787> **Action Required:** Cap issues detected.";
+            pingContent = "⚠️ <@&1399502952506458252> **Action Required:** Cap issues detected.";
             reportEmbed.addFields({ 
                 name: '🚨 Non-Compliant Teams (Negative Cap)', 
                 value: nonCompliant.map(t => `• **${t.name}**: ${t.balance}`).join('\n') 
