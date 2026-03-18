@@ -425,10 +425,12 @@ client.on('interactionCreate', async (interaction) => {
         const messageEmbed = interaction.message.embeds[0];
         if (!messageEmbed) return; // Safety check
     
-        const embed = EmbedBuilder.from(messageEmbed); // Ensure this variable name is consistent
+        //const embed = EmbedBuilder.from(messageEmbed); // Ensure this variable name is consistent
+        const embed = EmbedBuilder.from(interaction.message.embeds[0]); 
+        const count = parseInt(embed.data.footer.text.match(/\d+/)[0]) + 1;
         
         const footerText = embed.data.footer?.text || ""; 
-        let count = parseInt(interaction.customId.split('_')[2]);
+        //let count = parseInt(interaction.customId.split('_')[2]);
         const submitterId = footerText.replace("Submitter ID: ", "");
 
         // 3. Prevent self-seconding
@@ -1047,7 +1049,9 @@ const cron = require('node-cron');
 cron.schedule('0 10 * * 3', async () => { // Changed back to Wednesday 10AM
     console.log("⏳ Running Weekly Cap Compliance Audit...");
     try {
-        const { players } = await getSheetData();
+        // Fetch players AND the doc object together
+        const { players, doc } = await getSheetData(); 
+        
         const nonCompliant = [];
         const missingData = [];
 
