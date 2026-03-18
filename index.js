@@ -674,12 +674,15 @@ if (interaction.commandName === 'admin') {
         
         // Strictly only listing Salary and Bonus
         if (salary || bonus) {
-          extensionEmbed.addFields({
-            name: `💰 Salary: ${salary ? salary + 'M' : 'N/A'} (${years || '?'}-Year Ext)`,
-                value: `✨ **Bonus:** ${bonus || 'None listed'}`,
-                inline: false
-          });
-        }
+  // Logic: "4 Year Extension | 💰 $30M"
+            const titleLine = `${years || '?'} Year Extension | 💰 ${salary ? salary + 'M' : 'N/A'}`;
+            
+            extensionEmbed.addFields({
+              name: titleLine,
+              value: `✨ **Bonus:** ${bonus || 'None listed'}`,
+              inline: false
+            });
+          }
       });
 
       return await interaction.editReply({ embeds: [extensionEmbed] });
