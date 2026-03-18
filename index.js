@@ -668,15 +668,16 @@ if (interaction.commandName === 'admin') {
         .setTimestamp();
 
       extensionHistory.forEach((entry) => {
+        const years = entry._rawData[2]; 
         const salary = entry._rawData[3]; // Column D
         const bonus = entry._rawData[4];  // Column E
         
         // Strictly only listing Salary and Bonus
         if (salary || bonus) {
           extensionEmbed.addFields({
-            name: `💰 Annual Salary: ${salary ? salary + 'M' : 'N/A'}`,
-            value: `✨ **Bonus:** ${bonus || 'None listed'}`,
-            inline: false
+            name: `💰 Salary: ${salary ? salary + 'M' : 'N/A'} (${years || '?'}-Year Ext)`,
+                value: `✨ **Bonus:** ${bonus || 'None listed'}`,
+                inline: false
           });
         }
       });
