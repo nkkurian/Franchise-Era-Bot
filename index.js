@@ -1045,9 +1045,8 @@ client.on('messageCreate', async (message) => {
 const cron = require('node-cron');
 
 // Every Wednesday at 10:00 AM
-//cron.schedule('0 10 * * 3', async () => {
 //cron.schedule('* * * * *', async () => { <- use for testing ONLY
-cron.schedule('* * * * *', async () => { // Testing every minute
+cron.schedule('0 10 * * 3', async () => { // Testing every minute
     console.log("⏳ Running Weekly Cap Compliance Audit...");
     try {
         const data = await getSheetData(); 
