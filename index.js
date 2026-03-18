@@ -1047,25 +1047,37 @@ const cron = require('node-cron');
 // Every Wednesday at 10:00 AM
 //cron.schedule('0 10 * * 3', async () => {
 //cron.schedule('* * * * *', async () => { <- use for testing ONLY
-cron.schedule('* * * * *', async () => { // Changed back to Wednesday 10AM
+cron.schedule('* * * * *', async () => {
     console.log("⏳ Running Weekly Cap Compliance Audit...");
     try {
-        // Fetch players AND the doc object together
-        const { players, doc } = await getSheetData(); 
-        
+        // 1. GET BOTH PLAYERS AND DOC
+        const data = await getSheetData(); 
+        const players = data.players;
+        const doc = data.doc;
+
+        if (!doc) {
+            console.error("❌ Cron Error: 'doc' was not returned from getSheetData()");
+            return;
+        }
+
         const nonCompliant = [];
         const missingData = [];
 
-        // 1. Audit logic (stays the same)
+        // 2. AUDIT LOGIC
         const teams = [...new Set(players.map(p => p._rawData[0]).filter(t => t && t !== "Free Agent"))];
+        
         for (const teamName of teams) {
             const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
             if (!sheet) continue;
 
             await sheet.loadCells('F2');
-            const capRaw = sheet.getCellByA1('F2').formattedValue || "$0.00";
+            const cell = sheet.getCellByA1('F2');
+            const capRaw = cell.formattedValue || "$0.00";
             const capNum = parseFloat(capRaw.replace(/[$,]/g, '')) || 0;
-            if (capNum < 0) nonCompliant.push({ name: sheet.title, balance: capRaw });
+            
+            if (capNum < 0) {
+                nonCompliant.push({ name: sheet.title, balance: capRaw });
+            }
 
             const teamRoster = players.filter(p => p._rawData[0] === teamName);
             const buggyPlayers = teamRoster.filter(p => (parseFloat(p._rawData[4]?.replace(/[$,]/g, '')) || 0) === 0);
@@ -1074,10 +1086,9 @@ cron.schedule('* * * * *', async () => { // Changed back to Wednesday 10AM
             }
         }
 
-        // 2. Fetch the Log Channel
+        // 3. SEND TO LOG CHANNEL
         const logChannel = await client.channels.fetch('1477399855541518366'); 
-        if (!logChannel) return console.error("Could not find Log Channel.");
-
+        
         const reportEmbed = new EmbedBuilder()
             .setTitle('📅 Weekly League Audit Report')
             .setColor(nonCompliant.length > 0 ? 0xe74c3c : 0x2ecc71)
@@ -1086,7 +1097,6 @@ cron.schedule('* * * * *', async () => { // Changed back to Wednesday 10AM
         let pingContent = "";
 
         if (nonCompliant.length > 0) {
-            // Mention the role if there are issues
             pingContent = "⚠️ <@&1479107336617332787> **Action Required:** Cap issues detected.";
             reportEmbed.addFields({ 
                 name: '🚨 Non-Compliant Teams (Negative Cap)', 
@@ -1103,11 +1113,13 @@ cron.schedule('* * * * *', async () => { // Changed back to Wednesday 10AM
             });
         }
 
-        // 3. Send to Channel instead of DM
-        await logChannel.send({ content: pingContent, embeds: [reportEmbed] });
-        
+        if (logChannel) {
+            await logChannel.send({ content: pingContent, embeds: [reportEmbed] });
+            console.log("✅ Audit Report posted to channel.");
+        }
+
     } catch (err) {
-        console.error("Cron Error:", err);
+        console.error("❌ Cron Error Detail:", err);
     }
 });
 
