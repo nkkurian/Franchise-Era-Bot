@@ -365,7 +365,7 @@ client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isModalSubmit()) {
     
-  if (interaction.customId === 'appealModal') {
+    if (interaction.customId === 'appealModal') {
         const reason = interaction.fields.getTextInputValue('appealReason');
         const appealChannel = await client.channels.fetch('1483467245970657413'); // Replace ID
 
@@ -390,7 +390,8 @@ client.on('interactionCreate', async (interaction) => {
         await appealChannel.send({ content: '🔔 **New Appeal Alert**', embeds: [appealEmbed], components: [row] });
         return await interaction.reply({ content: '✅ Your appeal has been posted. It needs 4 more people to second it.', ephemeral: true });
     }  
-  if (interaction.customId === 'adminLoginModal') {
+  
+    if (interaction.customId === 'adminLoginModal') {
     const password = interaction.fields.getTextInputValue('adminPassword');
 
     if (password === 'LeagueAdmin2026') {
@@ -538,11 +539,7 @@ client.on('interactionCreate', async (interaction) => {
           ephemeral: true 
         });
       }
-    
-    
-    // (Your existing view_ext_ button logic follows below...)
-  
-    // } 
+ 
     } else if (interaction.customId.startsWith('view_ext_')) { // Fixed 'else if'
         const playerName = interaction.customId.replace('view_ext_', '');
         const { logs } = await getSheetData();
@@ -1039,6 +1036,67 @@ client.on('messageCreate', async (message) => {
 
         // Optional: Auto-delete the button after 30 seconds so it doesn't stay in the chat
         // setTimeout(() => vaultMsg.delete().catch(() => null), 30000);
+    }
+});
+
+const cron = require('node-cron');
+
+// Every Wednesday at 10:00 AM
+//cron.schedule('0 10 * * 3', async () => {
+cron.schedule('* * * * *', async () => {
+    console.log("⏳ Running Weekly Cap Compliance Audit...");
+    try {
+        const { players } = await getSheetData();
+        const nonCompliant = [];
+        const missingData = [];
+
+        // Get unique teams
+        const teams = [...new Set(players.map(p => p._rawData[0]).filter(t => t && t !== "Free Agent"))];
+
+        for (const teamName of teams) {
+            const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
+            if (!sheet) continue;
+
+            await sheet.loadCells('F2');
+            const capRaw = sheet.getCellByA1('F2').formattedValue || "$0.00";
+            const capNum = parseFloat(capRaw.replace(/[$,]/g, '')) || 0;
+
+            if (capNum < 0) nonCompliant.push({ name: sheet.title, balance: capRaw });
+
+            // Check for players with $0 salary
+            const teamRoster = players.filter(p => p._rawData[0] === teamName);
+            const buggyPlayers = teamRoster.filter(p => (parseFloat(p._rawData[4]?.replace(/[$,]/g, '')) || 0) === 0);
+            if (buggyPlayers.length > 0) {
+                missingData.push({ team: sheet.title, players: buggyPlayers.map(p => p._rawData[1]) });
+            }
+        }
+
+        const adminUser = await client.users.fetch('956295405291855934'); 
+        
+        const reportEmbed = new EmbedBuilder()
+            .setTitle('📅 Weekly League Audit Report')
+            .setColor(nonCompliant.length > 0 ? 0xe74c3c : 0x2ecc71)
+            .setTimestamp();
+
+        if (nonCompliant.length > 0) {
+            reportEmbed.addFields({ 
+                name: '🚨 Non-Compliant Teams (Negative Cap)', 
+                value: nonCompliant.map(t => `• **${t.name}**: ${t.balance}`).join('\n') 
+            });
+        } else {
+            reportEmbed.setDescription('✅ All teams are currently under the salary cap.');
+        }
+
+        if (missingData.length > 0) {
+            reportEmbed.addFields({ 
+                name: '⚠️ Missing Salary Data', 
+                value: missingData.map(m => `• **${m.team}**: ${m.players.join(', ')}`).join('\n') 
+            });
+        }
+
+        await adminUser.send({ embeds: [reportEmbed] });
+    } catch (err) {
+        console.error("Cron Error:", err);
     }
 });
 
