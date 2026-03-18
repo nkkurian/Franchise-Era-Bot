@@ -182,7 +182,7 @@ const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8'
 async function getSheetData() {
   const now = Date.now();
   if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds };
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
   }
   
   try {
@@ -199,7 +199,7 @@ async function getSheetData() {
     lastFetchTime = now;
     
     console.log(`📊 Cache Updated: ${pRows.length} players, ${idRows.length} IDs loaded.`);
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds };
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
   } catch (err) {
     console.error("❌ Sheet Fetch Error:", err);
     return { players: [], logs: [], idMap: [] };
@@ -1047,32 +1047,29 @@ const cron = require('node-cron');
 // Every Wednesday at 10:00 AM
 //cron.schedule('0 10 * * 3', async () => {
 //cron.schedule('* * * * *', async () => { <- use for testing ONLY
-cron.schedule('* * * * *', async () => {
+cron.schedule('* * * * *', async () => { // Testing every minute
     console.log("⏳ Running Weekly Cap Compliance Audit...");
     try {
-        // 1. GET BOTH PLAYERS AND DOC
         const data = await getSheetData(); 
         const players = data.players;
-        const doc = data.doc;
+        const currentDoc = data.doc; // Pulling the doc we just added above
 
-        if (!doc) {
-            console.error("❌ Cron Error: 'doc' was not returned from getSheetData()");
+        if (!currentDoc) {
+            console.error("❌ Cron Error: 'doc' is still missing from getSheetData results.");
             return;
         }
 
         const nonCompliant = [];
         const missingData = [];
 
-        // 2. AUDIT LOGIC
         const teams = [...new Set(players.map(p => p._rawData[0]).filter(t => t && t !== "Free Agent"))];
         
         for (const teamName of teams) {
-            const sheet = doc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
+            const sheet = currentDoc.sheetsByIndex.find(s => s.title.toLowerCase().includes(teamName.toLowerCase()));
             if (!sheet) continue;
 
             await sheet.loadCells('F2');
-            const cell = sheet.getCellByA1('F2');
-            const capRaw = cell.formattedValue || "$0.00";
+            const capRaw = sheet.getCellByA1('F2').formattedValue || "$0.00";
             const capNum = parseFloat(capRaw.replace(/[$,]/g, '')) || 0;
             
             if (capNum < 0) {
@@ -1086,16 +1083,13 @@ cron.schedule('* * * * *', async () => {
             }
         }
 
-        // 3. SEND TO LOG CHANNEL
         const logChannel = await client.channels.fetch('1477399855541518366'); 
-        
         const reportEmbed = new EmbedBuilder()
             .setTitle('📅 Weekly League Audit Report')
             .setColor(nonCompliant.length > 0 ? 0xe74c3c : 0x2ecc71)
             .setTimestamp();
 
         let pingContent = "";
-
         if (nonCompliant.length > 0) {
             pingContent = "⚠️ <@&1479107336617332787> **Action Required:** Cap issues detected.";
             reportEmbed.addFields({ 
