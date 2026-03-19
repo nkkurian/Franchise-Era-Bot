@@ -8,6 +8,22 @@ const { JWT } = require('google-auth-library');
 const express = require('express');
 const axios = require("axios");
 
+const { REST, Routes } = require('discord.js');
+
+
+// Delete after usage. 
+const rest = new REST({ version: '10' }).setToken("MTQ3MTQ5NjkxMTU1ODAxNzA0NQ.GePhwQ.ztElwBrPdCjMei813ZkGv5T9dcLEaPIAOUVEII");
+
+(async () => {
+    try {
+        console.log('🧹 Clearing all slash commands...');
+        // This deletes GLOBAL commands
+        await rest.put(Routes.applicationCommands("1483989571120402612"), { body: [] });
+        console.log('✅ Successfully cleared all commands. You can delete this code now!');
+    } catch (error) {
+        console.error(error);
+    }
+})();
 
 // Keep-alive server for Render
 const app = express();
