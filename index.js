@@ -1295,24 +1295,5 @@ cron.schedule('0 10 * * 3', async () => { // Testing every minute
     }
 });
 
-// Add this to the very bottom of your file temporarily
-(async () => {
-    // We create a new rest instance specifically for this task
-    const tempRest = new (require('discord.js').REST)({ version: '10' }).setToken("MTQ4Mzk4OTU3MTEyMDQwMjYxMg.GATZMZ.JijGhHeZdPPq0iRMiJ2eCAxzU7yUc1RsuvlDPU");
-    
-    try {
-        console.log('🧹 Clearing all slash commands for Test Bot...');
-        
-        // This clears GLOBAL commands
-        await tempRest.put(
-            require('discord.js').Routes.applicationCommands("1483989571120402612"), 
-            { body: [] }
-        );
-        
-        console.log('✅ Successfully cleared! You can now delete this temporary code block.');
-    } catch (error) {
-        console.error('Error clearing commands:', error);
-    }
-})();
 
 client.login(process.env.DISCORD_TOKEN);
