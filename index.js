@@ -600,33 +600,42 @@ client.on('interactionCreate', async (interaction) => {
         });
       }
  
-    } else if (interaction.customId.startsWith('view_ext_')) { // Fixed 'else if'
-        const playerName = interaction.customId.replace('view_ext_', '');
-        const { logs } = await getSheetData();
-        const history = logs.filter(l => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
+    } else if (interaction.customId.startsWith("view_ext_")) {
+            // Fixed 'else if'
+            const playerName = interaction.customId.replace("view_ext_", "");
+            const { logs } = await getSheetData();
+            const history = logs.filter(
+                (l) =>
+                    l._rawData[0]?.toLowerCase() === playerName.toLowerCase(),
+            );
 
-        if (history.length === 0) {
-            return await interaction.reply({ content: `❌ No history found for ${playerName}`, ephemeral: true });
-        }
+            if (history.length === 0) {
+                return await interaction.reply({
+                    content: `❌ No history found for ${playerName}`,
+                    ephemeral: true,
+                });
+            }
 
-        const histEmbed = new EmbedBuilder()
-            .setTitle(`📜 History: ${playerName}`)
-            .setColor(0x9b59b6)
-            .setTimestamp();
+            const histEmbed = new EmbedBuilder()
+                .setTitle(`📜 Extension: ${playerName}`)
+                .setColor(0x9b59b6)
+                .setTimestamp();
 
-        history.forEach((entry) => {
-            const salary = entry._rawData[3]; 
-            const bonus = entry._rawData[4];  
-            histEmbed.addFields({
-                name: `📅 Entry`,
-                value: `💰 **Salary:** ${salary || 'N/A'}\n✨ **Bonus:** ${bonus || 'None'}`,
-                inline: false
+            history.forEach((entry) => {
+                const actionType = entry._rawData[2] || "Extension";
+                const rawSalary = entry._rawData[3];
+                const salary = rawSalary ? `${rawSalary}M` : "N/A";
+                const bonus = entry._rawData[4];
+                histEmbed.addFields({
+                    name: "\u200B", // Invisible title
+                    value: `📝 **Years:** ${actionType}\n💰 **Salary:** ${salary || "N/A"}\n✨ **Bonus:** ${bonus || "None"}`,
+                    inline: false,
+                });
             });
-        });
 
-        return await interaction.reply({ embeds: [histEmbed] });
-    } 
-} // <--- THIS ends the "isButton" check. 
+            return await interaction.reply({ embeds: [histEmbed] });
+        }
+    } // <--- THIS ends the "isButton" check.
 
 // --- SLASH COMMANDS START HERE ---
 if (!interaction.isChatInputCommand()) return;
