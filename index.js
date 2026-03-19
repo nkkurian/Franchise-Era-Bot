@@ -6,6 +6,7 @@ const {
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
+const axios = require("axios");
 
 
 // Keep-alive server for Render
@@ -17,6 +18,7 @@ const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
   key: process.env.GOOGLE_KEY.replace(/\\n/g, '\n'),
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  
 });
 
 const client = new Client({ 
@@ -104,6 +106,62 @@ app.post('/fa-report', async (req, res) => {
     }
   }
 });
+
+async function getPlayerStats(sleeperId) {
+    if (!sleeperId) return null;
+
+    try {
+        const leagueId = process.env.SLEEPER_LEAGUE_ID;
+        const currentYear = new Date().getFullYear(); // 2026
+        const lastYear = currentYear - 1; // 2025
+
+        // 1. Fetch Stats for both years and League Scoring in parallel
+        const [res2026, res2025, resLeague] = await Promise.all([
+            axios.get(
+                `https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`,
+            ),
+            axios.get(
+                `https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`,
+            ),
+            axios.get(`https://api.sleeper.app/v1/league/${leagueId}`),
+        ]);
+
+        const stats2026 = res2026.data[sleeperId];
+        const stats2025 = res2025.data[sleeperId];
+        const scoringSettings = resLeague.data.scoring_settings;
+
+        // 2. Identify which year is "Real" (Check Offense + IDP stats)
+        const hasRealData2026 =
+            stats2026 &&
+            (stats2026.pts_ppr > 0 ||
+                stats2026.tkl > 0 ||
+                stats2026.pass_yd > 0 ||
+                stats2026.sack > 0);
+
+        const activeStats = hasRealData2026 ? stats2026 : stats2025;
+        const yearUsed = hasRealData2026 ? currentYear : lastYear;
+
+        if (!activeStats) return null;
+
+        // 3. INTERNAL CALCULATION: Apply your League's Custom Scoring
+        let customTotal = 0;
+        for (const [statName, pointValue] of Object.entries(scoringSettings)) {
+            if (activeStats[statName]) {
+                customTotal += activeStats[statName] * pointValue;
+            }
+        }
+
+        // 4. Return everything as one neat object
+        return {
+            ...activeStats,
+            leagueScore: customTotal.toFixed(2),
+            displayYear: yearUsed,
+        };
+    } catch (err) {
+        console.error("❌ Seamless Stats Error:", err.message);
+        return null;
+    }
+}
 
 // --- EXTENSION ELIGIBILITY ENDPOINT ---
 app.post('/extension-report', async (req, res) => {
@@ -755,66 +813,188 @@ if (interaction.commandName === 'admin') {
   return await interaction.editReply({ embeds: [topEmbed] });
 }
     
-    if (interaction.commandName === 'salary') {
-      const input = interaction.options.getString('player').toLowerCase();
-      const matches = players.filter(r => r._rawData[1]?.toLowerCase().includes(input));
+    if (interaction.commandName === "salary") {
+            const input = interaction.options.getString("player").toLowerCase();
+            const { players, logs, idMap } = await getSheetData();
+            const matches = players.filter((r) =>
+                r._rawData[1]?.toLowerCase().includes(input),
+            );
 
-      if (matches.length === 0) return await interaction.editReply(`❌ Player **${input}** not found.`);
+            if (matches.length === 0)
+                return await interaction.editReply(
+                    `❌ Player **${input}** not found.`,
+                );
 
-      const sendSalaryResponse = async (targetInteraction, playerRow, isUpdate = false) => {
-        const pName = playerRow._rawData[1];
-        const embed = createPlayerEmbed(playerRow);
-        const components = [];
+            const sendSalaryResponse = async (
+                targetInteraction,
+                playerRow,
+                isUpdate = false,
+            ) => {
+                const pName = playerRow._rawData[1];
+                const pPos = playerRow._rawData[2];
 
-        const hasHistory = logs.some(l => l._rawData[0]?.toLowerCase() === pName.toLowerCase());
+                // 1. Find Sleeper ID from idMap
+                const idRow = idMap.find(
+                    (row) =>
+                        row._rawData[1]?.toLowerCase() === pName.toLowerCase(),
+                );
+                const sleeperId = idRow ? idRow._rawData[0] : null;
 
-        if (hasHistory) {
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-              .setCustomId(`view_ext_${pName}`)
-              .setLabel('View Extension History')
-              .setStyle(ButtonStyle.Secondary)
-          );
-          components.push(row);
+                // 2. Fetch Stats if we have an ID
+                const stats = sleeperId
+                    ? await getPlayerStats(sleeperId)
+                    : null;
+                const displayYear = stats?.displayYear || "2025";
+                let statsField = `No live stats available for ${displayYear}.`;
+
+                if (stats) {
+                    let s = [];
+
+                    // --- OFFENSE ---
+                    if (stats.pass_yd)
+                        s.push(
+                            `• **Pass:** ${stats.pass_yd} Yds, ${stats.pass_td || 0} TD`,
+                        );
+                    if (stats.rush_yd)
+                        s.push(
+                            `• **Rush:** ${stats.rush_yd} Yds, ${stats.rush_td || 0} TD`,
+                        );
+                    if (stats.rec)
+                        s.push(
+                            `• **Rec:** ${stats.rec} catches, ${stats.rec_yd || 0} Yds`,
+                        );
+
+                    // --- IDP (Defensive) ---
+                    const tackles =
+                        stats.tkl ||
+                        (stats.idp_tkl || 0) + (stats.idp_tkl_ast || 0);
+                    const sacks = stats.sack || stats.idp_sack || 0;
+                    const ints = stats.int || stats.idp_int || 0;
+
+                    if (tackles > 0) s.push(`• **Tackles:** ${tackles} Total`);
+                    if (sacks > 0) s.push(`• **Sacks:** ${sacks.toFixed(1)}`);
+                    if (ints > 0) s.push(`• **INTs:** ${ints}`);
+                    if (stats.idp_ff)
+                        s.push(`• **Forced Fumbles:** ${stats.idp_ff}`);
+
+                    // --- LEAGUE SCORE ---
+                    if (stats.leagueScore) {
+                        s.push(`\n🏆 **League Score: ${stats.leagueScore}**`);
+                    }
+
+                    if (s.length > 0) statsField = s.join("\n");
+                }
+
+                // 3. Build the Embed (Your Preferred Format)
+                const embed = new EmbedBuilder()
+                    .setTitle(`🏈 ${pName} (${pPos})`)
+                    .setColor(0x3498db)
+                    .addFields(
+                        {
+                            name: "💰 Yearly Salary",
+                            value: playerRow._rawData[4] || "$0.00",
+                            inline: true,
+                        },
+                        {
+                            name: "⏳ Years Left",
+                            value: playerRow._rawData[3] || "0",
+                            inline: true,
+                        },
+                        {
+                            name: "📋 Team",
+                            value: playerRow._rawData[0] || "FA",
+                            inline: true,
+                        },
+                        {
+                            name: `📈 ${displayYear} Performance`,
+                            value: statsField,
+                            inline: false,
+                        },
+                    );
+
+                // 🎯 NEW: Dynamic Structure Field
+                // Only adds the field if there is something OTHER than "Standard" or empty
+                const structureVal = playerRow._rawData[10];
+                if (
+                    structureVal &&
+                    structureVal.toLowerCase() !== "standard" &&
+                    structureVal.trim() !== ""
+                ) {
+                    embed.addFields({
+                        name: "📜 Structure",
+                        value: structureVal,
+                        inline: false,
+                    });
+                }
+
+                if (sleeperId) {
+                    embed.setThumbnail(
+                        `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
+                    );
+                }
+
+                // 4. Add Headshot
+                if (sleeperId) {
+                    embed.setThumbnail(
+                        `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
+                    );
+                }
+
+                // Add history button if applicable
+                const components = [];
+                const hasHistory = logs.some(
+                    (l) => l._rawData[0]?.toLowerCase() === pName.toLowerCase(),
+                );
+                if (hasHistory) {
+                    components.push(
+                        new ActionRowBuilder().addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(`view_ext_${pName}`)
+                                .setLabel("View Extension")
+                                .setStyle(ButtonStyle.Secondary),
+                        ),
+                    );
+                }
+
+                const payload = {
+                    content: null,
+                    embeds: [embed],
+                    components: components,
+                };
+                return isUpdate
+                    ? await targetInteraction.update(payload)
+                    : await targetInteraction.editReply(payload);
+            };
+
+            // Handle single or multiple matches
+            if (matches.length === 1) {
+                return await sendSalaryResponse(interaction, matches[0]);
+            } else {
+                const selectionRow = new ActionRowBuilder().addComponents(
+                    matches
+                        .slice(0, 5)
+                        .map((m, i) =>
+                            new ButtonBuilder()
+                                .setCustomId(`select_player_${i}`)
+                                .setLabel(m._rawData[1])
+                                .setStyle(ButtonStyle.Primary),
+                        ),
+                );
+                const response = await interaction.editReply({
+                    content: "Multiple found, please select:",
+                    components: [selectionRow],
+                });
+                const collector = response.createMessageComponentCollector({
+                    componentType: ComponentType.Button,
+                    time: 30000,
+                });
+                collector.on("collect", async (i) => {
+                    const idx = parseInt(i.customId.split("_")[2]);
+                    await sendSalaryResponse(i, matches[idx], true);
+                    collector.stop();
+                });
+            }
         }
-
-        const payload = { content: null, embeds: [embed], components: components };
-        return isUpdate ? await targetInteraction.update(payload) : await targetInteraction.editReply(payload);
-      };
-
-      if (matches.length === 1) {
-        return await sendSalaryResponse(interaction, matches[0]);
-      }
-
-      const limitedMatches = matches.slice(0, 5);
-      const selectionRow = new ActionRowBuilder().addComponents(
-        limitedMatches.map((m, index) =>
-          new ButtonBuilder()
-            .setCustomId(`select_player_${index}`)
-            .setLabel(m._rawData[1])
-            .setStyle(ButtonStyle.Primary)
-        )
-      );
-
-      const response = await interaction.editReply({
-        content: `Multiple players found. Please select one:`,
-        components: [selectionRow]
-      });
-
-      const collector = response.createMessageComponentCollector({ 
-        componentType: ComponentType.Button, 
-        time: 60000 
-      });
-
-      collector.on('collect', async (i) => {
-        if (i.customId.startsWith('select_player_')) {
-          const index = parseInt(i.customId.split('_')[2]);
-          const selectedPlayer = limitedMatches[index];
-          await sendSalaryResponse(i, selectedPlayer, true);
-          collector.stop();
-        }
-      });
-    }
 
     if (interaction.commandName === 'team') {
         const teamInput = interaction.options.getString('teamname').toLowerCase();
