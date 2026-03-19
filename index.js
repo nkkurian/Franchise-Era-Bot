@@ -8,23 +8,6 @@ const { JWT } = require('google-auth-library');
 const express = require('express');
 const axios = require("axios");
 
-const { REST, Routes } = require('discord.js');
-
-
-// Delete after usage. 
-const rest = new REST({ version: '10' }).setToken("MTQ3MTQ5NjkxMTU1ODAxNzA0NQ.GePhwQ.ztElwBrPdCjMei813ZkGv5T9dcLEaPIAOUVEII");
-
-(async () => {
-    try {
-        console.log('🧹 Clearing all slash commands...');
-        // This deletes GLOBAL commands
-        await rest.put(Routes.applicationCommands("1483989571120402612"), { body: [] });
-        console.log('✅ Successfully cleared all commands. You can delete this code now!');
-    } catch (error) {
-        console.error(error);
-    }
-})();
-
 // Keep-alive server for Render
 const app = express();
 app.get('/', (req, res) => res.send('Franchise Pro Bot: Buttons & Search Active'));
@@ -1311,5 +1294,25 @@ cron.schedule('0 10 * * 3', async () => { // Testing every minute
         console.error("❌ Cron Error Detail:", err);
     }
 });
+
+// Add this to the very bottom of your file temporarily
+(async () => {
+    // We create a new rest instance specifically for this task
+    const tempRest = new (require('discord.js').REST)({ version: '10' }).setToken("YOUR_TEST_BOT_TOKEN");
+    
+    try {
+        console.log('🧹 Clearing all slash commands for Test Bot...');
+        
+        // This clears GLOBAL commands
+        await tempRest.put(
+            require('discord.js').Routes.applicationCommands("YOUR_TEST_BOT_CLIENT_ID"), 
+            { body: [] }
+        );
+        
+        console.log('✅ Successfully cleared! You can now delete this temporary code block.');
+    } catch (error) {
+        console.error('Error clearing commands:', error);
+    }
+})();
 
 client.login(process.env.DISCORD_TOKEN);
