@@ -85,17 +85,5 @@ module.exports = {
 	    .setTimestamp();
 	
 	  return await interaction.editReply({ embeds: [topEmbed] });
-	}
-	    
-	    const command = client.commands.get(interaction.commandName);
-	      if (command) {
-	          try {
-	              // We pass getSheetData and getPlayerStats so the command can use them
-	              await command.execute(interaction, getSheetData, getPlayerStats);
-	          } catch (error) {
-	              console.error(error);
-	              await interaction.editReply({ content: 'There was an error executing this command!' });
-	          }
-	          return;
-	      },
+	},
 }; 
