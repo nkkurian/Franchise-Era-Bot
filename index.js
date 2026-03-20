@@ -445,7 +445,7 @@ client.on('interactionCreate', async (interaction) => {
         new ButtonBuilder()
           .setCustomId('run_sync')
           .setLabel('🔄 Sync Sheets & Reload Cache')
-          .setStyle(ButtonStyle.Danger)
+          .setStyle(ButtonStyle.Danger),
 		  new ButtonBuilder()
             .setCustomId('run_manual_audit')
             .setLabel('⚖️ Run Cap Audit')
