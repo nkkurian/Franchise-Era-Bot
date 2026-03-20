@@ -21,6 +21,8 @@ module.exports = {
                 )),
 
     async execute(interaction, getSheetData) {
+		await interaction.deferReply();
+		const { players } = await getSheetData();
       const count = interaction.options.getInteger('count') || 10; 
 	  const posFilter = interaction.options.getString('position') || 'ALL';
 	
