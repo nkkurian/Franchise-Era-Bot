@@ -33,6 +33,21 @@ const client = new Client({
 });
 
 
+client.commands = new Collection();
+
+const commandsPath = path.join(__dirname, 'commands');
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+
+for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    const command = require(filePath);
+    if ('data' in command && 'execute' in command) {
+        client.commands.set(command.data.name, command);
+        console.log(`✅ Loaded Command: ${command.data.name}`);
+    }
+}
+
+
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
 app.use(express.json()); // Essential to read the data sent from Google
 
@@ -384,45 +399,6 @@ function createPlayerEmbed(pRow) {
 
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
-    // 1. HANDLE BUTTON CLICKS (History & Selection)
-  // if (!interaction.guild) {
-  //       // Allow the login modal and password submission to go through
-  //       const isLoginAttempt = interaction.isModalSubmit() && interaction.customId === 'userLoginModal';
-  //       const isTriggeringLogin = interaction.isChatInputCommand() || interaction.isButton();
-
-  //       // If they aren't authenticated yet (you could use a Set or Database to track this)
-  //       // For simplicity, let's just force a Modal if they try to use a command in DMs
-  //       if (isTriggeringLogin) {
-  //           const modal = new ModalBuilder()
-  //               .setCustomId('userLoginModal')
-  //               .setTitle('DM Access Required');
-
-  //           const passInput = new TextInputBuilder()
-  //               .setCustomId('dmPassword')
-  //               .setLabel("Enter Member Password")
-  //               .setStyle(TextInputStyle.Short)
-  //               .setPlaceholder("Password required for DM use...")
-  //               .setRequired(true);
-
-  //           modal.addComponents(new ActionRowBuilder().addComponents(passInput));
-  //           return await interaction.showModal(modal);
-  //       }
-  //   }
-
-    // 2. HANDLE MODAL SUBMISSIONS
-    // if (interaction.isModalSubmit()) {
-    //     // Member DM Login
-    //     if (interaction.customId === 'userLoginModal') {
-    //         const pass = interaction.fields.getTextInputValue('dmPassword');
-    //         if (pass === 'Franchise2026') { // Set your DM password here
-    //             return await interaction.reply({ 
-    //                 content: "✅ Access Granted. You can now use commands in DMs for this session.", 
-    //                 ephemeral: true 
-    //             });
-    //         } else {
-    //             return await interaction.reply({ content: "❌ Incorrect password.", ephemeral: true });
-    //         }
-    //     }
   
   if (interaction.isModalSubmit()) {
     
