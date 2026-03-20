@@ -292,7 +292,14 @@ const commands = [
     .setName('salary')
     .setDescription('Check player contract & bonus info')
     .addStringOption(o => o.setName('player').setDescription('Enter player name').setRequired(true)),
-  new SlashCommandBuilder()
+new SlashCommandBuilder()
+    .setName('trade')
+    .setDescription('Analyze trade impact')
+    .addStringOption(o => o.setName('teama').setDescription('First team').setRequired(true))
+    .addStringOption(o => o.setName('teama_players').setDescription('Players from first team').setRequired(true))
+    .addStringOption(o => o.setName('teamb').setDescription('Second team').setRequired(true))
+    .addStringOption(o => o.setName('teamb_players').setDescription('Players from second team').setRequired(true)),
+new SlashCommandBuilder()
     .setName('team')
     .setDescription('Check team cap space')
     .addStringOption(o => o.setName('teamname').setDescription('Enter team name').setRequired(true)),
