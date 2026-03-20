@@ -484,7 +484,7 @@ if (command) {
     try {
         // If it's a command from the folder, run it!
         // We pass getSheetData so the command can access the spreadsheet
-        await command.execute(interaction, getSheetData);
+        await command.execute(interaction, getSheetData,getPlayerStats);
         return; // Stop here so it doesn't try to run the logic below
     } catch (error) {
         console.error(error);
