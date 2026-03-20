@@ -10,6 +10,7 @@ module.exports = {
                 .setRequired(true)),
 
     async execute(interaction, getSheetData) {
+		await interaction.deferReply();
       const teamInput = interaction.options
 	                .getString("teamname")
 	                .toLowerCase();
