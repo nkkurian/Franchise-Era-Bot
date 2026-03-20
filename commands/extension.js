@@ -7,6 +7,7 @@ module.exports = {
         .addStringOption(option => option.setName('name').setDescription('Player name').setRequired(true)),
 
     async execute(interaction, getSheetData) {
+		await interaction.deferReply();
       const inputName = interaction.options.getString('name').toLowerCase();
 	      const { logs } = await getSheetData();
 	
