@@ -488,7 +488,10 @@ if (command) {
         return; // Stop here so it doesn't try to run the logic below
     } catch (error) {
         console.error(error);
-        return interaction.reply({ content: 'Error executing this command!', ephemeral: true });
+        // Only reply here if the command hasn't replied yet
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'Error!', ephemeral: true });
+        }
     }
 }
 	
