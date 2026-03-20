@@ -11,7 +11,7 @@ module.exports = {
 
     async execute(interaction, getSheetData) {
         try { 
-          const { players } = await getSheetData();
+          const { players, doc} = await getSheetData();
           const tA = interaction.options.getString('teama');
           const pA_input = interaction.options.getString('teama_players').split(',').map(p => p.trim().toLowerCase());
           const tB = interaction.options.getString('teamb');
@@ -55,10 +55,9 @@ module.exports = {
             );
     
           return await interaction.editReply({ embeds: [tradeEmbed] });
-        }
       } catch (err) {
         console.error(err);
         if (!interaction.replied) await interaction.editReply("⚠️ Bot Error.");
       }
-} 
+    }
 }; 
