@@ -840,7 +840,7 @@ if (interaction.commandName === 'admin') {
             ) => {
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
-                const capHit = playerRow._rawData[4] || "N/A";
+                const capHit = playerRow._rawData[6] || "N/A";
 
                 // 1. Find Sleeper ID from idMap
                 const idRow = idMap.find(
