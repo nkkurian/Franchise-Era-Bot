@@ -8,6 +8,7 @@ module.exports = {
             option.setName('player').setDescription('The name of the player').setRequired(true)),
 
     async execute(interaction, getSheetData, getPlayerStats) {
+        await interaction.deferReply();
       const input = interaction.options.getString("player").toLowerCase();
             const { players, logs, idMap } = await getSheetData();
             const matches = players.filter((r) =>
