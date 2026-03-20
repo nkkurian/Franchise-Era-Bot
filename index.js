@@ -477,7 +477,21 @@ client.on('interactionCreate', async (interaction) => {
 
 // --- SLASH COMMANDS START HERE ---
 	if (!interaction.isChatInputCommand()) return;
-	  
+
+		const command = interaction.client.commands.get(interaction.commandName);
+
+if (command) {
+    try {
+        // If it's a command from the folder, run it!
+        // We pass getSheetData so the command can access the spreadsheet
+        await command.execute(interaction, getSheetData);
+        return; // Stop here so it doesn't try to run the logic below
+    } catch (error) {
+        console.error(error);
+        return interaction.reply({ content: 'Error executing this command!', ephemeral: true });
+    }
+}
+	
 	if (interaction.commandName === 'appeal') {
 	        const modal = new ModalBuilder()
 	            .setCustomId('appealModal')
