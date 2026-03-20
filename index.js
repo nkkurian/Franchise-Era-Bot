@@ -10,6 +10,7 @@ const axios = require("axios");
 const { runWeeklyAudit } = require('./utils/capCompliance.js');
 const cron = require('node-cron');
 const routes = require('./routes');
+const vault = require('./utils/vault.js');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -52,7 +53,7 @@ for (const file of commandFiles) {
 	}
 }
 
-
+const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
 
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
 app.use(express.json()); // Essential to read the data sent from Google
@@ -129,7 +130,6 @@ let processedTxIds = new Set();
 let isFirstRun = true; // NEW: Controls the one-time historical post
 
 // Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
-const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
 
 async function getSheetData() {
   const now = Date.now();
@@ -306,33 +306,7 @@ client.on('interactionCreate', async (interaction) => {
     }  
   
     if (interaction.customId === 'adminLoginModal') {
-    const password = interaction.fields.getTextInputValue('adminPassword');
-
-    if (password === 'LeagueAdmin2026') {
-      const adminEmbed = new EmbedBuilder()
-        .setTitle('🛠️ Admin Command Center')
-        .setDescription('Authentication successful. Choose an automated task below.')
-        .setColor(0xe74c3c);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setCustomId('run_sync')
-          .setLabel('🔄 Sync Sheets & Reload Cache')
-          .setStyle(ButtonStyle.Danger),
-		  new ButtonBuilder()
-            .setCustomId('run_manual_audit')
-            .setLabel('⚖️ Run Cap Audit')
-            .setStyle(ButtonStyle.Secondary)
-      );
-
-      return await interaction.reply({ 
-        embeds: [adminEmbed], 
-        components: [row], 
-        ephemeral: true 
-      });
-    } else {
-      return await interaction.reply({ content: '❌ Incorrect password.', ephemeral: true });
-    }
+    return await vault.showAdminPanel(interaction);
   }
   } 
   
@@ -418,18 +392,7 @@ client.on('interactionCreate', async (interaction) => {
         }
     }
     if (interaction.customId === 'trigger_admin_modal') {
-        const modal = new ModalBuilder()
-            .setCustomId('adminLoginModal')
-            .setTitle('Admin Access');
-
-        const passwordInput = new TextInputBuilder()
-            .setCustomId('adminPassword')
-            .setLabel("Enter Admin Password")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(passwordInput));
-        return await interaction.showModal(modal);
+    	return await vault.showAdminModal(interaction);
     }
     if (interaction.customId === 'run_sync') {
       await interaction.deferUpdate(); // Prevents "Interaction Failed" error
@@ -660,26 +623,7 @@ async function processAndSend(tx, channel, players, idMap) {
 }
 
 client.on('messageCreate', async (message) => {
-    if (message.content.toLowerCase() === '!vault' && !message.author.bot) {
-        await message.delete().catch(() => null); 
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId('trigger_admin_modal')
-                .setLabel('🔓 Open Admin Vault')
-                .setStyle(ButtonStyle.Danger)
-        );
-
-        // NOTE: This cannot be ephemeral because it's a standard message.
-        // It will be visible to everyone until the admin clicks it.
-        const vaultMsg = await message.channel.send({ 
-            content: "🔒 **Secure Access Point Detected.**", 
-            components: [row] 
-        });
-
-        // Optional: Auto-delete the button after 30 seconds so it doesn't stay in the chat
-        // setTimeout(() => vaultMsg.delete().catch(() => null), 30000);
-    }
+	await vault.handleVaultTrigger(message);
 });
 
 
