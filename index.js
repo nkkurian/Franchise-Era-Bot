@@ -891,9 +891,17 @@ client.on('interactionCreate', async (interaction) => {
 	                .setTimestamp();
 	
 	            return await interaction.editReply({ embeds: [teamEmbed] });
-	        }
-		}
-});
+	        } // End of 'team' command if-statement
+
+    } catch (error) { // This was missing or misplaced
+        console.error(error);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: 'There was an error executing this command!' });
+        } else {
+            await interaction.reply({ content: 'There was an error executing this command!', ephemeral: true });
+        }
+    }
+}); // This finally closes client.on('interactionCreate', ...)
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 let rosterToTeamName = {}; 
