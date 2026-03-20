@@ -7,7 +7,7 @@ const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
 const express = require('express');
 const axios = require("axios");
-const { runWeeklyAudit } = require('./utils/audit.js');
+const { runWeeklyAudit } = require('./utils/capCompliance.js');
 const cron = require('node-cron');
 
 const fs = require('node:fs');
