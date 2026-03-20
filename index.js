@@ -657,23 +657,6 @@ client.on('interactionCreate', async (interaction) => {
 	        modal.addComponents(new ActionRowBuilder().addComponents(reasonInput));
 	        return await interaction.showModal(modal);
 	    }
-	  
-	if (interaction.commandName === 'admin') {
-	        const modal = new ModalBuilder()
-	            .setCustomId('adminLoginModal')
-	            .setTitle('Admin Access');
-	
-	        const passwordInput = new TextInputBuilder()
-	            .setCustomId('adminPassword')
-	            .setLabel("Enter Admin Password")
-	            .setStyle(TextInputStyle.Short)
-	            .setRequired(true);
-	
-	        const firstActionRow = new ActionRowBuilder().addComponents(passwordInput);
-	        modal.addComponents(firstActionRow);
-	
-	        return await interaction.showModal(modal);
-	    }
 	   
 	
 	    // Defer for all other commands
