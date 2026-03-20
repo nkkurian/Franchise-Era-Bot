@@ -446,6 +446,10 @@ client.on('interactionCreate', async (interaction) => {
           .setCustomId('run_sync')
           .setLabel('🔄 Sync Sheets & Reload Cache')
           .setStyle(ButtonStyle.Danger)
+		  new ButtonBuilder()
+            .setCustomId('run_manual_audit')
+            .setLabel('⚖️ Run Cap Audit')
+            .setStyle(ButtonStyle.Secondary)
       );
 
       return await interaction.reply({ 
@@ -468,7 +472,6 @@ client.on('interactionCreate', async (interaction) => {
         //const embed = EmbedBuilder.from(messageEmbed); // Ensure this variable name is consistent
         const embed = EmbedBuilder.from(interaction.message.embeds[0]); 
         const count = parseInt(embed.data.footer.text.match(/\d+/)[0]) + 1;
-		count++;
         
         const footerText = embed.data.footer?.text || ""; 
         //let count = parseInt(interaction.customId.split('_')[2]);
@@ -580,6 +583,23 @@ client.on('interactionCreate', async (interaction) => {
           ephemeral: true 
         });
       }
+
+		} else if (interaction.customId === 'run_manual_audit') {
+        await interaction.deferUpdate(); 
+        await interaction.followUp({ content: "⏳ Starting manual audit...", ephemeral: true });
+
+        try {
+            // This calls the function from your utils/audit.js file
+            await runWeeklyAudit(client, getSheetData);
+
+            return await interaction.followUp({ 
+                content: "✅ **Audit Complete.** Results posted to <#1477399855541518366>.", 
+                ephemeral: true 
+            });
+        } catch (err) {
+            console.error("Manual Audit Error:", err);
+            return await interaction.followUp({ content: "❌ Audit failed.", ephemeral: true });
+        }
  
     } else if (interaction.customId.startsWith("view_ext_")) {
             // Fixed 'else if'
@@ -616,6 +636,7 @@ client.on('interactionCreate', async (interaction) => {
 
             return await interaction.reply({ embeds: [histEmbed] });
         }
+	  
     } // <--- THIS ends the "isButton" check.
 
 // --- SLASH COMMANDS START HERE ---
