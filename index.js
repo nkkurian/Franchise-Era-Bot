@@ -840,6 +840,7 @@ if (interaction.commandName === 'admin') {
             ) => {
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
+                const capHit = playerRow._rawData[4] || "N/A";
 
                 // 1. Find Sleeper ID from idMap
                 const idRow = idMap.find(
@@ -858,7 +859,7 @@ if (interaction.commandName === 'admin') {
                 if (stats) {
                     let s = [];
 
-                    // --- OFFENSE ---
+                    // Offensive Stats
                     if (stats.pass_yd)
                         s.push(
                             `• **Pass:** ${stats.pass_yd} Yds, ${stats.pass_td || 0} TD`,
@@ -867,58 +868,82 @@ if (interaction.commandName === 'admin') {
                         s.push(
                             `• **Rush:** ${stats.rush_yd} Yds, ${stats.rush_td || 0} TD`,
                         );
-                    if (stats.rec)
+
+                    // Updated Receiving Line with TDs
+                    if (stats.rec || stats.rec_yd || stats.rec_td) {
                         s.push(
-                            `• **Rec:** ${stats.rec} catches, ${stats.rec_yd || 0} Yds`,
+                            `• **Rec:** ${stats.rec || 0} Rec, ${stats.rec_yd || 0} Yds, ${stats.rec_td || 0} TD`,
                         );
-
-                    // --- IDP (Defensive) ---
-                    const tackles =
-                        stats.tkl ||
-                        (stats.idp_tkl || 0) + (stats.idp_tkl_ast || 0);
-                    const sacks = stats.sack || stats.idp_sack || 0;
-                    const ints = stats.int || stats.idp_int || 0;
-
-                    if (tackles > 0) s.push(`• **Tackles:** ${tackles} Total`);
-                    if (sacks > 0) s.push(`• **Sacks:** ${sacks.toFixed(1)}`);
-                    if (ints > 0) s.push(`• **INTs:** ${ints}`);
-                    if (stats.idp_ff)
-                        s.push(`• **Forced Fumbles:** ${stats.idp_ff}`);
-
-                    // --- LEAGUE SCORE ---
-                    if (stats.leagueScore) {
-                        s.push(`\n🏆 **League Score: ${stats.leagueScore}**`);
                     }
+
+                    // 🎯 THE FIX: Only show Defensive Stats for Defensive Players
+                    const defensivePositions = [
+                        "DE",
+                        "DT",
+                        "DL",
+                        "LB",
+                        "CB",
+                        "S",
+                        "DB",
+                        "IDP",
+                    ];
+                    const isDefensivePlayer = defensivePositions.includes(
+                        pPos.toUpperCase(),
+                    );
+
+                    if (isDefensivePlayer) {
+                        const tkl =
+                            stats.tkl ||
+                            (stats.idp_tkl || 0) + (stats.idp_tkl_ast || 0);
+                        const sack = stats.sack || stats.idp_sack || 0;
+                        const int = stats.int || stats.idp_int || 0;
+
+                        if (tkl > 0) s.push(`• **Tackles:** ${tkl} Total`);
+                        if (sack > 0) s.push(`• **Sacks:** ${sack.toFixed(1)}`);
+                        if (int > 0) s.push(`• **INTs:** ${int}`);
+                    }
+
+                    // Custom League Score
+                    if (stats.leagueScore)
+                        s.push(`\n🏆 **League Score: ${stats.leagueScore}**`);
 
                     if (s.length > 0) statsField = s.join("\n");
                 }
 
                 // 3. Build the Embed (Your Preferred Format)
                 const embed = new EmbedBuilder()
-                    .setTitle(`🏈 ${pName} (${pPos})`)
-                    .setColor(0x3498db)
-                    .addFields(
-                        {
-                            name: "💰 Yearly Salary",
-                            value: playerRow._rawData[4] || "$0.00",
-                            inline: true,
-                        },
-                        {
-                            name: "⏳ Years Left",
-                            value: playerRow._rawData[3] || "0",
-                            inline: true,
-                        },
-                        {
-                            name: "📋 Team",
-                            value: playerRow._rawData[0] || "FA",
-                            inline: true,
-                        },
-                        {
-                            name: `📈 ${displayYear} Performance`,
-                            value: statsField,
-                            inline: false,
-                        },
-                    );
+                .setTitle(`🏈 ${pName} (${pPos})`)
+                .setColor(0x3498db)
+                .addFields(
+                    // --- LINE 1 (3 Fields) ---
+                    {
+                        name: "💰 Yearly Salary",
+                        value: playerRow._rawData[4] || "$0.00",
+                        inline: true,
+                    },
+                    {
+                        name: "⏳ Years Left",
+                        value: playerRow._rawData[3] || "0",
+                        inline: true,
+                    },
+                    {
+                        name: "📋 Team",
+                        value: playerRow._rawData[0] || "FA",
+                        inline: true,
+                    },
+                    // --- LINE 2 (1 Field) ---
+                    {
+                        name: "💸 Cap Hit",
+                        value: capHit || "N/A",
+                        inline: false, // Setting this to false forces it to its own line
+                    },
+                    // --- LINE 3 (Performance) ---
+                    {
+                        name: `📈 ${displayYear} Performance`,
+                        value: statsField,
+                        inline: false,
+                    },
+                );
 
                 // 🎯 NEW: Dynamic Structure Field
                 // Only adds the field if there is something OTHER than "Standard" or empty
@@ -933,12 +958,6 @@ if (interaction.commandName === 'admin') {
                         value: structureVal,
                         inline: false,
                     });
-                }
-
-                if (sleeperId) {
-                    embed.setThumbnail(
-                        `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
-                    );
                 }
 
                 // 4. Add Headshot
