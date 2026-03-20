@@ -1,7 +1,7 @@
 const { 
   Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, 
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, 
-  ComponentType, ModalBuilder, TextInputBuilder, TextInputStyle 
+  ComponentType, ModalBuilder, TextInputBuilder, Collection, TextInputStyle 
 } = require('discord.js');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
