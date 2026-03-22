@@ -25,7 +25,7 @@ async function showAppealModal(interaction) {
 
 async function handleAppealSubmit(interaction) {
   const reason = interaction.fields.getTextInputValue('appealReason');
-        const appealChannel = await client.channels.fetch('1483467245970657413'); // Replace ID
+        const appealChannel = await interaction.client.channels.fetch('1483467245970657413'); // Replace ID
 
         // Inside your appealModal handler
               const appealEmbed = new EmbedBuilder()
