@@ -201,6 +201,11 @@ new SlashCommandBuilder()
     .setName('extension')
     .setDescription('Check historical contract extensions for a player')
     .addStringOption(o => o.setName('name').setDescription('Enter player name').setRequired(true)),
+
+	new SlashCommandBuilder()
+        .setName('appeal')
+        .setDescription('Submit an official appeal to the committee'),
+	
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
