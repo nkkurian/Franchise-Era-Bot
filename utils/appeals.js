@@ -84,7 +84,7 @@ async function handleAppealButton(interaction) {
     embed.setDescription(currentDesc);
 
     // 4. Update or Finalize
-    if (newCount < 4) {
+    if (newCount < 1) {
         embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${newCount}/4)` });
         
         const row = new ActionRowBuilder().addComponents(
