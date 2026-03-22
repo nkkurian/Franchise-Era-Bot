@@ -394,7 +394,6 @@ if (command) {
     }
 }
 	
-    }
 }); // This finally closes client.on('interactionCreate', ...)
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
