@@ -110,12 +110,12 @@ async function handleAppealButton(interaction) {
             embeds: [embed] 
         });
     }
+} 
 	module.exports = { 
     showAppealModal, 
     handleAppealSubmit, 
     handleAppealButton 
 };
 	
-}
 
 
