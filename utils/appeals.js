@@ -3,7 +3,7 @@ const {
     ModalBuilder, TextInputBuilder, TextInputStyle 
 } = require('discord.js');
 
-const APPEAL_CHANNEL_ID = '1483467245970657413';
+const APPEAL_CHANNEL_ID = '1477399855541518366';
 const LOG_CHANNEL_ID = '1477399855541518366';
 const COMMITTEE_ROLE_ID = '1399502952506458252';
 
