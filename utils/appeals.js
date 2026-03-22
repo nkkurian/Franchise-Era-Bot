@@ -3,7 +3,7 @@ const {
     ModalBuilder, TextInputBuilder, TextInputStyle 
 } = require('discord.js');
 
-const APPEAL_CHANNEL_ID = '1477399855541518366';
+const APPEAL_CHANNEL_ID = '1483467245970657413';
 const LOG_CHANNEL_ID = '1477399855541518366';
 const COMMITTEE_ROLE_ID = '1399502952506458252';
 
@@ -25,7 +25,7 @@ async function showAppealModal(interaction) {
 
 async function handleAppealSubmit(interaction) {
   const reason = interaction.fields.getTextInputValue('appealReason');
-        const appealChannel = await interaction.client.channels.fetch('1477399855541518366'); // Replace ID
+        const appealChannel = await interaction.client.channels.fetch('1483467245970657413'); // Replace ID
 
         // Inside your appealModal handler
               const appealEmbed = new EmbedBuilder()
@@ -84,7 +84,7 @@ async function handleAppealButton(interaction) {
     embed.setDescription(currentDesc);
 
     // 4. Update or Finalize
-    if (newCount < 1) {
+    if (newCount < 4) {
         embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${newCount}/4)` });
         
         const row = new ActionRowBuilder().addComponents(
