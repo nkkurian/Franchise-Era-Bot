@@ -312,19 +312,19 @@ client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('second_appeal_')) {
-        // 1. Define the embed FIRST
         const messageEmbed = interaction.message.embeds[0];
-        if (!messageEmbed) return; // Safety check
-    
-        //const embed = EmbedBuilder.from(messageEmbed); // Ensure this variable name is consistent
-        const embed = EmbedBuilder.from(interaction.message.embeds[0]); 
-        const count = parseInt(embed.data.footer.text.match(/\d+/)[0]) + 1;
+        if (!messageEmbed) return;
+
+        const embed = EmbedBuilder.from(messageEmbed);
         
+        // 1. Get the current count from the Button's Custom ID instead of the footer
+        // This is much more reliable than regex on text
+        let count = parseInt(interaction.customId.split('_')[2]) + 1;
+
         const footerText = embed.data.footer?.text || ""; 
-        //let count = parseInt(interaction.customId.split('_')[2]);
         const submitterId = footerText.replace("Submitter ID: ", "");
 
-        // 3. Prevent self-seconding
+        // 2. Prevent self-seconding
         if (interaction.user.id === submitterId) {
             return await interaction.reply({ 
                 content: "❌ You cannot second your own appeal!", 
@@ -335,7 +335,7 @@ client.on('interactionCreate', async (interaction) => {
         const userName = interaction.user.displayName;
         let currentDesc = embed.data.description || "";
 
-        // 4. Anti-Spam: Check if user already seconded
+        // 3. Anti-Spam Check
         if (currentDesc.includes(`• ${userName}`)) {
             return await interaction.reply({ content: "❌ You already seconded this!", ephemeral: true });
         }
@@ -348,14 +348,14 @@ client.on('interactionCreate', async (interaction) => {
         }
         embed.setDescription(currentDesc);
 
-        // --- BRANCH LOGIC: Are we finished or still counting? ---
+        // 4. Check if we hit the goal (4)
         if (count < 4) {
-            // STILL NEED MORE SECONDS
+            // Update the Status Field and the Button
             embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
             
             const row = new ActionRowBuilder().addComponents(
                 new ButtonBuilder()
-                    .setCustomId(`second_appeal_${count}`)
+                    .setCustomId(`second_appeal_${count}`) // Stores the NEW count for the next click
                     .setLabel(`Second (${count}/4)`)
                     .setStyle(ButtonStyle.Primary)
             );
@@ -366,7 +366,6 @@ client.on('interactionCreate', async (interaction) => {
             // SUCCESS: 4 SECONDS REACHED
             embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
             
-            // Update the original message and remove the button
             await interaction.update({ embeds: [embed], components: [] });
             
             // Send the Log Ping
@@ -385,12 +384,12 @@ client.on('interactionCreate', async (interaction) => {
                 console.error("Log Channel Error:", err);
             }
 
-            // Final confirmation message (Non-ephemeral so everyone sees the success)
             return await interaction.followUp({ 
-                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal has reached 4 seconds and is now official. Committee has been notified.` 
+                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal has reached 4 seconds and is now official.` 
             });
         }
     }
+}
     if (interaction.customId === 'trigger_admin_modal') {
     	return await vault.showAdminModal(interaction);
     }
