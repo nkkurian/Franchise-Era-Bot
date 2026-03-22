@@ -312,82 +312,65 @@ client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isButton()) {
     if (interaction.customId.startsWith('second_appeal_')) {
-        const messageEmbed = interaction.message.embeds[0];
-        if (!messageEmbed) return;
+    const messageEmbed = interaction.message.embeds[0];
+    if (!messageEmbed) return;
 
-        const embed = EmbedBuilder.from(messageEmbed);
+    const embed = EmbedBuilder.from(messageEmbed);
+    
+    // Get count from the button ID (current count + 1)
+    const currentCount = parseInt(interaction.customId.split('_')[2]);
+    const newCount = currentCount + 1;
+
+    const footerText = embed.data.footer?.text || ""; 
+    const submitterId = footerText.replace("Submitter ID: ", "");
+
+    // 1. Block the original author
+    if (interaction.user.id === submitterId) {
+        return await interaction.reply({ content: "❌ You cannot second your own appeal!", ephemeral: true });
+    }
+    
+    let currentDesc = embed.data.description || "";
+
+    // 2. Anti-Spam Check (using global name or username)
+    const voterName = interaction.user.globalName || interaction.user.username;
+    if (currentDesc.includes(`• ${voterName}`)) {
+        return await interaction.reply({ content: "❌ You already seconded this!", ephemeral: true });
+    }
+
+    // 3. Add the user to the "Seconded by" list
+    if (!currentDesc.includes("**Seconded by:**")) {
+        currentDesc += `\n\n**Seconded by:**\n• ${voterName}`;
+    } else {
+        currentDesc += `\n• ${voterName}`;
+    }
+    embed.setDescription(currentDesc);
+
+    // 4. Update or Finalize
+    if (newCount < 4) {
+        embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${newCount}/4)` });
         
-        // 1. Get the current count from the Button's Custom ID instead of the footer
-        // This is much more reliable than regex on text
-        let count = parseInt(interaction.customId.split('_')[2]) + 1;
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`second_appeal_${newCount}`) // Pass the new count to the next button
+                .setLabel(`Second (${newCount}/4)`)
+                .setStyle(ButtonStyle.Primary)
+        );
 
-        const footerText = embed.data.footer?.text || ""; 
-        const submitterId = footerText.replace("Submitter ID: ", "");
+        return await interaction.update({ embeds: [embed], components: [row] });
 
-        // 2. Prevent self-seconding
-        if (interaction.user.id === submitterId) {
-            return await interaction.reply({ 
-                content: "❌ You cannot second your own appeal!", 
-                ephemeral: true 
-            });
-        }
+    } else {
+        // SUCCESS: Hit 4 seconds
+        embed.setColor(0x2ECC71)
+             .setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
         
-        const userName = interaction.user.displayName;
-        let currentDesc = embed.data.description || "";
-
-        // 3. Anti-Spam Check
-        if (currentDesc.includes(`• ${userName}`)) {
-            return await interaction.reply({ content: "❌ You already seconded this!", ephemeral: true });
-        }
-
-        // Update the list of names
-        if (!currentDesc.includes("**Seconded by:**")) {
-            currentDesc += `\n\n**Seconded by:**\n• ${userName}`;
-        } else {
-            currentDesc += `\n• ${userName}`;
-        }
-        embed.setDescription(currentDesc);
-
-        // 4. Check if we hit the goal (4)
-        if (count < 4) {
-            // Update the Status Field and the Button
-            embed.setFields({ name: 'Status', value: `⏳ Waiting for Seconds (${count}/4)` });
-            
-            const row = new ActionRowBuilder().addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`second_appeal_${count}`) // Stores the NEW count for the next click
-                    .setLabel(`Second (${count}/4)`)
-                    .setStyle(ButtonStyle.Primary)
-            );
-
-            return await interaction.update({ embeds: [embed], components: [row] });
-
-        } else {
-            // SUCCESS: 4 SECONDS REACHED
-            embed.setColor(0x2ECC71).setFields({ name: 'Status', value: '✅ Seconded! Awaiting Committee Poll.' });
-            
-            await interaction.update({ embeds: [embed], components: [] });
-            
-            // Send the Log Ping
-            try {
-                const LOG_CHANNEL_ID = '1477399855541518366';
-                const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID);
-                const logEmbed = EmbedBuilder.from(embed)
-                    .setTitle('📄 Finalized Appeal Report')
-                    .setColor(0x3498DB);
-            
-                await logChannel.send({ 
-                    content: `🚨 **NEW APPEAL ACTION REQUIRED** 🚨\n<@&1399502952506458252> - This appeal has been seconded by the community.`,
-                    embeds: [logEmbed] 
-                });
-            } catch (err) {
-                console.error("Log Channel Error:", err);
-            }
-
-            return await interaction.followUp({ 
-                content: `🚨 **APPEAL SECONDED** 🚨\nThe appeal has reached 4 seconds and is now official.` 
-            });
-        }
+        await interaction.update({ embeds: [embed], components: [] });
+        
+        // Final Log Ping
+        const logChannel = await interaction.client.channels.fetch('1477399855541518366');
+        await logChannel.send({ 
+            content: `🚨 **APPEAL SECONDED** 🚨\n<@&1399502952506458252> - Appeal has reached 4 seconds.`,
+            embeds: [embed] 
+        });
     }
 }
     if (interaction.customId === 'trigger_admin_modal') {
