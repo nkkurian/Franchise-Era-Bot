@@ -102,40 +102,49 @@ module.exports = {
     // 3. The Final Data Entry Modal
     // 3. The Final Data Entry Modal
     showFinalActionModal: async (interaction, action, playerName) => {
-        // We use 'vlt_fin_' to match the check in index.js
         const modal = new ModalBuilder()
             .setCustomId(`vlt_fin_${action}_${playerName}`)
             .setTitle(`${action.toUpperCase()}: ${playerName}`);
 
-        // Each TextInput MUST be in its own ActionRow
+        // Field 1: Yearly Salary (Numeric only)
         const salaryRow = new ActionRowBuilder().addComponents(
             new TextInputBuilder()
                 .setCustomId('in_sal')
-                .setLabel("Yearly Salary (e.g. 15.5)")
+                .setLabel("Yearly Salary (Number only, e.g. 15)")
+                .setPlaceholder("Do not add $ or M")
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true)
         );
 
+        // Field 2: Cap Hit (New Field)
+        const capHitRow = new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('in_cap')
+                .setLabel("Cap Hit (Number only, e.g. 5)")
+                .setPlaceholder("Usually Salary + Bonus Proration")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+        );
+
+        // Field 3: Years
         const yearsRow = new ActionRowBuilder().addComponents(
             new TextInputBuilder()
                 .setCustomId('in_yrs')
-                .setLabel("Total Contract Years")
+                .setLabel("Years")
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true)
         );
 
+        // Field 4: Notes
         const notesRow = new ActionRowBuilder().addComponents(
             new TextInputBuilder()
                 .setCustomId('in_struct')
                 .setLabel("Notes / Structure")
                 .setStyle(TextInputStyle.Paragraph)
-                .setPlaceholder("e.g. Fully Guaranteed, Backloaded, etc.")
                 .setRequired(false)
         );
 
-        // Add the rows to the modal
-        modal.addComponents(salaryRow, yearsRow, notesRow);
-
+        modal.addComponents(salaryRow, capHitRow, yearsRow, notesRow);
         return await interaction.showModal(modal);
     }
 };
