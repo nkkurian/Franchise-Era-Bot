@@ -100,32 +100,42 @@ module.exports = {
     },
 
     // 3. The Final Data Entry Modal
+    // 3. The Final Data Entry Modal
     showFinalActionModal: async (interaction, action, playerName) => {
+        // We use 'vlt_fin_' to match the check in index.js
         const modal = new ModalBuilder()
-            .setCustomId(`vault_finalize_${action}_${playerName}`)
+            .setCustomId(`vlt_fin_${action}_${playerName}`)
             .setTitle(`${action.toUpperCase()}: ${playerName}`);
 
-        // Common fields for all actions
-        const salaryInput = new TextInputBuilder()
-            .setCustomId('input_salary').setLabel("Yearly Salary (e.g. 15.5)").setStyle(TextInputStyle.Short).setRequired(true);
-        
-        const yearsInput = new TextInputBuilder()
-            .setCustomId('input_years').setLabel("Years").setStyle(TextInputStyle.Short).setRequired(true);
-
-        const notesInput = new TextInputBuilder()
-            .setCustomId('input_notes').setLabel("Notes / Structure").setStyle(TextInputStyle.Paragraph).setRequired(false);
-modal.addComponents(
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder().setCustomId('in_sal').setLabel("Yearly Salary (e.g. 15.5)").setStyle(TextInputStyle.Short).setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder().setCustomId('in_yrs').setLabel("Years").setStyle(TextInputStyle.Short).setRequired(true)
-            ),
-            new ActionRowBuilder().addComponents(
-                new TextInputBuilder().setCustomId('in_struct').setLabel("Notes / Structure").setStyle(TextInputStyle.Paragraph).setRequired(false)
-            )
+        // Each TextInput MUST be in its own ActionRow
+        const salaryRow = new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('in_sal')
+                .setLabel("Yearly Salary (e.g. 15.5)")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
         );
 
-        await interaction.showModal(modal);
+        const yearsRow = new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('in_yrs')
+                .setLabel("Total Contract Years")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true)
+        );
+
+        const notesRow = new ActionRowBuilder().addComponents(
+            new TextInputBuilder()
+                .setCustomId('in_struct')
+                .setLabel("Notes / Structure")
+                .setStyle(TextInputStyle.Paragraph)
+                .setPlaceholder("e.g. Fully Guaranteed, Backloaded, etc.")
+                .setRequired(false)
+        );
+
+        // Add the rows to the modal
+        modal.addComponents(salaryRow, yearsRow, notesRow);
+
+        return await interaction.showModal(modal);
     }
 };
