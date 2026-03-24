@@ -18,13 +18,17 @@ const path = require('node:path');
 
 // Keep-alive server for Render
 const app = express();
+const port = process.env.PORT || 10000; // Define 'port' here first!
+
 app.get('/', (req, res) => {
   res.status(200).send('Bot is healthy!');
 });
 
+// Bind to 0.0.0.0 so Render can see the health check
 app.listen(port, '0.0.0.0', () => {
-  console.log(`Keep-alive server listening on port ${port}`);
+  console.log(`✅ Keep-alive server listening on port ${port}`);
 });
+
 // Google Sheets Auth
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
