@@ -242,14 +242,15 @@ client.once('ready', async () => {
   const RENDER_EXTERNAL_URL = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}.onrender.com`;
   
   setInterval(async () => {
-    try {
-      // Pings the Express server we set up at the top
-      await axios.get(RENDER_EXTERNAL_URL);
-      console.log('💓 Heartbeat: Internal self-ping successful.');
-    } catch (err) {
-      console.error('⚠️ Heartbeat: Self-ping failed (Service might be sleeping):', err.message);
-    }
-  }, 600000);
+  try {
+    // Ping the internal localhost address instead of the external HTTPS URL
+    // This bypasses the SSL handshake failure (alert number 40)
+    await axios.get(`http://localhost:${port}/`);
+    console.log('💓 Heartbeat: Internal localhost ping successful.');
+  } catch (err) {
+    console.error('⚠️ Heartbeat: Localhost ping failed:', err.message);
+  }
+}, 600000); // 10 Minutes
 
     // 5. Start Poller (Now that maps are ready)
     await pollSleeper();          
