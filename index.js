@@ -285,10 +285,49 @@ client.on('interactionCreate', async (interaction) => {
 	if (interaction.customId === 'vault_player_search_modal') {
     return await vault.showActionBranch(interaction);
 }
-if (interaction.customId.startsWith('vault_finalize_')) {
-    // This is where you will write the logic to update Google Sheets!
-    // Example: const [, , action, name] = interaction.customId.split('_');
-    await interaction.reply({ content: "Processing... (Logic for Sheet Update goes here)", ephemeral: true });
+if (interaction.customId.startsWith('vlt_fin_')) {
+    await interaction.deferReply({ ephemeral: true });
+    
+    const [, , action, playerName] = interaction.customId.split('_');
+    const salary = interaction.fields.getTextInputValue('in_sal');
+    const years = interaction.fields.getTextInputValue('in_yrs');
+    const structure = interaction.fields.getTextInputValue('in_struct') || "";
+
+    try {
+        const { players, doc } = await getSheetData();
+        const pRow = players.find(r => r._rawData[1]?.toLowerCase() === playerName.toLowerCase());
+
+        if (!pRow) return await interaction.editReply(`❌ Player **${playerName}** not found in PlayerList.`);
+
+        if (action === 'sign') {
+            // Update PlayerList: Salary (Col 4), Years (Col 3), Structure (Col 10)
+            // Indices: 0=Team, 1=Name, 2=Pos, 3=Years, 4=Salary, 5=Bonus... 10=Structure
+            pRow._rawData[4] = `$${salary}M`;
+            pRow._rawData[3] = years;
+            pRow._rawData[10] = structure;
+            await pRow.save(); // Pushes to Google Sheets
+        } 
+        
+        if (action === 'extension') {
+            // Write to Transaction Log
+            const logSheet = doc.sheetsByTitle['Transaction Log'];
+            await logSheet.addRow({
+                'Player': playerName,
+                'Type': 'Extension',
+                'Salary': `${salary}M`,
+                'Bonus': structure,
+                'Date': new Date().toLocaleDateString()
+            });
+        }
+
+        // Force cache refresh so /salary shows new info immediately
+        lastFetchTime = 0; 
+        return await interaction.editReply(`✅ Successfully processed **${action}** for **${playerName}**!`);
+
+    } catch (err) {
+        console.error(err);
+        return await interaction.editReply("❌ Error writing to Google Sheets.");
+    }
 }
 	  
     if (interaction.customId === 'appealModal') {
