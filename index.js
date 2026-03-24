@@ -286,30 +286,45 @@ client.on('interactionCreate', async (interaction) => {
     if (interaction.customId === 'adminLoginModal') return await vault.showAdminPanel(interaction);
 	  
 if (interaction.customId.startsWith('vlt_fin_')) {
-        await interaction.deferReply({ ephemeral: true });
-        const [, , action, playerName] = interaction.customId.split('_');
-        const salary = interaction.fields.getTextInputValue('in_sal');
-        const years = interaction.fields.getTextInputValue('in_yrs');
-        const structure = interaction.fields.getTextInputValue('in_struct') || "";
+    // CRITICAL: Stop the "Something went wrong" error by deferring immediately
+    await interaction.deferReply({ ephemeral: true });
 
-        try {
-            const { players, doc } = await getSheetData();
-            const pRow = players.find(r => r._rawData[1]?.toLowerCase() === playerName.toLowerCase());
-            if (!pRow) return await interaction.editReply(`❌ Player **${playerName}** not found.`);
+    const [, , action, playerName] = interaction.customId.split('_');
+    const salary = interaction.fields.getTextInputValue('in_sal');
+    const capHit = interaction.fields.getTextInputValue('in_cap'); // New
+    const years = interaction.fields.getTextInputValue('in_yrs');
+    const structure = interaction.fields.getTextInputValue('in_struct') || "";
 
-            if (action === 'sign') {
-                pRow._rawData[4] = `$${salary}M`;
-                pRow._rawData[3] = years;
-                pRow._rawData[10] = structure;
-                await pRow.save();
-            } else if (action === 'extension') {
-                const logSheet = doc.sheetsByTitle['Transaction Log'];
-                await logSheet.addRow({
-                    'Player': playerName, 'Type': 'Extension', 'Salary': `${salary}M`, 'Bonus': structure, 'Date': new Date().toLocaleDateString()
-                });
-            }
-            lastFetchTime = 0; 
-            return await interaction.editReply(`✅ Successfully processed **${action}** for **${playerName}**!`);
+    try {
+        const { players, doc } = await getSheetData();
+        const pRow = players.find(r => r._rawData[1]?.toLowerCase() === playerName.toLowerCase());
+
+        if (!pRow) return await interaction.editReply(`❌ Player **${playerName}** not found.`);
+
+        if (action === 'sign') {
+            // Update based on your Sheet Columns: 
+            // Index 4 = Yearly Salary, Index 6 = Cap Hit, Index 3 = Years, Index 10 = Structure
+            pRow._rawData[4] = salary; // Raw number for Sheet formatting
+            pRow._rawData[6] = capHit; // Raw number for Sheet formatting
+            pRow._rawData[3] = years;
+            pRow._rawData[10] = structure;
+            await pRow.save();
+        } 
+        
+        if (action === 'extension') {
+            const logSheet = doc.sheetsByTitle['Transaction Log'];
+            await logSheet.addRow({
+                'Player': playerName,
+                'Type': 'Extension',
+                'Salary': salary,
+                'Cap Hit': capHit,
+                'Bonus/Structure': structure,
+                'Date': new Date().toLocaleDateString()
+            });
+        }
+
+        lastFetchTime = 0; // Force cache refresh
+        return await interaction.editReply(`✅ Processed **${action}** for **${playerName}**! Check the sheet.`);
         } catch (err) {
             return await interaction.editReply("❌ Error writing to Sheets.");
         }
