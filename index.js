@@ -18,8 +18,13 @@ const path = require('node:path');
 
 // Keep-alive server for Render
 const app = express();
-app.get('/', (req, res) => res.send('Franchise Pro Bot: Buttons & Search Active'));
-app.listen(process.env.PORT || 10000);
+app.get('/', (req, res) => {
+  res.status(200).send('Bot is healthy!');
+});
+
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Keep-alive server listening on port ${port}`);
+});
 // Google Sheets Auth
 const serviceAccountAuth = new JWT({
   email: process.env.GOOGLE_EMAIL,
@@ -551,6 +556,16 @@ client.on('messageCreate', async (message) => {
 //cron.schedule('* * * * *', async () => { <- use for testing ONLY
 cron.schedule('0 10 * * 3', async () => { // Testing every minute
     runWeeklyAudit(client, getSheetData);
+});
+
+// Catch unhandled promise rejections (The most common silent killer)
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (err) => {
+    console.error('🚫 Uncaught Exception:', err);
 });
 
 
