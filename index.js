@@ -309,7 +309,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
                 });
             }
             lastFetchTime = 0; 
-            return await interaction.editReply(`✅ Processed **${action}** for **${playerName}**!`);
+            return await interaction.editReply(`✅ Successfully processed **${action}** for **${playerName}**!`);
         } catch (err) {
             return await interaction.editReply("❌ Error writing to Sheets.");
         }
