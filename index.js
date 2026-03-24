@@ -558,6 +558,10 @@ cron.schedule('0 10 * * 3', async () => { // Testing every minute
     runWeeklyAudit(client, getSheetData);
 });
 
+if (processedTxIds.size > 1000) {
+    processedTxIds.clear(); // Clear old IDs so memory stays low
+}
+
 // Catch unhandled promise rejections (The most common silent killer)
 process.on('unhandledRejection', (reason, promise) => {
     console.error('⚠️ Unhandled Rejection at:', promise, 'reason:', reason);
