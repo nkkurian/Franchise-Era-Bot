@@ -281,7 +281,16 @@ function createPlayerEmbed(pRow) {
 client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isModalSubmit()) {
-    
+
+	if (interaction.customId === 'vault_player_search_modal') {
+    return await vault.showActionBranch(interaction);
+}
+if (interaction.customId.startsWith('vault_finalize_')) {
+    // This is where you will write the logic to update Google Sheets!
+    // Example: const [, , action, name] = interaction.customId.split('_');
+    await interaction.reply({ content: "Processing... (Logic for Sheet Update goes here)", ephemeral: true });
+}
+	  
     if (interaction.customId === 'appealModal') {
         return await appeals.handleAppealSubmit(interaction);
     }  
@@ -292,6 +301,19 @@ client.on('interactionCreate', async (interaction) => {
   } 
   
   if (interaction.isButton()) {
+
+	if (interaction.customId === 'vault_modify_search') {
+    return await vault.showPlayerSearch(interaction);
+}
+if (interaction.customId.startsWith('vault_sign_')) {
+    const name = interaction.customId.replace('vault_sign_', '');
+    return await vault.showFinalActionModal(interaction, 'sign', name);
+}
+if (interaction.customId.startsWith('vault_ext_')) {
+    const name = interaction.customId.replace('vault_ext_', '');
+    return await vault.showFinalActionModal(interaction, 'extension', name);
+}
+	  
     if (interaction.customId.startsWith('second_appeal_')) {
     return await appeals.handleAppealButton(interaction);
 }
