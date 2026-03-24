@@ -282,53 +282,53 @@ client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isModalSubmit()) {
 
-	if (interaction.customId === 'vault_player_search_modal') {
-    return await vault.showActionBranch(interaction);
-}
-if (interaction.customId.startsWith('vlt_fin_')) {
-    await interaction.deferReply({ ephemeral: true });
+// 	if (interaction.customId === 'vault_player_search_modal') {
+//     return await vault.showActionBranch(interaction);
+// }
+// if (interaction.customId.startsWith('vlt_fin_')) {
+//     await interaction.deferReply({ ephemeral: true });
     
-    const [, , action, playerName] = interaction.customId.split('_');
-    const salary = interaction.fields.getTextInputValue('in_sal');
-    const years = interaction.fields.getTextInputValue('in_yrs');
-    const structure = interaction.fields.getTextInputValue('in_struct') || "";
+//     const [, , action, playerName] = interaction.customId.split('_');
+//     const salary = interaction.fields.getTextInputValue('in_sal');
+//     const years = interaction.fields.getTextInputValue('in_yrs');
+//     const structure = interaction.fields.getTextInputValue('in_struct') || "";
 
-    try {
-        const { players, doc } = await getSheetData();
-        const pRow = players.find(r => r._rawData[1]?.toLowerCase() === playerName.toLowerCase());
+//     try {
+//         const { players, doc } = await getSheetData();
+//         const pRow = players.find(r => r._rawData[1]?.toLowerCase() === playerName.toLowerCase());
 
-        if (!pRow) return await interaction.editReply(`❌ Player **${playerName}** not found in PlayerList.`);
+//         if (!pRow) return await interaction.editReply(`❌ Player **${playerName}** not found in PlayerList.`);
 
-        if (action === 'sign') {
-            // Update PlayerList: Salary (Col 4), Years (Col 3), Structure (Col 10)
-            // Indices: 0=Team, 1=Name, 2=Pos, 3=Years, 4=Salary, 5=Bonus... 10=Structure
-            pRow._rawData[4] = `$${salary}M`;
-            pRow._rawData[3] = years;
-            pRow._rawData[10] = structure;
-            await pRow.save(); // Pushes to Google Sheets
-        } 
+//         if (action === 'sign') {
+//             // Update PlayerList: Salary (Col 4), Years (Col 3), Structure (Col 10)
+//             // Indices: 0=Team, 1=Name, 2=Pos, 3=Years, 4=Salary, 5=Bonus... 10=Structure
+//             pRow._rawData[4] = `$${salary}M`;
+//             pRow._rawData[3] = years;
+//             pRow._rawData[10] = structure;
+//             await pRow.save(); // Pushes to Google Sheets
+//         } 
         
-        if (action === 'extension') {
-            // Write to Transaction Log
-            const logSheet = doc.sheetsByTitle['Transaction Log'];
-            await logSheet.addRow({
-                'Player': playerName,
-                'Type': 'Extension',
-                'Salary': `${salary}M`,
-                'Bonus': structure,
-                'Date': new Date().toLocaleDateString()
-            });
-        }
+//         if (action === 'extension') {
+//             // Write to Transaction Log
+//             const logSheet = doc.sheetsByTitle['Transaction Log'];
+//             await logSheet.addRow({
+//                 'Player': playerName,
+//                 'Type': 'Extension',
+//                 'Salary': `${salary}M`,
+//                 'Bonus': structure,
+//                 'Date': new Date().toLocaleDateString()
+//             });
+//         }
 
-        // Force cache refresh so /salary shows new info immediately
-        lastFetchTime = 0; 
-        return await interaction.editReply(`✅ Successfully processed **${action}** for **${playerName}**!`);
+//         // Force cache refresh so /salary shows new info immediately
+//         lastFetchTime = 0; 
+//         return await interaction.editReply(`✅ Successfully processed **${action}** for **${playerName}**!`);
 
-    } catch (err) {
-        console.error(err);
-        return await interaction.editReply("❌ Error writing to Google Sheets.");
-    }
-}
+//     } catch (err) {
+//         console.error(err);
+//         return await interaction.editReply("❌ Error writing to Google Sheets.");
+//     }
+// }
 	  
     if (interaction.customId === 'appealModal') {
         return await appeals.handleAppealSubmit(interaction);
@@ -341,17 +341,17 @@ if (interaction.customId.startsWith('vlt_fin_')) {
   
   if (interaction.isButton()) {
 
-	if (interaction.customId === 'vault_modify_search') {
-    return await vault.showPlayerSearch(interaction);
-}
-if (interaction.customId.startsWith('vault_sign_')) {
-    const name = interaction.customId.replace('vault_sign_', '');
-    return await vault.showFinalActionModal(interaction, 'sign', name);
-}
-if (interaction.customId.startsWith('vault_ext_')) {
-    const name = interaction.customId.replace('vault_ext_', '');
-    return await vault.showFinalActionModal(interaction, 'extension', name);
-}
+// 	if (interaction.customId === 'vault_modify_search') {
+//     return await vault.showPlayerSearch(interaction);
+// }
+// if (interaction.customId.startsWith('vault_sign_')) {
+//     const name = interaction.customId.replace('vault_sign_', '');
+//     return await vault.showFinalActionModal(interaction, 'sign', name);
+// }
+// if (interaction.customId.startsWith('vault_ext_')) {
+//     const name = interaction.customId.replace('vault_ext_', '');
+//     return await vault.showFinalActionModal(interaction, 'extension', name);
+// }
 	  
     if (interaction.customId.startsWith('second_appeal_')) {
     return await appeals.handleAppealButton(interaction);
