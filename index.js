@@ -5,7 +5,6 @@ const {
 } = require('discord.js');
 const { GoogleSpreadsheet } = require('google-spreadsheet');
 const { JWT } = require('google-auth-library');
-const express = require('express');
 const axios = require("axios");
 const { runWeeklyAudit } = require('./utils/capCompliance.js');
 const cron = require('node-cron');
@@ -17,16 +16,19 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 // Keep-alive server for Render
+const express = require('express');
 const app = express();
-const port = process.env.PORT || 10000; // Define 'port' here first!
+const port = process.env.PORT || 10000; 
 
+// This is what UptimeRobot will "see"
 app.get('/', (req, res) => {
-  res.status(200).send('Bot is healthy!');
+  console.log(`📡 Ping received from UptimeRobot at ${new Date().toLocaleTimeString()}`);
+  res.status(200).send('Franchise Pro Bot: Standing By.');
 });
 
-// Bind to 0.0.0.0 so Render can see the health check
+// IMPORTANT: Must bind to 0.0.0.0 for Render
 app.listen(port, '0.0.0.0', () => {
-  console.log(`✅ Keep-alive server listening on port ${port}`);
+  console.log(`🚀 Keep-alive server listening on port ${port}`);
 });
 
 // Google Sheets Auth
