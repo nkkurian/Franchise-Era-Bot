@@ -238,6 +238,19 @@ client.once('ready', async () => {
     // 4. Send Startup Message
     await sendStartupTestMessage();
 
+	// --- THE SELF-PING HEARTBEAT ---
+  const RENDER_EXTERNAL_URL = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}.onrender.com`;
+  
+  setInterval(async () => {
+    try {
+      // Pings the Express server we set up at the top
+      await axios.get(RENDER_EXTERNAL_URL);
+      console.log('💓 Heartbeat: Internal self-ping successful.');
+    } catch (err) {
+      console.error('⚠️ Heartbeat: Self-ping failed (Service might be sleeping):', err.message);
+    }
+  }, 600000);
+
     // 5. Start Poller (Now that maps are ready)
     await pollSleeper();          
     setInterval(pollSleeper, 60000); 
