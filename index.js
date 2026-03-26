@@ -323,8 +323,8 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     const structure = interaction.fields.getTextInputValue('in_struct') || "Standard";
 
     // 2. Perform Calculations (Convert to Millions)
-    const salary = (parseFloat(rawSalary.replace(/[^0-9.]/g, '')) * 1000000) || 0;
-    const capHit = (parseFloat(rawCapHit.replace(/[^0-9.]/g, '')) * 1000000) || 0;
+    const salary = Math.round((parseFloat(rawSalary.replace(/[^0-9.]/g, '')) * 1000000)) || 0;
+    const capHit = Math.round((parseFloat(rawCapHit.replace(/[^0-9.]/g, '')) * 1000000)) || 0;
     const years = parseInt(yearsInput) || 0;
     const totalValue = salary * years;
 
@@ -364,8 +364,8 @@ if (interaction.customId.startsWith('vlt_fin_')) {
                 .addFields(
                     { name: '👤 Player', value: playerName, inline: true },
                     { name: '⏳ Duration', value: `${years} Years`, inline: true },
-                    { name: '💰 Avg Salary', value: `$${(salaryNum/1000000).toFixed(1)}M`, inline: true },
-                    { name: '📉 Cap Hit', value: `$${(capHitNum/1000000).toFixed(1)}M`, inline: true },
+                    { name: '💰 Avg Salary', value: `$${(salary/1000000).toFixed(1)}M`, inline: true },
+                    { name: '📉 Cap Hit', value: `$${(capHit/1000000).toFixed(1)}M`, inline: true },
                     { name: '💎 Total Value', value: `$${(totalValue/1000000).toFixed(1)}M`, inline: true },
                     { name: '📝 Notes', value: structure }
                 )
