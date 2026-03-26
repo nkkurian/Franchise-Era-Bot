@@ -320,7 +320,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     const rawSalary = interaction.fields.getTextInputValue('in_sal');
     const rawCapHit = interaction.fields.getTextInputValue('in_cap');
     const yearsInput = interaction.fields.getTextInputValue('in_yrs');
-    const structure = interaction.fields.getTextInputValue('in_struct') || "Standard";
+    const structure = interaction.fields.getTextInputValue('in_struct');
 
     // 2. Perform Calculations (Convert to Millions)
     const salary = Math.round((parseFloat(rawSalary.replace(/[^0-9.]/g, '')) * 1000000)) || 0;
