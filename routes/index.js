@@ -10,7 +10,7 @@ module.exports = (client, doc) => {
     // Tell the router to use these files
     router.use('/', faReport(client, doc));
     router.use('/', extReport(client, doc));
-    router.use('/', capReport(client));
+    router.use('/', capReport(client, doc));
 
     return router;
 };
