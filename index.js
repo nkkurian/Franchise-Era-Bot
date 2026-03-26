@@ -315,10 +315,18 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     await interaction.deferReply({ ephemeral: true });
 
     const [, , action, playerName] = interaction.customId.split('_');
-    const salary = interaction.fields.getTextInputValue('in_sal');
-    const capHit = interaction.fields.getTextInputValue('in_cap'); // New
-    const years = interaction.fields.getTextInputValue('in_yrs');
-    const structure = interaction.fields.getTextInputValue('in_struct') || "";
+    
+    // 1. Get raw inputs from the modal
+    const rawSalary = interaction.fields.getTextInputValue('in_sal');
+    const rawCapHit = interaction.fields.getTextInputValue('in_cap');
+    const yearsInput = interaction.fields.getTextInputValue('in_yrs');
+    const structure = interaction.fields.getTextInputValue('in_struct') || "Standard";
+
+    // 2. Perform Calculations (Convert to Millions)
+    const salary = (parseFloat(rawSalary.replace(/[^0-9.]/g, '')) * 1000000) || 0;
+    const capHit = (parseFloat(rawCapHit.replace(/[^0-9.]/g, '')) * 1000000) || 0;
+    const years = parseInt(yearsInput) || 0;
+    const totalValue = salary * years;
 
     try {
         const { players, doc } = await getSheetData();
@@ -347,6 +355,26 @@ if (interaction.customId.startsWith('vlt_fin_')) {
                 'Date': new Date().toLocaleDateString()
             });
         }
+
+		const logChannel = await client.channels.fetch('1477399855541518366'); 
+        if (logChannel) {
+            const logEmbed = new EmbedBuilder()
+                .setTitle(`📑 Vault Update: ${action.toUpperCase()}`)
+                .setColor(action === 'sign' ? 0x2ecc71 : 0x3498db)
+                .addFields(
+                    { name: '👤 Player', value: playerName, inline: true },
+                    { name: '⏳ Duration', value: `${years} Years`, inline: true },
+                    { name: '💰 Avg Salary', value: `$${(salaryNum/1000000).toFixed(1)}M`, inline: true },
+                    { name: '📉 Cap Hit', value: `$${(capHitNum/1000000).toFixed(1)}M`, inline: true },
+                    { name: '💎 Total Value', value: `$${(totalValue/1000000).toFixed(1)}M`, inline: true },
+                    { name: '📝 Notes', value: structure }
+                )
+                .setTimestamp()
+                .setFooter({ text: `Admin: ${interaction.user.tag}` });
+
+            await logChannel.send({ embeds: [logEmbed] });
+        }
+		
 
         lastFetchTime = 0; // Force cache refresh
         return await interaction.editReply(`✅ Processed **${action}** for **${playerName}**! Check the sheet.`);
