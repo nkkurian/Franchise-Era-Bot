@@ -19,8 +19,6 @@ const port = process.env.PORT || 10000;
 // Keep-alive server for Render
 const express = require('express');
 const app = express();
-const port = process.env.PORT || 10000; 
-
 // This is what UptimeRobot will "see"
 app.get('/', (req, res) => {
   console.log(`📡 Ping received from UptimeRobot at ${new Date().toLocaleTimeString()}`);
