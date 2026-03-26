@@ -84,12 +84,42 @@ module.exports = {
 
     // 2. Ask what to do with that player
     showActionBranch: async (interaction) => {
+        // This comes from index.js via the interaction handler
+        // We need to fetch the sheet data to show current stats
         const playerName = interaction.fields.getTextInputValue('search_name');
         
+        // Use the global/passed getSheetData function
+        // Note: You'll need to ensure getSheetData is accessible here 
+        // Or pass it as an argument if your setup requires it.
+        const { players } = await interaction.client.getSheetData(); 
+        
+        const pRow = players.find(r => r._rawData[1]?.toLowerCase() === playerName.toLowerCase());
+
         const embed = new EmbedBuilder()
-            .setTitle(`Management: ${playerName}`)
-            .setDescription(`Select the transaction type for **${playerName}**:`)
+            .setTitle(`Vault Management: ${playerName}`)
             .setColor(0x3498db);
+
+        if (pRow) {
+            // Found the player! Show current sheet info
+            const currentTeam = pRow._rawData[0] || "Free Agent";
+            const currentSalary = pRow._rawData[4] || "$0.00";
+            const currentCap = pRow._rawData[6] || "$0.00";
+            const currentYears = pRow._rawData[3] || "0";
+            const structure = pRow._rawData[10] || "Standard";
+
+            embed.setDescription(`**Current Contract Found:**\n` +
+                `🏟️ **Team:** ${currentTeam}\n` +
+                `💰 **Salary:** ${currentSalary}\n` +
+                `🧢 **Cap Hit:** ${currentCap}\n` +
+                `⏳ **Years:** ${currentYears}\n` +
+                `📜 **Notes:** ${structure}\n\n` +
+                `*Select the transaction type to update this player:*`);
+        } else {
+            // Player not found in sheet
+            embed.setColor(0xe74c3c)
+                .setDescription(`⚠️ **Warning:** **${playerName}** was not found in the PlayerList sheet.\n\n` + 
+                `If you proceed with **Sign**, a new record might be created or the update may fail.`);
+        }
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder().setCustomId(`vault_sign_${playerName}`).setLabel('✍️ Sign').setStyle(ButtonStyle.Success),
