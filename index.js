@@ -14,6 +14,7 @@ const appeals = require('./utils/appeals.js');
 
 const fs = require('node:fs');
 const path = require('node:path');
+const port = process.env.PORT || 10000;
 
 // Keep-alive server for Render
 const express = require('express');
@@ -244,14 +245,17 @@ client.once('ready', async () => {
   
   setInterval(async () => {
   try {
-    // Ping the internal localhost address instead of the external HTTPS URL
-    // This bypasses the SSL handshake failure (alert number 40)
-    await axios.get(`http://localhost:${port}/`);
-    console.log('💓 Heartbeat: Internal localhost ping successful.');
+    // We use 127.0.0.1 to be even more specific than 'localhost'
+    // We use http:// to specifically avoid the SSL Alert 40 error
+    const response = await fetch(`http://127.0.0.1:${port}/`);
+    if (response.ok) {
+      console.log('💓 Heartbeat: Local ping successful.');
+    }
   } catch (err) {
-    console.error('⚠️ Heartbeat: Localhost ping failed:', err.message);
+    // If it fails, we don't want to crash the bot, just log it
+    console.error('⚠️ Heartbeat: Local ping failed (Internal):', err.message);
   }
-}, 600000); // 10 Minutes
+}, 300000);
 
     // 5. Start Poller (Now that maps are ready)
     await pollSleeper();          
