@@ -241,7 +241,8 @@ client.once('ready', async () => {
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
 
     // 4. Send Startup Message
-    await sendStartupTestMessage();
+    await initializeData();
+	await sendStartupTestMessage();
 
 	// --- THE SELF-PING HEARTBEAT ---
   const RENDER_EXTERNAL_URL = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}.onrender.com`;
@@ -285,8 +286,6 @@ async function initializeData() {
     }
 }
 
-// Start the background tasks
-initializeData();
 
 // Cleaned up Test Message Function
 async function sendStartupTestMessage() {
