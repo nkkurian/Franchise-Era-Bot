@@ -241,8 +241,10 @@ client.once('ready', async () => {
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
 
     // 4. Send Startup Message
-    await initializeData();
 	await sendStartupTestMessage();
+	initializeData().then(() => {
+        console.log("⚙️ Background Data Sync Complete");
+    }).catch(err => console.error("❌ Background Sync Error:", err));
 
 	// --- THE SELF-PING HEARTBEAT ---
   const RENDER_EXTERNAL_URL = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}.onrender.com`;
