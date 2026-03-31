@@ -550,8 +550,6 @@ const getDetails = (pId, players, idMap) => {
 async function pollSleeper() {
   console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for new moves...`);
   try {
-	const res0 = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`);
-    if (!res0.ok) throw new Error(`Sleeper API Error: ${res0.status}`);
     const { players, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
@@ -559,6 +557,8 @@ async function pollSleeper() {
       fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`),
       fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/1`)
     ]);
+
+	  if (!res0.ok) throw new Error(`Sleeper API Error: ${res0.status}`);
 
     const allTx = [...(await res0.json() || []), ...(await res1.json() || [])];
     if (!allTx.length) return;
