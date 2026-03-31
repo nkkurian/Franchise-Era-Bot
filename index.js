@@ -65,6 +65,20 @@ for (const file of commandFiles) {
 	}
 }
 
+// --- AUTO-RECONNECT LOGIC ---
+client.on('shardDisconnect', (event, id) => {
+    console.error(`💔 Bot disconnected from Discord (Shard ${id}). Attempting to reconnect...`);
+});
+
+client.on('shardResume', (id, replayedEvents) => {
+    console.log(`♻️ Bot successfully resumed connection (Shard ${id}).`);
+});
+
+// If the bot completely crashes without an error log
+process.on('unhandledRejection', error => {
+    console.error('Unhandled promise rejection:', error);
+});
+
 const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
 
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
