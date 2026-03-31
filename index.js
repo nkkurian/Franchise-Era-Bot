@@ -234,29 +234,21 @@ new SlashCommandBuilder()
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
+  console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
   const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
   try {
     // 1. Register Slash Commands
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
+        console.log("✅ Slash Commands Synced");
 
-    // 4. Send Startup Message
-	await sendStartupTestMessage();
-	initializeData().then(() => {
-        console.log("⚙️ Background Data Sync Complete");
-    }).catch(err => console.error("❌ Background Sync Error:", err));
+	setTimeout(async () => {
+            await sendStartupTestMessage();
+            initializeData();
+        }, 3000);
+
+    
 
 	// --- THE SELF-PING HEARTBEAT ---
-  const RENDER_EXTERNAL_URL = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}.onrender.com`;
-  
-  setInterval(async () => {
-  try {
-    // 127.0.0.1 is the safest way to ping the local express server
-    const response = await fetch(`http://127.0.0.1:${port}/`);
-    if (response.ok) {
-      console.log('💓 Heartbeat: Local container is warm.');
-    }
-
     // CRITICAL: Check if Discord is actually connected
     // If status is not 0 (READY), try to nudge it
     if (client.ws.status !== 0) {
@@ -271,6 +263,16 @@ client.once('ready', async () => {
     console.error("Startup Error:", err); 
   }
 });
+
+setInterval(async () => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${port}/`);
+        // Only log if it FAILS to keep logs clean
+        if (!response.ok) console.warn('⚠️ Local Heartbeat check returned non-200');
+    } catch (err) {
+        console.error('⚠️ Heartbeat Failed:', err.message);
+    }
+}, 120000);
 
 async function initializeData() {
     try {
