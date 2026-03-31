@@ -240,15 +240,6 @@ client.once('ready', async () => {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log(`🚀 FRANCHISE PRO BOT ONLINE`);
 
-    // 2. Load Sheets Data FIRST (Crucial for IDs)
-    console.log("📥 Pre-loading Sheet Data...");
-    await getSheetData(); 
-
-    // 3. Load Sleeper Team Map
-    console.log("📥 Loading Sleeper Team Map...");
-    await updateTeamMap(); 
-    console.log(`✅ Team Map Loaded.`);
-
     // 4. Send Startup Message
     await sendStartupTestMessage();
 
@@ -257,26 +248,45 @@ client.once('ready', async () => {
   
   setInterval(async () => {
   try {
-    // We use 127.0.0.1 to be even more specific than 'localhost'
-    // We use http:// to specifically avoid the SSL Alert 40 error
+    // 127.0.0.1 is the safest way to ping the local express server
     const response = await fetch(`http://127.0.0.1:${port}/`);
     if (response.ok) {
-      console.log('💓 Heartbeat: Local ping successful.');
+      console.log('💓 Heartbeat: Local container is warm.');
+    }
+
+    // CRITICAL: Check if Discord is actually connected
+    // If status is not 0 (READY), try to nudge it
+    if (client.ws.status !== 0) {
+        console.warn('⚠️ Discord connection cold. Status:', client.ws.status);
     }
   } catch (err) {
-    // If it fails, we don't want to crash the bot, just log it
-    console.error('⚠️ Heartbeat: Local ping failed (Internal):', err.message);
+    console.error('⚠️ Heartbeat Failed:', err.message);
   }
-}, 300000);
-
-    // 5. Start Poller (Now that maps are ready)
-    await pollSleeper();          
-    setInterval(pollSleeper, 60000); 
+}, 120000); // 2 Minutes (Better for Render)
 
   } catch (err) { 
     console.error("Startup Error:", err); 
   }
 });
+
+async function initializeData() {
+    try {
+        console.log("📥 Pre-loading Sheet Data...");
+        await getSheetData(); 
+
+        console.log("📥 Loading Sleeper Team Map...");
+        await updateTeamMap(); 
+
+        console.log("🔍 Starting Sleeper Poller...");
+        await pollSleeper(); // Run once
+        setInterval(pollSleeper, 60000); // Then every minute
+    } catch (err) {
+        console.error("❌ Background Init Error:", err);
+    }
+}
+
+// Start the background tasks
+initializeData();
 
 // Cleaned up Test Message Function
 async function sendStartupTestMessage() {
@@ -540,6 +550,8 @@ const getDetails = (pId, players, idMap) => {
 async function pollSleeper() {
   console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for new moves...`);
   try {
+	const res0 = await fetch(`https://api.sleeper.app/v1/league/${SLEEPER_LEAGUE_ID}/transactions/0`);
+    if (!res0.ok) throw new Error(`Sleeper API Error: ${res0.status}`);
     const { players, idMap } = await getSheetData();
     const channel = await client.channels.fetch('1477399855541518366');
     
