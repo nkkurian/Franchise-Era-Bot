@@ -235,33 +235,27 @@ new SlashCommandBuilder()
 
 client.once('ready', async () => {
   console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  try {
-    // 1. Register Slash Commands
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    
+    try {
+        // 1. Register Slash Commands
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
         console.log("✅ Slash Commands Synced");
 
-	setTimeout(async () => {
+        // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
+        setTimeout(async () => {
             await sendStartupTestMessage();
-            initializeData();
+            await initializeData();
+            
+            // Check Discord Connection Status
+            if (client.ws.status !== 0) {
+                console.warn('⚠️ Discord connection cold. Status:', client.ws.status);
+            }
         }, 3000);
 
-    
-
-	// --- THE SELF-PING HEARTBEAT ---
-    // CRITICAL: Check if Discord is actually connected
-    // If status is not 0 (READY), try to nudge it
-    if (client.ws.status !== 0) {
-        console.warn('⚠️ Discord connection cold. Status:', client.ws.status);
+    } catch (err) { 
+        console.error("Startup Error:", err); 
     }
-  } catch (err) {
-    console.error('⚠️ Heartbeat Failed:', err.message);
-  }
-}, 120000); // 2 Minutes (Better for Render)
-
-  } catch (err) { 
-    console.error("Startup Error:", err); 
-  }
 });
 
 setInterval(async () => {
