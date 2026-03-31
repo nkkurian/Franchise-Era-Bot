@@ -651,4 +651,10 @@ process.on('uncaughtException', (err) => {
 });
 
 
-client.login(process.env.DISCORD_TOKEN);
+console.log("🔌 Attempting to connect to Discord...");
+client.login(process.env.DISCORD_TOKEN).catch(err => {
+    console.error("❌ LOGIN FAILED:", err.message);
+    if (err.message.includes("PRIVILEGED_INTENTS")) {
+        console.error("👉 FIX: You must enable Intents in the Discord Dev Portal!");
+    }
+});
