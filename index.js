@@ -547,6 +547,7 @@ const getDetails = (pId, players, idMap) => {
   return { name, cap, isDeadCap, text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` };
 }; 
 
+
 async function pollSleeper() {
   console.log(`[${new Date().toLocaleTimeString()}] 🔍 Checking Sleeper for new moves...`);
   try {
