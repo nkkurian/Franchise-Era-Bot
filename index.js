@@ -276,9 +276,9 @@ async function initializeData() {
         console.log("📥 Loading Sleeper Team Map...");
         await updateTeamMap(); 
 
-        // console.log("🔍 Starting Sleeper Poller...");
-        // await pollSleeper(); // Run once
-        // setInterval(pollSleeper, 60000); // Then every minute
+         console.log("🔍 Starting Sleeper Poller...");
+         await pollSleeper(); // Run once
+         setInterval(pollSleeper, 60000); // Then every minute
     } catch (err) {
         console.error("❌ Background Init Error:", err);
     }
