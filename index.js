@@ -502,6 +502,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
       try {
+		  await interaction.deferReply();
           await command.execute(interaction, getSheetData, getPlayerStats);
       } catch (error) {
           console.error(error);
