@@ -361,11 +361,15 @@ if (interaction.customId.startsWith('vlt_fin_')) {
         if (action === 'sign') {
             // Update based on your Sheet Columns: 
             // Index 4 = Yearly Salary, Index 6 = Cap Hit, Index 3 = Years, Index 10 = Structure
-            pRow._rawData[4] = salary; // Raw number for Sheet formatting
-            pRow._rawData[6] = capHit; // Raw number for Sheet formatting
-            pRow._rawData[3] = years;
-            pRow._rawData[10] = structure;
-            await pRow.save();
+            pRow._rawData[3] = years;      // Update Years (Column D)
+		    pRow._rawData[4] = salary;     // Update Salary (Column E)
+		    
+		    // SKIP pRow._rawData[5] !! 
+		
+		    pRow._rawData[6] = capHit;     // Update Cap Hit (Column G)
+		    pRow._rawData[10] = structure; // Update Notes (Column K)
+		
+		    await pRow.save();
         } 
         
         if (action === 'extension') {
