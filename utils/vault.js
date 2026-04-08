@@ -41,7 +41,7 @@ module.exports = {
   showAdminPanel: async (interaction) => {
     const password = interaction.fields.getTextInputValue('adminPassword');
 
-    if (password === 'LeagueAdmin2026') {
+    if (password === 'LeagueAdmin2025') {
       const adminEmbed = new EmbedBuilder()
         .setTitle('🛠️ Admin Command Center')
         .setDescription('Authentication successful. Choose an automated task below.')
