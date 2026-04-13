@@ -512,7 +512,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
         } else {
             // 2. For all other commands (salary, team, etc.), defer as usual
             await interaction.deferReply();
-            await command.execute(interaction, getSheetData, getPlayerStats);
+    		await command.execute(interaction, getSheetData, getPlayerStats);
         }
     } catch (error) {
         console.error("Command Execution Error:", error);
