@@ -509,6 +509,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 		  if (interaction.commandName === 'appeal') {
             // DO NOT use deferReply here. Modals must be the very first response.
             await command.execute(interaction, getSheetData, getPlayerStats);
+			  return; 
         } else {
             // 2. For all other commands (salary, team, etc.), defer as usual
             await interaction.deferReply();
@@ -680,4 +681,4 @@ client.login(process.env.DISCORD_TOKEN).then(() => {
         console.error("👉 DISALLOWED INTENTS: Double check the Developer Portal (Message Content, etc) AND your code's Intent list.");
     }
   });
-});
+//});
