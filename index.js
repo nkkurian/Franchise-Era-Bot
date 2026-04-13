@@ -506,14 +506,22 @@ if (interaction.customId.startsWith('vlt_fin_')) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
       try {
-		  await interaction.deferReply();
-          await command.execute(interaction, getSheetData, getPlayerStats);
-      } catch (error) {
-          console.error(error);
-          if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: 'Error!', ephemeral: true });
-      }
-  }
-});
+		  if (interaction.commandName === 'appeal') {
+            // DO NOT use deferReply here. Modals must be the very first response.
+            await command.execute(interaction, getSheetData, getPlayerStats);
+        } else {
+            // 2. For all other commands (salary, team, etc.), defer as usual
+            await interaction.deferReply();
+            await command.execute(interaction, getSheetData, getPlayerStats);
+        }
+    } catch (error) {
+        console.error("Command Execution Error:", error);
+        // Only attempt to reply if we haven't already sent a response
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'There was an error executing this command!', ephemeral: true });
+        }
+    }
+}
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 let rosterToTeamName = {}; 
