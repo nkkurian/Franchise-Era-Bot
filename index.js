@@ -80,6 +80,8 @@ process.on('unhandledRejection', error => {
 });
 
 const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
+const idDoc = new GoogleSpreadsheet("12sQJfIHicd1P50ZDgDUfXT__21OukswPEdrUXj-N-cY", serviceAccountAuth,);
+
 
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
 app.use(express.json()); // Essential to read the data sent from Google
@@ -228,6 +230,42 @@ new SlashCommandBuilder()
     .addStringOption(o => o.setName('name').setDescription('Enter player name').setRequired(true)),
 
 	new SlashCommandBuilder()
+        .setName("sent-trade")
+        .setDescription("Alert a team that you sent them a trade offer")
+        .addStringOption((o) =>
+            o
+                .setName("team")
+                .setDescription("The team you sent the trade to")
+                .setRequired(true),
+        )
+        .addStringOption((o) =>
+            o
+                .setName("notes")
+                .setDescription(
+                    'Optional: What did you send? (e.g. "Sent for CMC")',
+                ),
+        ),
+    new SlashCommandBuilder()
+        .setName("trade-alert")
+        .setDescription("Post a trade block or buying alert")
+        .addStringOption((o) =>
+            o
+                .setName("action") // Changed from "message" to "action"
+                .setDescription("Are you trading away or looking for players?")
+                .setRequired(true)
+                .addChoices(
+                    {
+                        name: "📤 Trade Away (On the Block)",
+                        value: "TRADING AWAY",
+                    },
+                    {
+                        name: "📥 Trade For (Looking For)",
+                        value: "LOOKING FOR",
+                    },
+                ),
+        ),
+	
+	new SlashCommandBuilder()
         .setName('appeal')
         .setDescription('Submit an official appeal to the committee'),
 	
@@ -284,6 +322,29 @@ async function initializeData() {
     }
 }
 
+//Owners of teams map from Sheets
+async function getOwnerIdMap() {
+
+    try {
+        // 2. Load the spreadsheet metadata
+        await idDoc.loadInfo();
+
+        // 3. Access the specific tab
+        const sheet = idDoc.sheetsByTitle["Salary Calculators"];
+
+        if (!sheet) {
+            console.error(
+                "❌ Error: Could not find tab named 'salary calculators'",
+            );
+            return [];
+        }
+
+        return await sheet.getRows();
+    } catch (err) {
+        console.error("❌ Error in getOwnerIdMap:", err.message);
+        return [];
+    }
+}
 
 // Cleaned up Test Message Function
 async function sendStartupTestMessage() {
@@ -505,6 +566,15 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 	if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
+		if (interaction.commandName === "trade-alert") {
+            try {
+                await command.execute(interaction);
+                return; // Exit early so it doesn't try to defer!
+            } catch (error) {
+                console.error(error);
+                return;
+            }
+        }
       try {
 		  if (interaction.commandName === 'appeal') {
             // DO NOT use deferReply here. Modals must be the very first response.
@@ -512,7 +582,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 			  return; 
         } else {
             // 2. For all other commands (salary, team, etc.), defer as usual
-            await interaction.deferReply();
+            //await interaction.deferReply();
     		await command.execute(interaction, getSheetData, getPlayerStats);
         }
     } catch (error) {
