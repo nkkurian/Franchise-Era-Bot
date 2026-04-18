@@ -78,8 +78,8 @@ module.exports = {
             const notes =
                 submission.fields.getTextInputValue("trade_notes") ||
                 "No extra notes.";
-            const logChannelId = "1485437733429182604";
-            const roleId = "1479107336617332787";
+            const logChannelId = "1489845470321836032";
+            const roleId = "1455969357334188093";
 
             const logChannel =
                 await interaction.client.channels.fetch(logChannelId);
