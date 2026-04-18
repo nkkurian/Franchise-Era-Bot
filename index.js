@@ -563,29 +563,27 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     } // <--- THIS ends the "isButton" check.
 
 // --- SLASH COMMANDS START HERE ---
-	if (interaction.isChatInputCommand()) {
-      const command = client.commands.get(interaction.commandName);
-      if (!command) return;
-		if (interaction.commandName === "trade-alert" || interaction.commandName === "appeal") {
+	// index.js - Update this section specifically
+if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+
+    // Commands that use Modals
+    if (interaction.commandName === "trade-alert" || interaction.commandName === "appeal") {
         command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
-            .catch(err => console.error(`Modal Command Error (${interaction.commandName}):`, err));
-        return; // Exit immediately to let the command handle the response
+            .catch(err => console.error(`Modal Command Error:`, err));
+        return; 
     }
-      try {
-		  if (interaction.commandName === 'appeal') {
-            // DO NOT use deferReply here. Modals must be the very first response.
-            await command.execute(interaction, getSheetData, getPlayerStats);
-			  return; 
-        } else {
-            // 2. For all other commands (salary, team, etc.), defer as usual
-            //await interaction.deferReply();
-    		await command.execute(interaction, getSheetData, getPlayerStats);
-        }
+
+    // Standard Commands (Including sent-trade)
+    try {
+        // Pass ALL helper functions as arguments here
+        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     } catch (error) {
         console.error("Command Execution Error:", error);
-        // Only attempt to reply if we haven't already sent a response
+        // This prevent the "Unknown Interaction" crash if the code fails
         if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'There was an error executing this command!', ephemeral: true });
+            await interaction.reply({ content: 'Command failed to execute.', ephemeral: true });
         }
     }
 }
