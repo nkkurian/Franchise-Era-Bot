@@ -21,7 +21,7 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const channelId = "1485437733429182604";
+            const channelId = "1489845470321836032";
             const logChannel =
                 await interaction.client.channels.fetch(channelId);
 
