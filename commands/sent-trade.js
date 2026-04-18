@@ -58,7 +58,7 @@ module.exports = {
                         // 2. Trim whitespace
                         // 3. Format as Role Mentions <@&ID>
                         ownerPing = rawIds.split(',')
-                            .map(id => `<@&${id.trim()}>`)
+                            .map(id => `<@${id.trim()}>`)
                             .join(' ');
                     }
                 }
