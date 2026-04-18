@@ -41,7 +41,6 @@ module.exports = {
 
             try {
                 const rows = await getOwnerIdMap();
-                // Search Column A (index 0) for the team name
                 const ownerRow = rows.find(
                     (r) =>
                         r._rawData[0] &&
@@ -51,13 +50,20 @@ module.exports = {
                 );
 
                 if (ownerRow) {
-                    const ownerId = ownerRow._rawData[1]; // Column B (Owner ID)
                     teamDisplayName = ownerRow._rawData[0]; // Proper name from sheet
-                    ownerPing = `<@${ownerId}>`;
+                    const rawIds = ownerRow._rawData[1]; // Column B (Owner IDs)
+
+                    if (rawIds) {
+                        // 1. Split by comma if multiple IDs exist
+                        // 2. Trim whitespace
+                        // 3. Format as Role Mentions <@&ID>
+                        ownerPing = rawIds.split(',')
+                            .map(id => `<@&${id.trim()}>`)
+                            .join(' ');
+                    }
                 }
             } catch (sheetError) {
                 console.error("Sheet Lookup Error:", sheetError);
-                // We continue anyway so the trade is at least logged
             }
 
             // --- CREATE THE EMBED ---
