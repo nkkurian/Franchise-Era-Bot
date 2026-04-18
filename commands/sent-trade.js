@@ -18,7 +18,13 @@ module.exports = {
 
     async execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap) {
         // Keeping it ephemeral so only the sender sees the confirmation
-        await interaction.deferReply({ ephemeral: true });
+        try {
+            // ACKNOWLEDGE IMMEDIATELY
+            await interaction.deferReply({ ephemeral: true });
+        } catch (e) {
+            console.error("Failed to defer interaction:", e);
+            return;
+        }
 
         try {
             const channelId = "1489845470321836032";
