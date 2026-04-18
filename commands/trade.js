@@ -10,7 +10,7 @@ module.exports = {
     .addStringOption(o => o.setName('teamb_players').setDescription('Players from second team').setRequired(true)),
 
     async execute(interaction, getSheetData) {
-        //await interaction.deferReply();
+        await interaction.deferReply();
         try { 
           const { players, doc} = await getSheetData();
           const tA = interaction.options.getString('teama');
