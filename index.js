@@ -566,15 +566,11 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 	if (interaction.isChatInputCommand()) {
       const command = client.commands.get(interaction.commandName);
       if (!command) return;
-		if (interaction.commandName === "trade-alert") {
-            try {
-                await command.execute(interaction);
-                return; // Exit early so it doesn't try to defer!
-            } catch (error) {
-                console.error(error);
-                return;
-            }
-        }
+		if (interaction.commandName === "trade-alert" || interaction.commandName === "appeal") {
+        command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
+            .catch(err => console.error(`Modal Command Error (${interaction.commandName}):`, err));
+        return; // Exit immediately to let the command handle the response
+    }
       try {
 		  if (interaction.commandName === 'appeal') {
             // DO NOT use deferReply here. Modals must be the very first response.
