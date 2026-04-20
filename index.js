@@ -11,6 +11,7 @@ const cron = require('node-cron');
 const routes = require('./routes');
 const vault = require('./utils/vault.js');
 const appeals = require('./utils/appeals.js');
+const { checkTweets } = require('./utils/twitterFeed.js');
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -284,6 +285,9 @@ client.once('ready', async () => {
         setTimeout(async () => {
             await sendStartupTestMessage();
             await initializeData();
+			// Inside initializeData()
+			console.log("🐦 Starting Twitter Monitor...");
+			setInterval(() => checkTweets(client), 300000);
             
             // Check Discord Connection Status
             if (client.ws.status !== 0) {
