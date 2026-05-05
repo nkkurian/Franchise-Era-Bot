@@ -18,7 +18,8 @@
     "discord.js": "^14.25.1",
     "express": "^5.2.1",
     "google-auth-library": "^10.5.0",
-    "node-cron": "^3.0.3", 
+    "node-cron": "^3.0.3",
+    "@supabase/supabase-js": "latest",
     "google-spreadsheet": "^5.0.2"
   }
 }
