@@ -617,9 +617,11 @@ async function updateTeamMap() {
   } catch (e) { console.error("Team Map Error:", e); }
 }
 
-const getDetails = (pId, players, idMap) => {
-  const idRow = idMap.find(row => row._rawData[0] === pId);
-  const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
+const getDetails = (pId, players, idMap, idLookupMap) => {
+  // FAST: Map lookup is instant
+  const name = idLookupMap.get(pId) || `Unknown (${pId})`;
+  
+  // Now find them in the Player Sheet
   const pData = players.find(p => p._rawData[1] === name);
   
   if (!pData) return { name, cap: 0, isDeadCap: false, text: `• **${name}**: $Unknown (Not in Sheet)` };
@@ -630,7 +632,7 @@ const getDetails = (pId, players, idMap) => {
   const structure = pData._rawData[10] ? `\n    ┗ 📜 *${pData._rawData[10]}*` : "";
   
   return { name, cap, isDeadCap, text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` };
-}; 
+};
 
 
 async function pollSleeper() {
@@ -685,7 +687,7 @@ async function processAndSend(tx, channel, players, idMap) {
   };
 
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
-    const d = getDetails(pId, players, idMap);
+    const d = getDetails(pId, players, idMap, idLookupMap);
     const tName = initTeam(rId);
     teamSummaries[tName].adds.push(d.text);
     teamSummaries[tName].net -= d.cap;
