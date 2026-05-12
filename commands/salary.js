@@ -9,7 +9,7 @@ module.exports = {
 
     async execute(interaction, getSheetData, getPlayerStats) {
         console.log("DEBUG: Salary command started"); // Checkpoint 1
-        await interaction.deferReply();
+        //await interaction.deferReply();
       const input = interaction.options.getString("player").toLowerCase();
         console.log("DEBUG: Fetching sheet data..."); // Checkpoint 2
             const { players, logs, idMap } = await getSheetData();
