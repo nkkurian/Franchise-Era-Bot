@@ -198,7 +198,8 @@ module.exports = {
 
             // Handle single or multiple matches
             if (matches.length === 1) {
-                console.log("DEBUG 12: Single match found, calling sendSalaryResponse");
+                console.log("DEBUG 12: Single match found");
+                // ADD A RETURN HERE
                 return await sendSalaryResponse(interaction, matches[0]);
             } else {
                 console.log("DEBUG 13: Multiple matches found, sending buttons");
@@ -225,6 +226,7 @@ module.exports = {
                     await sendSalaryResponse(i, matches[idx], true);
                     collector.stop();
                 });
+                return; 
             }
         }
 }; 
