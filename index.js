@@ -573,27 +573,26 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 // --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
     client.on('interactionCreate', async interaction => {
-    if (!interaction.isChatInputCommand()) return;
+    if (interaction.isChatInputCommand()) {
+        // Stop the 3-second clock immediately!
+        try {
+            await interaction.deferReply({ ephemeral: true });
+        } catch (err) {
+            console.error("Error deferring:", err);
+        }
 
-    // --- MOVE THIS TO THE VERY TOP ---
-    // This stops the 3-second timeout clock immediately
-    try {
-        await interaction.deferReply({ ephemeral: true }); 
-    } catch (err) {
-        console.error("Error deferring:", err);
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+
+        try {
+            await command.execute(interaction, getSheetData, getPlayerStats);
+        } catch (error) {
+            console.error("Command Error:", error);
+            if (interaction.deferred) {
+                await interaction.editReply("There was an error executing this command.");
+            }
+        }
     }
-    // ---------------------------------
-
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-
-    try {
-        // Now run the command (which includes the slow getSheetData)
-        await command.execute(interaction, getSheetData, getPlayerStats);
-    } catch (error) {
-        console.error(error);
-    }
-});
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
