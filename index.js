@@ -765,6 +765,12 @@ process.on('uncaughtException', (err) => {
 
 console.log("🔌 Attempting to connect to Discord...");
 
+client.on('debug', m => {
+    if (m.includes('Failed to parse') || m.includes('400')) {
+        console.log('📡 NETWORK DEBUG:', m);
+    }
+});
+
 client.login(process.env.DISCORD_TOKEN)
   .then(() => {
     console.log("🔓 Token accepted. Establishing gateway connection...");
