@@ -579,19 +579,24 @@ if (interaction.isChatInputCommand()) {
 
     // 3. Standard Commands (Defer IMMEDIATELY)
     try {
-        // This MUST be the very first async action for standard commands
+        // Trigger "Thinking..." immediately
         await interaction.deferReply();
 
+        // Wrap the execution in a timeout check or just run it
+        // We pass a reference to the data functions, not the data itself
         await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+        
     } catch (error) {
         console.error("Command Execution Error:", error);
         
-        // Use editReply because we already deferred
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply({ content: 'There was an error executing this command.' });
-        } else {
-            // Fallback for extreme cases where defer failed
-            await interaction.reply({ content: 'Command failed.', ephemeral: true }).catch(() => {});
+        // If it timed out, editReply will fail with "Unknown Interaction"
+        // We catch that here so the bot doesn't crash
+        try {
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ content: '❌ The request took too long or encountered an error.' });
+            }
+        } catch (e) {
+            console.error("Could not send error message to Discord:", e.message);
         }
     }
 }
