@@ -574,23 +574,14 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 	// index.js - Update this section specifically
     client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
-        // Stop the 3-second clock immediately!
-        try {
-            await interaction.deferReply({ ephemeral: true });
-        } catch (err) {
-            console.error("Error deferring:", err);
-        }
-
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
-
         try {
+            await interaction.deferReply({ ephemeral: true });
             await command.execute(interaction, getSheetData, getPlayerStats);
         } catch (error) {
-            console.error("Command Error:", error);
-            if (interaction.deferred) {
-                await interaction.editReply("There was an error executing this command.");
-            }
+            console.error(error);
+            if (interaction.deferred) await interaction.editReply("❌ Error executing command.");
         }
     }
 });
