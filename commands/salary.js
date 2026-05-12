@@ -184,12 +184,13 @@ module.exports = {
                     content: null,
                     embeds: [embed],
                     components: components,
-                    ephermeal: true
                 };
+                console.log("DEBUG 11: Sending final payload to Discord...");
                 return isUpdate
                     ? await targetInteraction.update(payload)
                     : await targetInteraction.editReply(payload);
             };
+        
 
             // Handle single or multiple matches
             if (matches.length === 1) {
