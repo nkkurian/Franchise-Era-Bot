@@ -187,12 +187,35 @@ module.exports = {
                     components: components,
                     flags: MessageFlags.Ephemeral
                 };
-                console.log("DEBUG 11: Sending final payload to Discord...");
-                if (isUpdate) {
-                    return await targetInteraction.update(payload);
-                } else {
-                    // Use 'interaction' (from the execute arguments) to ensure we hit the deferred message
-                    return await interaction.editReply(payload);
+                console.log("DEBUG 11: Attempting to send final payload to Discord...");
+                
+                try {
+                    if (isUpdate) {
+                        // If a user clicked a button, we "update" the existing message
+                        return await targetInteraction.update(payload);
+                    } else {
+                        // If it's a fresh slash command, we "edit" the deferred "thinking" state
+                        const result = await interaction.editReply(payload);
+                        console.log("DEBUG 12: Discord successfully accepted the payload!");
+                        return result;
+                    }
+                } catch (discordError) {
+                    // This is the "Smoke Out" logic. If Discord hates your embed, it will print here.
+                    console.error("❌ DISCORD API ERROR DETECTED:");
+                    console.error("Status Code:", discordError.status);
+                    console.error("Message:", discordError.message);
+                    
+                    // Check if the embed was the problem
+                    if (discordError.errors) {
+                        console.error("Validation Errors:", JSON.stringify(discordError.errors, null, 2));
+                    }
+
+                    // Try to send a plain text error so the user isn't stuck "thinking"
+                    return await interaction.editReply({ 
+                        content: `⚠️ Discord rejected the response. Error: ${discordError.message}`,
+                        embeds: [], 
+                        components: [] 
+                    }).catch(() => null);
                 }
             };
         
