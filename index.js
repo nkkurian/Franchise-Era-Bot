@@ -576,23 +576,28 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
-    // List commands that handle their own deferring or modals
+    // 1. Check if we should defer at all
     const manualDeferCommands = ["trade-alert", "appeal"];
-    
     if (manualDeferCommands.includes(interaction.commandName)) {
         return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     }
 
+    // 2. Standard defer with safety check
     try {
-        // Standard defer for salary, team, etc.
-        // Match the ephemeral setting to what you want the salary command to be
-        await interaction.deferReply({ ephemeral: true }); 
+        // Use the new MessageFlags syntax to stop that deprecation warning
+        const { MessageFlags } = require('discord.js'); 
+        
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        }
 
         await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     } catch (error) {
-		console.error(error);
-        await interaction.editReply({ content: 'There was an error!' });
-        // ... error handling
+        console.error("Command Execution Error:", error);
+        // Only edit if we actually deferred
+        if (interaction.deferred) {
+            await interaction.editReply({ content: 'There was an error executing this command!' });
+        }
     }
 }
 });
