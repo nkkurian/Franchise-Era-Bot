@@ -572,34 +572,28 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 
 // --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
-    if (interaction.isChatInputCommand()) {
+    client.on('interactionCreate', async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+
+    // --- MOVE THIS TO THE VERY TOP ---
+    // This stops the 3-second timeout clock immediately
+    try {
+        await interaction.deferReply({ ephemeral: true }); 
+    } catch (err) {
+        console.error("Error deferring:", err);
+    }
+    // ---------------------------------
+
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
-    // 1. Check if we should defer at all
-    const manualDeferCommands = ["trade-alert", "appeal"];
-    if (manualDeferCommands.includes(interaction.commandName)) {
-        return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
-    }
-
-    // 2. Standard defer with safety check
     try {
-        // Use the new MessageFlags syntax to stop that deprecation warning
-        const { MessageFlags } = require('discord.js'); 
-        
-        if (!interaction.deferred && !interaction.replied) {
-            await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-        }
-
-        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+        // Now run the command (which includes the slow getSheetData)
+        await command.execute(interaction, getSheetData, getPlayerStats);
     } catch (error) {
-        console.error("Command Execution Error:", error);
-        // Only edit if we actually deferred
-        if (interaction.deferred) {
-            await interaction.editReply({ content: 'There was an error executing this command!' });
-        }
+        console.error(error);
     }
-}
+});
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
