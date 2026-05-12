@@ -567,29 +567,34 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 	// index.js - Update this section specifically
 if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
+    
+    // 1. Exit early if the command doesn't exist
     if (!command) return;
 
-    // Commands that use Modals
+    // 2. Commands that use Modals (CANNOT be deferred)
     if (interaction.commandName === "trade-alert" || interaction.commandName === "appeal") {
-        command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
+        return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
             .catch(err => console.error(`Modal Command Error:`, err));
-        return; 
     }
 
-    // Standard Commands (Including sent-trade)
+    // 3. Standard Commands (Defer IMMEDIATELY)
     try {
-        // Pass ALL helper functions as arguments here
+        // This MUST be the very first async action for standard commands
         await interaction.deferReply();
-		await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+
+        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     } catch (error) {
         console.error("Command Execution Error:", error);
-        // This prevent the "Unknown Interaction" crash if the code fails
-        if (interaction.deferred) {
+        
+        // Use editReply because we already deferred
+        if (interaction.deferred || interaction.replied) {
             await interaction.editReply({ content: 'There was an error executing this command.' });
+        } else {
+            // Fallback for extreme cases where defer failed
+            await interaction.reply({ content: 'Command failed.', ephemeral: true }).catch(() => {});
         }
     }
 }
-}); 
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 let rosterToTeamName = {}; 
