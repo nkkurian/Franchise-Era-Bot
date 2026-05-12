@@ -1,4 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
+const { MessageFlags } = require('discord.js'); 
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -184,7 +185,7 @@ module.exports = {
                     content: null,
                     embeds: [embed],
                     components: components,
-                    ephemeral: true
+                    flags: MessageFlags.Ephemeral
                 };
                 console.log("DEBUG 11: Sending final payload to Discord...");
                 if (isUpdate) {
