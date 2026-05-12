@@ -20,7 +20,7 @@ module.exports = {
         // Keeping it ephemeral so only the sender sees the confirmation
         try {
             // ACKNOWLEDGE IMMEDIATELY
-            await interaction.deferReply({ ephemeral: true });
+            //await interaction.deferReply({ ephemeral: true });
         } catch (e) {
             console.error("Failed to defer interaction:", e);
             return;
