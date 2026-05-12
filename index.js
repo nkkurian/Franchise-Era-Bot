@@ -565,13 +565,6 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 
 // --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
-if (interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
-    
-    // 1. Exit early if the command doesn't exist
-    if (!command) return;
-
-    // 2. Commands that use Modals (CANNOT be deferred)
     if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     
@@ -615,7 +608,6 @@ if (interaction.isChatInputCommand()) {
             // Silently fail if the interaction is already closed
         }
     }
-}
 }
 }); 
 
