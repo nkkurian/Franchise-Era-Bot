@@ -590,7 +590,8 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 
         await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     } catch (error) {
-        console.error("❌ Command Execution Error:", error);
+		console.error(error);
+        await interaction.editReply({ content: 'There was an error!' });
         // ... error handling
     }
 }
