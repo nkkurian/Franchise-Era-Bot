@@ -6,7 +6,7 @@ module.exports = {
         .setDescription('View all available league commands and guides'),
 
     async execute(interaction, getSheetData) {
-		//await interaction.deferReply();
+		await interaction.deferReply();
       const { players, logs } = await getSheetData();
 	      
 	      const helpEmbed = new EmbedBuilder()
