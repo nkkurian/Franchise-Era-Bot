@@ -616,6 +616,7 @@ if (interaction.isChatInputCommand()) {
         }
     }
 }
+}
 }); 
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
