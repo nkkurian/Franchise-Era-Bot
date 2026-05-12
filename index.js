@@ -579,12 +579,13 @@ if (interaction.isChatInputCommand()) {
     // Standard Commands (Including sent-trade)
     try {
         // Pass ALL helper functions as arguments here
-        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+        await interaction.deferReply();
+		await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     } catch (error) {
         console.error("Command Execution Error:", error);
         // This prevent the "Unknown Interaction" crash if the code fails
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'Command failed to execute.', ephemeral: true });
+        if (interaction.deferred) {
+            await interaction.editReply({ content: 'There was an error executing this command.' });
         }
     }
 }
