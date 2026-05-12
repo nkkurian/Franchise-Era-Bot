@@ -573,50 +573,30 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 // --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
     if (interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
-    
-    // 1. Exit early if the command doesn't exist
-    if (!command) return;
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
 
-    // 2. Define commands that MUST NOT be deferred (Modals)
-    const modalCommands = ["trade-alert", "appeal"];
-
-    if (modalCommands.includes(interaction.commandName)) {
-        return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
-            .catch(err => console.error(`❌ Modal Command Error [${interaction.commandName}]:`, err));
-    }
-
-    // 3. Standard Commands
-    try {
-        // Attempt to defer immediately. 
-        // If this line takes > 3s, it throws the "Unknown Interaction" error here.
-        await interaction.deferReply().catch(err => {
-            console.error("⚠️ Defer failed (likely took > 3s):", err.message);
-            throw err; // Stop execution if we can't acknowledge the command
-        });
-
-        // Now run the command logic
-        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
-        
-    } catch (error) {
-        // This avoids the bot crashing if the interaction token is already dead
-        if (error.code === 10062) {
-            console.error("🚫 Command failed because Discord's 3s limit was exceeded.");
-            return; 
+        const modalCommands = ["trade-alert", "appeal"];
+        if (modalCommands.includes(interaction.commandName)) {
+            return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
+                .catch(err => console.error(`❌ Modal Command Error:`, err));
         }
 
-        console.error("❌ Command Execution Error:", error);
-        
         try {
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply({ content: '❌ The request took too long or encountered an error.' });
+            // Check if already deferred/replied to prevent double-defer error
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply();
             }
-        } catch (e) {
-            // Silently fail if the interaction is already closed
+            await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+        } catch (error) {
+            if (error.code === 10062) return; // Ignore "Unknown Interaction" log
+            console.error("❌ Command Execution Error:", error);
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply({ content: '❌ The request encountered an error.' }).catch(() => {});
+            }
         }
     }
-}
-}); 
+});
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 let rosterToTeamName = {}; 
