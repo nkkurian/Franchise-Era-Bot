@@ -17,8 +17,9 @@ module.exports = {
             const matches = players.filter((r) =>
                 r._rawData[1]?.toLowerCase().includes(input),
             );
-
+            console.log(`DEBUG: Matches found: ${matches.length}`);
             if (matches.length === 0)
+                console.log("DEBUG: No matches found, sending 'Not Found' reply.");
                 return await interaction.editReply(
                     `❌ Player **${input}** not found.`,
                 );
@@ -28,6 +29,7 @@ module.exports = {
                 playerRow,
                 isUpdate = false,
             ) => {
+                console.log(`DEBUG: Building response for ${playerRow._rawData[1]}`);
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
                 const capHit = playerRow._rawData[6] || "N/A";
