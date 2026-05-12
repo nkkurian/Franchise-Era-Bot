@@ -184,6 +184,7 @@ module.exports = {
                     content: null,
                     embeds: [embed],
                     components: components,
+                    ephermeal: true
                 };
                 return isUpdate
                     ? await targetInteraction.update(payload)
