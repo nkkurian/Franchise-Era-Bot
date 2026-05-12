@@ -314,21 +314,21 @@ setInterval(async () => {
     }
 }, 120000);
 
-async function initializeData() {
-    try {
-        console.log("📥 Pre-loading Sheet Data...");
-        await getSheetData(); 
+// async function initializeData() {
+//     try {
+//         console.log("📥 Pre-loading Sheet Data...");
+//         await getSheetData(); 
 
-        console.log("📥 Loading Sleeper Team Map...");
-        await updateTeamMap(); 
+//         console.log("📥 Loading Sleeper Team Map...");
+//         await updateTeamMap(); 
 
-         console.log("🔍 Starting Sleeper Poller...");
-         await pollSleeper(); // Run once
-         setInterval(pollSleeper, 60000); // Then every minute
-    } catch (err) {
-        console.error("❌ Background Init Error:", err);
-    }
-}
+//          console.log("🔍 Starting Sleeper Poller...");
+//          await pollSleeper(); // Run once
+//          setInterval(pollSleeper, 60000); // Then every minute
+//     } catch (err) {
+//         console.error("❌ Background Init Error:", err);
+//     }
+// }
 
 //Owners of teams map from Sheets
 async function getOwnerIdMap() {
@@ -756,22 +756,22 @@ process.on('uncaughtException', (err) => {
 });
 
 
-// --- ADD THIS DEBUG LISTENER TEMPORARILY ---
-client.on('debug', (info) => {
-    // This will show exactly what the bot is doing (Heartbeats, Handshakes, etc.)
-    if (info.includes('Heartbeat') || info.includes('Latency')) return; // Ignore spam
-    console.log(`📡 [DEBUG]: ${info}`);
-});
+// // --- ADD THIS DEBUG LISTENER TEMPORARILY ---
+// client.on('debug', (info) => {
+//     // This will show exactly what the bot is doing (Heartbeats, Handshakes, etc.)
+//     if (info.includes('Heartbeat') || info.includes('Latency')) return; // Ignore spam
+//     console.log(`📡 [DEBUG]: ${info}`);
+// });
 
-console.log("🔌 Attempting to connect to Discord...");
+// console.log("🔌 Attempting to connect to Discord...");
 
-client.login(process.env.DISCORD_TOKEN).then(() => {
-    console.log("🔓 Token accepted. Establishing gateway connection...");
-}).catch(err => {
-    console.error("❌ LOGIN FAILED IMMEDIATELY:");
-    console.error(err);
+// client.login(process.env.DISCORD_TOKEN).then(() => {
+//     console.log("🔓 Token accepted. Establishing gateway connection...");
+// }).catch(err => {
+//     console.error("❌ LOGIN FAILED IMMEDIATELY:");
+//     console.error(err);
     
-    if (err.message.includes("Used disallowed intents")) {
-        console.error("👉 DISALLOWED INTENTS: Double check the Developer Portal (Message Content, etc) AND your code's Intent list.");
-    }
+//     if (err.message.includes("Used disallowed intents")) {
+//         console.error("👉 DISALLOWED INTENTS: Double check the Developer Portal (Message Content, etc) AND your code's Intent list.");
+//     }
 });
