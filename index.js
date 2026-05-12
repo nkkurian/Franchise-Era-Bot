@@ -157,32 +157,39 @@ const BOT_START_TIME = Date.now() - BACKFILL_MS;
 let processedTxIds = new Set();
 let isFirstRun = true; // NEW: Controls the one-time historical post
 
-// Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
-
+let idLookupMap = new Map();
 async function getSheetData() {
   const now = Date.now();
   if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
   }
   
-  try {
+ try {
+    console.log("🔄 Cache expired or empty. Fetching fresh data from Google...");
     await doc.loadInfo();
     const [pRows, tRows, idRows] = await Promise.all([
       doc.sheetsByTitle['PlayerList'].getRows(),
       doc.sheetsByTitle['Transaction Log'].getRows(),
-      doc.sheetsByTitle['Sleeper_Players'].getRows() // Fetches the ID sheet seen in your screenshots
+      doc.sheetsByTitle['Sleeper_Players'].getRows()
     ]);
     
+    // CONVERT TO MAP FOR INSTANT SEARCHING
+    idLookupMap.clear();
+    idRows.forEach(row => {
+        // Assuming Column 0 is SleeperID and Column 1 is Name
+        idLookupMap.set(row._rawData[0], row._rawData[1]); 
+    });
+
     cachedPlayers = pRows;
     cachedLogs = tRows;
     cachedIds = idRows;
     lastFetchTime = now;
     
-    console.log(`📊 Cache Updated: ${pRows.length} players, ${idRows.length} IDs loaded.`);
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
+    console.log(`📊 Cache Updated: ${pRows.length} players, ${idRows.length} IDs mapped.`);
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
   } catch (err) {
     console.error("❌ Sheet Fetch Error:", err);
-    return { players: [], logs: [], idMap: [] };
+    return { players: [], logs: [], idMap: [], idLookup: new Map() };
   }
 }
 
