@@ -184,6 +184,7 @@ module.exports = {
                     content: null,
                     embeds: [embed],
                     components: components,
+                    ephemeral: true
                 };
                 console.log("DEBUG 11: Sending final payload to Discord...");
                 return isUpdate
