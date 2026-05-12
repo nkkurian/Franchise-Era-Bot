@@ -572,31 +572,47 @@ if (interaction.isChatInputCommand()) {
     if (!command) return;
 
     // 2. Commands that use Modals (CANNOT be deferred)
-    if (interaction.commandName === "trade-alert" || interaction.commandName === "appeal") {
+    if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    
+    // 1. Exit early if the command doesn't exist
+    if (!command) return;
+
+    // 2. Define commands that MUST NOT be deferred (Modals)
+    const modalCommands = ["trade-alert", "appeal"];
+
+    if (modalCommands.includes(interaction.commandName)) {
         return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
-            .catch(err => console.error(`Modal Command Error:`, err));
+            .catch(err => console.error(`❌ Modal Command Error [${interaction.commandName}]:`, err));
     }
 
-    // 3. Standard Commands (Defer IMMEDIATELY)
+    // 3. Standard Commands
     try {
-        // Trigger "Thinking..." immediately
-        await interaction.deferReply();
+        // Attempt to defer immediately. 
+        // If this line takes > 3s, it throws the "Unknown Interaction" error here.
+        await interaction.deferReply().catch(err => {
+            console.error("⚠️ Defer failed (likely took > 3s):", err.message);
+            throw err; // Stop execution if we can't acknowledge the command
+        });
 
-        // Wrap the execution in a timeout check or just run it
-        // We pass a reference to the data functions, not the data itself
+        // Now run the command logic
         await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
         
     } catch (error) {
-        console.error("Command Execution Error:", error);
+        // This avoids the bot crashing if the interaction token is already dead
+        if (error.code === 10062) {
+            console.error("🚫 Command failed because Discord's 3s limit was exceeded.");
+            return; 
+        }
+
+        console.error("❌ Command Execution Error:", error);
         
-        // If it timed out, editReply will fail with "Unknown Interaction"
-        // We catch that here so the bot doesn't crash
         try {
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply({ content: '❌ The request took too long or encountered an error.' });
             }
         } catch (e) {
-            console.error("Could not send error message to Discord:", e.message);
+            // Silently fail if the interaction is already closed
         }
     }
 }
