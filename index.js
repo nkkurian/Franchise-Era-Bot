@@ -573,29 +573,27 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 // --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
     if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
 
-        const modalCommands = ["trade-alert", "appeal"];
-        if (modalCommands.includes(interaction.commandName)) {
-            return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
-                .catch(err => console.error(`❌ Modal Command Error:`, err));
-        }
-
-        try {
-            // Check if already deferred/replied to prevent double-defer error
-            if (!interaction.deferred && !interaction.replied) {
-                await interaction.deferReply();
-            }
-            await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
-        } catch (error) {
-            if (error.code === 10062) return; // Ignore "Unknown Interaction" log
-            console.error("❌ Command Execution Error:", error);
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply({ content: '❌ The request encountered an error.' }).catch(() => {});
-            }
-        }
+    // List commands that handle their own deferring or modals
+    const manualDeferCommands = ["trade-alert", "appeal"];
+    
+    if (manualDeferCommands.includes(interaction.commandName)) {
+        return command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     }
+
+    try {
+        // Standard defer for salary, team, etc.
+        // Match the ephemeral setting to what you want the salary command to be
+        await interaction.deferReply({ ephemeral: true }); 
+
+        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+    } catch (error) {
+        console.error("❌ Command Execution Error:", error);
+        // ... error handling
+    }
+}
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
