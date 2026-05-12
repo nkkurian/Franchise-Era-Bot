@@ -182,42 +182,31 @@ module.exports = {
                 }
 
                 const payload = {
-                    content: null,
+                    content: "", // Explicitly set content to empty string instead of null
                     embeds: [embed],
                     components: components,
-                    flags: MessageFlags.Ephemeral
+                    // REMOVE flags: MessageFlags.Ephemeral from here. 
+                    // You already deferred as ephemeral in index.js. 
+                    // Adding it to editReply is known to cause hangs in some d.js versions.
                 };
                 console.log("DEBUG 11: Attempting to send final payload to Discord...");
                 
                 try {
                     if (isUpdate) {
-                        // If a user clicked a button, we "update" the existing message
+                        console.log("DEBUG: Updating button interaction...");
                         return await targetInteraction.update(payload);
                     } else {
-                        // If it's a fresh slash command, we "edit" the deferred "thinking" state
-                        const result = await interaction.editReply(payload);
-                        console.log("DEBUG 12: Discord successfully accepted the payload!");
-                        return result;
-                    }
-                } catch (discordError) {
-                    // This is the "Smoke Out" logic. If Discord hates your embed, it will print here.
-                    console.error("❌ DISCORD API ERROR DETECTED:");
-                    console.error("Status Code:", discordError.status);
-                    console.error("Message:", discordError.message);
-                    
-                    // Check if the embed was the problem
-                    if (discordError.errors) {
-                        console.error("Validation Errors:", JSON.stringify(discordError.errors, null, 2));
-                    }
-
-                    // Try to send a plain text error so the user isn't stuck "thinking"
-                    return await interaction.editReply({ 
-                        content: `⚠️ Discord rejected the response. Error: ${discordError.message}`,
-                        embeds: [], 
-                        components: [] 
-                    }).catch(() => null);
+                        console.log("DEBUG: Sending EditReply...");
+                        const result = await Promise.race([
+                        interaction.editReply(payload),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Discord EditReply Timed Out')), 5000))
+                    ]);
+                    console.log("DEBUG 12: Success!");
+                    return result;
                 }
-            };
+            } catch (discordError) {
+                console.error("❌ FAILED AT DEBUG 11:", discordError);
+            }
         
 
             // Handle single or multiple matches
