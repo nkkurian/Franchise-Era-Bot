@@ -8,28 +8,29 @@ module.exports = {
             option.setName('player').setDescription('The name of the player').setRequired(true)),
 
     async execute(interaction, getSheetData, getPlayerStats) {
-        console.log("DEBUG: Salary command started"); // Checkpoint 1
+        console.log("DEBUG 1: Salary command started");
         //await interaction.deferReply();
       const input = interaction.options.getString("player").toLowerCase();
-        console.log("DEBUG: Fetching sheet data..."); // Checkpoint 2
+        console.log("DEBUG 2: Fetching sheet data...");
             const { players, logs, idMap } = await getSheetData();
-            console.log(`DEBUG: Found ${players.length} players in cache.`); // Checkpoint 3
+            console.log(`DEBUG 3: Found ${players.length} players in cache.`);
             const matches = players.filter((r) =>
                 r._rawData[1]?.toLowerCase().includes(input),
             );
-            console.log(`DEBUG: Matches found: ${matches.length}`);
-            if (matches.length === 0)
-                console.log("DEBUG: No matches found, sending 'Not Found' reply.");
+            console.log(`DEBUG 4: Matches found: ${matches.length}`);
+            if (matches.length === 0) {
+                console.log("DEBUG 5: No matches found, sending 'Not Found' reply.");
                 return await interaction.editReply(
                     `❌ Player **${input}** not found.`,
-                );
+                    );
+            } 
 
             const sendSalaryResponse = async (
                 targetInteraction,
                 playerRow,
                 isUpdate = false,
             ) => {
-                console.log(`DEBUG: Building response for ${playerRow._rawData[1]}`);
+                console.log(`DEBUG 6: Entering sendSalaryResponse for ${playerRow._rawData[1]}`);
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
                 const capHit = playerRow._rawData[6] || "N/A";
@@ -40,15 +41,19 @@ module.exports = {
                         row._rawData[1]?.toLowerCase() === pName.toLowerCase(),
                 );
                 const sleeperId = idRow ? idRow._rawData[0] : null;
-
+                console.log(`DEBUG 7: Sleeper ID found: ${sleeperId}`);
+                
                 // 2. Fetch Stats if we have an ID
+                console.log("DEBUG 8: Requesting Player Stats...");
                 const stats = sleeperId
                     ? await getPlayerStats(sleeperId)
                     : null;
+                console.log("DEBUG 9: Stats fetch complete.");
                 const displayYear = stats?.displayYear || "2025";
                 let statsField = `No live stats available for ${displayYear}.`;
 
                 if (stats) {
+                    console.log("DEBUG 10: Processing stats into fields...");
                     let s = [];
 
                     // Offensive Stats
@@ -158,7 +163,7 @@ module.exports = {
                         `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
                     );
                 }
-
+                console.log("DEBUG 11: Sending final payload to Discord...");
                 // Add history button if applicable
                 const components = [];
                 const hasHistory = logs.some(
@@ -187,8 +192,10 @@ module.exports = {
 
             // Handle single or multiple matches
             if (matches.length === 1) {
+                console.log("DEBUG 12: Single match found, calling sendSalaryResponse");
                 return await sendSalaryResponse(interaction, matches[0]);
             } else {
+                console.log("DEBUG 13: Multiple matches found, sending buttons");
                 const selectionRow = new ActionRowBuilder().addComponents(
                     matches
                         .slice(0, 5)
