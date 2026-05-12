@@ -187,9 +187,12 @@ module.exports = {
                     ephemeral: true
                 };
                 console.log("DEBUG 11: Sending final payload to Discord...");
-                return isUpdate
-                    ? await targetInteraction.update(payload)
-                    : await targetInteraction.editReply(payload);
+                if (isUpdate) {
+                    return await targetInteraction.update(payload);
+                } else {
+                    // Use 'interaction' (from the execute arguments) to ensure we hit the deferred message
+                    return await interaction.editReply(payload);
+                }
             };
         
 
