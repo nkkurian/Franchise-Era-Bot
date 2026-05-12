@@ -150,7 +150,7 @@ let cachedPlayers = [];
 let cachedLogs = [];
 let cachedIds = []; // Added to store Sleeper ID mappings
 let lastFetchTime = 0;
-const CACHE_LIFESPAN = 30000; 
+const CACHE_LIFESPAN = 3600000; 
 // This sets the "start time" to 2 hours ago, so the bot backfills recent trades
 const BACKFILL_MS = 2 * 60 * 60 * 1000; 
 const BOT_START_TIME = Date.now() - BACKFILL_MS;
