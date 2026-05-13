@@ -209,7 +209,7 @@ module.exports = {
                          await interaction.reply({ content: "⚠️ Discord took too long to respond, but the action might have completed.", ephemeral: true });
                     }
                 }
-            }
+            };
         
 
             // Handle single or multiple matches
