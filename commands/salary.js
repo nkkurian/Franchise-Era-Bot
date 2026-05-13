@@ -185,9 +185,6 @@ module.exports = {
                     content: "", // Explicitly set content to empty string instead of null
                     embeds: [embed],
                     components: components,
-                    // REMOVE flags: MessageFlags.Ephemeral from here. 
-                    // You already deferred as ephemeral in index.js. 
-                    // Adding it to editReply is known to cause hangs in some d.js versions.
                 };
                 console.log("DEBUG 11: Attempting to send final payload to Discord...");
                 
