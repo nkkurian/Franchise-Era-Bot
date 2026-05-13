@@ -404,14 +404,15 @@ client.on('interactionCreate', async (interaction) => {
         
         try {
             // ACKNOWLEDGE IMMEDIATELY - This stops the 3-second timer
-            await interaction.deferReply({ ephemeral: true });
+           await interaction.deferReply({ flags: [64] });
             
             // Execute the command
             return await command.execute(interaction, getSheetData, getPlayerStats);
         } catch (error) {
             console.error("❌ Command Execution Error:", error);
+            // Non-blocking check for cleanup
             if (interaction.deferred || interaction.replied) {
-                return await interaction.editReply("❌ Error executing command.");
+                await interaction.editReply("❌ Error executing command.").catch(() => {});
             }
             return;
         }
