@@ -207,6 +207,7 @@ module.exports = {
             } catch (discordError) {
                 console.error("❌ FAILED AT DEBUG 11:", discordError);
             }
+            }; 
         
 
             // Handle single or multiple matches
