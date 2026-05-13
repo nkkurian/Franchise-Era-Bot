@@ -400,7 +400,7 @@ client.on('interactionCreate', async (interaction) => {
 
 	if (interaction.isChatInputCommand()) {
         try {
-            await interaction.deferReply({ flags: [64] });
+            await interaction.deferReply();
         } catch (e) {
             console.error("Failed to defer:", e);
             return;
