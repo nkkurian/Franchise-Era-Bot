@@ -197,17 +197,18 @@ module.exports = {
                         return await targetInteraction.update(payload);
                     } else {
                         console.log("DEBUG: Sending EditReply...");
-                        const result = await Promise.race([
-                        interaction.editReply(payload),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('Discord EditReply Timed Out')), 5000))
-                    ]);
-                    console.log("DEBUG 12: Success!");
-                    return result;
+                        // Simplified: Removed the manual Promise.race timeout
+                        const result = await interaction.editReply(payload);
+                        console.log("DEBUG 12: Success!");
+                        return result;
+                    }
+                } catch (discordError) {
+                    console.error("❌ DISCORD API ERROR:", discordError);
+                    // Fallback if editReply fails
+                    if (!interaction.replied && !interaction.deferred) {
+                         await interaction.reply({ content: "⚠️ Discord took too long to respond, but the action might have completed.", ephemeral: true });
+                    }
                 }
-            } catch (discordError) {
-                console.error("❌ FAILED AT DEBUG 11:", discordError);
-            }
-            }; 
         
 
             // Handle single or multiple matches
