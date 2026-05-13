@@ -399,15 +399,13 @@ function createPlayerEmbed(pRow) {
 client.on('interactionCreate', async (interaction) => {
   
   if (interaction.isModalSubmit()) {
-	if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
-    if (interaction.customId === 'appealModal') return await appeals.handleAppealSubmit(interaction);
-    if (interaction.customId === 'adminLoginModal') return await vault.showAdminPanel(interaction);
+        if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
+        if (interaction.customId === 'appealModal') return await appeals.handleAppealSubmit(interaction);
+        if (interaction.customId === 'adminLoginModal') return await vault.showAdminPanel(interaction);
 	  
 if (interaction.customId.startsWith('vlt_fin_')) {
-    // CRITICAL: Stop the "Something went wrong" error by deferring immediately
-    await interaction.deferReply({ ephemeral: true });
-
-    const [, , action, playerName] = interaction.customId.split('_');
+        await interaction.deferReply({ ephemeral: true });
+        const [, , action, playerName] = interaction.customId.split('_');
     
     // 1. Get raw inputs from the modal
     const rawSalary = interaction.fields.getTextInputValue('in_sal');
@@ -569,10 +567,6 @@ if (interaction.customId.startsWith('vlt_fin_')) {
         }
 	  
     } // <--- THIS ends the "isButton" check.
-
-// --- SLASH COMMANDS START HERE ---
-	// index.js - Update this section specifically
-    client.on('interactionCreate', async interaction => {
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
