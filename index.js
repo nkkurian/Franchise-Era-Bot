@@ -397,6 +397,25 @@ function createPlayerEmbed(pRow) {
 
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
+
+	if (interaction.isChatInputCommand()) {
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
+        
+        try {
+            // ACKNOWLEDGE IMMEDIATELY - This stops the 3-second timer
+            await interaction.deferReply({ ephemeral: true });
+            
+            // Execute the command
+            return await command.execute(interaction, getSheetData, getPlayerStats);
+        } catch (error) {
+            console.error("❌ Command Execution Error:", error);
+            if (interaction.deferred || interaction.replied) {
+                return await interaction.editReply("❌ Error executing command.");
+            }
+            return;
+        }
+    }
   
   if (interaction.isModalSubmit()) {
         if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
@@ -567,17 +586,6 @@ if (interaction.customId.startsWith('vlt_fin_')) {
         }
 	  
     } // <--- THIS ends the "isButton" check.
-    if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-        try {
-            await interaction.deferReply({ ephemeral: true });
-            await command.execute(interaction, getSheetData, getPlayerStats);
-        } catch (error) {
-            console.error(error);
-            if (interaction.deferred) await interaction.editReply("❌ Error executing command.");
-        }
-    }
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
