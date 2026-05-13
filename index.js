@@ -399,23 +399,27 @@ function createPlayerEmbed(pRow) {
 client.on('interactionCreate', async (interaction) => {
 
 	if (interaction.isChatInputCommand()) {
+        try {
+            await interaction.deferReply({ flags: [64] });
+        } catch (e) {
+            console.error("Failed to defer:", e);
+            return;
+        }
+
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
         
         try {
-            // ACKNOWLEDGE IMMEDIATELY - This stops the 3-second timer
-           await interaction.deferReply({ flags: [64] });
-            
-            // Execute the command
+            // 2. Now do the heavy lifting
             return await command.execute(interaction, getSheetData, getPlayerStats);
         } catch (error) {
             console.error("❌ Command Execution Error:", error);
-            // Non-blocking check for cleanup
+            // Use catch on editReply so a dead interaction doesn't crash the whole bot
             if (interaction.deferred || interaction.replied) {
                 await interaction.editReply("❌ Error executing command.").catch(() => {});
             }
-            return;
         }
+        return; // Exit the block
     }
   
   if (interaction.isModalSubmit()) {
