@@ -198,8 +198,8 @@ async function getSheetData() {
         // 4. Update Map & Cache
        idLookupMap.clear();
 		idRows.forEach(row => {
-		    const name = row._rawData[0]; // Player Name
-		    const id = row._rawData[1];   // Sleeper ID
+		    const name = row._rawData[1]; // Player Name
+		    const id = row._rawData[0];   // Sleeper ID
 		    if (name && id) {
 		        // Force key to lowercase for easier matching
 		        idLookupMap.set(name.toLowerCase().trim(), id);
