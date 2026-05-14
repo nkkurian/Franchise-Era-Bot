@@ -13,7 +13,7 @@ module.exports = {
         //await interaction.deferReply();
       const input = interaction.options.getString("player").toLowerCase();
         console.log("DEBUG 2: Fetching sheet data...");
-            const { players, logs, idMap } = await getSheetData();
+            const { players, logs, idLookup } = await getSheetData();
             console.log(`DEBUG 3: Found ${players.length} players in cache.`);
             const matches = players.filter((r) =>
                 r._rawData[1]?.toLowerCase().includes(input),
@@ -37,7 +37,7 @@ module.exports = {
                     (row) =>
                         row._rawData[1]?.toLowerCase() === pName.toLowerCase(),
                 );
-                const sleeperId = idRow ? idRow._rawData[0] : null;
+                const sleeperId = idLookup.get(pName);
                 console.log(`DEBUG 7: Sleeper ID found: ${sleeperId}`);
                 
                 // 2. Fetch Stats if we have an ID
