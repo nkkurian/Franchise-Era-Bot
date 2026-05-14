@@ -461,7 +461,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
         }
     }
     return;
-  } 
+  });  
   
   if (interaction.isButton()) {
 
@@ -593,18 +593,24 @@ async function updateTeamMap() {
 }
 
 const getDetails = (pId, players, idMap) => {
-  const idRow = idMap.find(row => row._rawData[0] === pId);
-  const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
-  const pData = players.find(p => p._rawData[1] === name);
-  
-  if (!pData) return { name, cap: 0, isDeadCap: false, text: `• **${name}**: $Unknown (Not in Sheet)` };
+    let name = `Unknown (${pId})`;
+    for (let [storedName, storedId] of idMap) {
+        if (storedId === pId) {
+            name = storedName;
+            break;
+        }
+    }
 
-  const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
-  const years = pData._rawData[3] || "0";
-  const isDeadCap = pData._rawData[9] === "TRUE" || pData._rawData[9] === true;
-  const structure = pData._rawData[10] ? `\n    ┗ 📜 *${pData._rawData[10]}*` : "";
-  
-  return { name, cap, isDeadCap, text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` };
+    const pData = players.find(p => p._rawData[1]?.toLowerCase().trim() === name.toLowerCase().trim());
+    
+    if (!pData) return { name, cap: 0, isDeadCap: false, text: `• **${name}**: $Unknown (Not in Sheet)` };
+
+    const cap = parseFloat((pData._rawData[6] || "0").replace(/[$,]/g, '')) || 0;
+    const years = pData._rawData[3] || "0";
+    const isDeadCap = pData._rawData[9] === "TRUE" || pData._rawData[9] === true;
+    const structure = pData._rawData[10] ? `\n    ┗ 📜 *${pData._rawData[10]}*` : "";
+    
+    return { name, cap, isDeadCap, text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` };
 }; 
 
 
