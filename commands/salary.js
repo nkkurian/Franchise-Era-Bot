@@ -31,11 +31,8 @@ module.exports = {
                 const capHit = playerRow._rawData[6] || "N/A";
 
                 // 1. Find Sleeper ID from idMap
-                const idRow = idMap.find(
-                    (row) =>
-                        row._rawData[1]?.toLowerCase() === pName.toLowerCase(),
-                );
-                const sleeperId = idMap.get(playerName);
+                // 1. FAST LOOKUP: Instant mapping from the Map object
+                const sleeperId = idMap.get(pName.toLowerCase().trim());
                 // 2. Fetch Stats if we have an ID
                 const stats = sleeperId
                     ? await getPlayerStats(sleeperId)
