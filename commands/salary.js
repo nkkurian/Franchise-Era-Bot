@@ -33,10 +33,6 @@ module.exports = {
                 const capHit = playerRow._rawData[6] || "N/A";
 
                 // 1. Find Sleeper ID from idMap
-                const idRow = idMap.find(
-                    (row) =>
-                        row._rawData[1]?.toLowerCase() === pName.toLowerCase(),
-                );
                 const sleeperId = idLookup.get(pName);
                 console.log(`DEBUG 7: Sleeper ID found: ${sleeperId}`);
                 
