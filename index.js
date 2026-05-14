@@ -161,62 +161,62 @@ let idLookupMap = new Map();
 let isDocLoaded = false; // Add this global variable at the top of your script
 
 async function getSheetData() {
-	return new Promise(async (resolve, reject) => {
-        // Force a timeout after 15 seconds
-        const timeout = setTimeout(() => {
-            console.error("🚨 TIMEOUT: getSheetData took too long (15s)!");
-            reject(new Error("Google Sheets Timeout"));
-        }, 15000);
+    const now = Date.now();
+    
+    // 1. Check Cache
+    if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
+        return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
+    }
+
+    const timerLabel = `SheetFetch_${now}`;
+    console.time(timerLabel);
 
     try {
-            const now = Date.now();
-            if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-                clearTimeout(timeout);
-                return resolve({ players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc });
-            }
-	        const timerLabel = `SheetFetch_${now}`;
-	        console.time(timerLabel);
-        
-        // 2. Load Doc Metadata only once using our flag
+        // 2. Load Doc Metadata only once
         if (!isDocLoaded) {
-            console.log("📑 Loading Google Sheet Metadata for the first time...");
+            console.log("📑 Loading Google Sheet Metadata...");
             await doc.loadInfo();
             isDocLoaded = true;
         }
 
         // 3. Fetch Rows
+        // Add a check to make sure the sheets exist before calling getRows
+        const playerSheet = doc.sheetsByTitle['PlayerList'];
+        const logSheet = doc.sheetsByTitle['Transaction Log'];
+        const idSheet = doc.sheetsByTitle['Sleeper_Players'];
+
+        if (!playerSheet || !logSheet || !idSheet) {
+            throw new Error("One or more required sheets (PlayerList, Transaction Log, Sleeper_Players) are missing!");
+        }
+
         const [pRows, tRows, idRows] = await Promise.all([
-            doc.sheetsByTitle['PlayerList'].getRows(),
-            doc.sheetsByTitle['Transaction Log'].getRows(),
-            doc.sheetsByTitle['Sleeper_Players'].getRows()
+            playerSheet.getRows(),
+            logSheet.getRows(),
+            idSheet.getRows()
         ]);
 
-        // 4. Update ID Map
+        // 4. Update Map & Cache
         idLookupMap.clear();
         idRows.forEach(row => {
             if (row._rawData[0]) idLookupMap.set(row._rawData[0], row._rawData[1]);
         });
 
-        // 5. Update Cache globals
         cachedPlayers = pRows;
         cachedLogs = tRows;
         cachedIds = idRows;
         lastFetchTime = now;
 
         console.timeEnd(timerLabel);
-		clearTimeout(timeout);
+        // Simply return the data (Async functions wrap this in a promise automatically)
         return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
 
     } catch (err) {
-		clearTimeout(timeout);
-		reject(err);
         console.error("❌ Sheet Fetch Error:", err.message);
-        // If it fails, we want to try loading info again next time
         isDocLoaded = false; 
+        // Return empty structures so the bot doesn't crash elsewhere
         return { players: [], logs: [], idMap: [], idLookup: new Map() };
     }
-}); 
-} 
+}
 
 // --- COMMAND REGISTRATION (FIXED DESCRIPTIONS) ---
 const commands = [
