@@ -88,58 +88,37 @@ app.use(express.json()); // Essential to read the data sent from Google
 
 app.use('/', routes(client, doc)); // for extension and fa reports sent to teams. 
 
+let statsCache = { data: null, timestamp: 0 };
+
 async function getPlayerStats(sleeperId) {
     if (!sleeperId) return null;
+    const now = Date.now();
 
     try {
-        const leagueId = process.env.SLEEPER_LEAGUE_ID;
-        const currentYear = new Date().getFullYear(); // 2026
-        const lastYear = currentYear - 1; // 2025
-
-        // 1. Fetch Stats for both years and League Scoring in parallel
-        const [res2026, res2025, resLeague] = await Promise.all([
-            axios.get(
-                `https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`,
-            ),
-            axios.get(
-                `https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`,
-            ),
-            axios.get(`https://api.sleeper.app/v1/league/${leagueId}`),
-        ]);
-
-        const stats2026 = res2026.data[sleeperId];
-        const stats2025 = res2025.data[sleeperId];
-        const scoringSettings = resLeague.data.scoring_settings;
-
-        // 2. Identify which year is "Real" (Check Offense + IDP stats)
-        const hasRealData2026 =
-            stats2026 &&
-            (stats2026.pts_ppr > 0 ||
-                stats2026.tkl > 0 ||
-                stats2026.pass_yd > 0 ||
-                stats2026.sack > 0);
-
-        const activeStats = hasRealData2026 ? stats2026 : stats2025;
-        const yearUsed = hasRealData2026 ? currentYear : lastYear;
-
-        if (!activeStats) return null;
-
-        // 3. INTERNAL CALCULATION: Apply your League's Custom Scoring
-        let customTotal = 0;
-        for (const [statName, pointValue] of Object.entries(scoringSettings)) {
-            if (activeStats[statName]) {
-                customTotal += activeStats[statName] * pointValue;
-            }
+        // Only fetch from Sleeper if we don't have data or it's older than 1 hour
+        if (!statsCache.data || (now - statsCache.timestamp > 3600000)) {
+            const currentYear = 2026; 
+            const [res2026, resLeague] = await Promise.all([
+                axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`),
+                axios.get(`https://api.sleeper.app/v1/league/${process.env.SLEEPER_LEAGUE_ID}`)
+            ]);
+            statsCache.data = { stats: res2026.data, scoring: resLeague.data.scoring_settings };
+            statsCache.timestamp = now;
         }
 
-        // 4. Return everything as one neat object
-        return {
-            ...activeStats,
-            leagueScore: customTotal.toFixed(2),
-            displayYear: yearUsed,
-        };
+        const playerStats = statsCache.data.stats[sleeperId];
+        const scoringSettings = statsCache.data.scoring;
+
+        if (!playerStats) return null;
+
+        let customTotal = 0;
+        for (const [stat, val] of Object.entries(scoringSettings)) {
+            if (playerStats[stat]) customTotal += playerStats[stat] * val;
+        }
+
+        return { ...playerStats, leagueScore: customTotal.toFixed(2) };
     } catch (err) {
-        console.error("❌ Seamless Stats Error:", err.message);
+        console.error("❌ Sleeper Stats Error:", err.message);
         return null;
     }
 }
@@ -159,10 +138,12 @@ let isFirstRun = true; // NEW: Controls the one-time historical post
 
 // Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
 
+let cachedIdMap = new Map(); // Store as a Map for speed
+
 async function getSheetData() {
   const now = Date.now();
   if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
   }
   
   try {
@@ -170,19 +151,26 @@ async function getSheetData() {
     const [pRows, tRows, idRows] = await Promise.all([
       doc.sheetsByTitle['PlayerList'].getRows(),
       doc.sheetsByTitle['Transaction Log'].getRows(),
-      doc.sheetsByTitle['Sleeper_Players'].getRows() // Fetches the ID sheet seen in your screenshots
+      doc.sheetsByTitle['Sleeper_Players'].getRows()
     ]);
     
+    // CONVERT TO MAP: This makes looking up IDs instant
+    const newIdMap = new Map();
+    idRows.forEach(row => {
+        const sleeperName = row._rawData[1]?.toLowerCase().trim(); // Adjust index if needed
+        const sleeperId = row._rawData[0]; 
+        if (sleeperName) newIdMap.set(sleeperName, sleeperId);
+    });
+
     cachedPlayers = pRows;
     cachedLogs = tRows;
-    cachedIds = idRows;
+    cachedIdMap = newIdMap; 
     lastFetchTime = now;
     
-    console.log(`📊 Cache Updated: ${pRows.length} players, ${idRows.length} IDs loaded.`);
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
   } catch (err) {
     console.error("❌ Sheet Fetch Error:", err);
-    return { players: [], logs: [], idMap: [] };
+    return { players: [], logs: [], idMap: new Map() };
   }
 }
 
