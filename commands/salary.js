@@ -28,6 +28,26 @@ module.exports = {
 
             const sendSalaryResponse = async (targetInteraction, playerRow, isUpdate = false) => {
                 console.log(`DEBUG 6: Entering sendSalaryResponse for ${playerRow._rawData[1]}`);
+                const interactionId = targetInteraction.id;
+                console.log(`DEBUG 6: Entering response for ${playerRow._rawData[1]} (Interaction: ${interactionId})`);
+                console.log(`[START] Interaction ${interaction.id} for player: ${input}`);
+                    const collector = response.createMessageComponentCollector({
+                        componentType: ComponentType.Button,
+                        time: 30000,
+                    });
+                    
+                    collector.on("collect", async (i) => {
+                        console.log(`[COLLECT] Button clicked for ${i.customId} on interaction ${interaction.id}`);
+                        const idx = parseInt(i.customId.split("_")[2]);
+                        await sendSalaryResponse(i, matches[idx], true);
+                        collector.stop();
+                    });
+                    
+                    collector.on("end", (collected, reason) => {
+                        console.log(`[END] Collector for ${interaction.id} closed. Reason: ${reason}. Items collected: ${collected.size}`);
+                    });
+
+                
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
                 const capHit = playerRow._rawData[6] || "N/A";
