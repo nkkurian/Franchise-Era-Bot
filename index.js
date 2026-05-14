@@ -158,19 +158,26 @@ let processedTxIds = new Set();
 let isFirstRun = true; // NEW: Controls the one-time historical post
 
 let idLookupMap = new Map();
+let isDocLoaded = false; // Add this global variable at the top of your script
+
 async function getSheetData() {
     const now = Date.now();
+    
     // 1. Check Cache First
     if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
         return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
     }
 
     try {
-        console.time("SheetFetch");
+        // Use a unique label for the timer to avoid warnings if parallel calls happen
+        const timerLabel = `SheetFetch_${now}`;
+        console.time(timerLabel);
         
-        // 2. Load Doc Metadata only once
-        if (!doc.title) {
+        // 2. Load Doc Metadata only once using our flag
+        if (!isDocLoaded) {
+            console.log("📑 Loading Google Sheet Metadata for the first time...");
             await doc.loadInfo();
+            isDocLoaded = true;
         }
 
         // 3. Fetch Rows
@@ -183,7 +190,7 @@ async function getSheetData() {
         // 4. Update ID Map
         idLookupMap.clear();
         idRows.forEach(row => {
-            idLookupMap.set(row._rawData[0], row._rawData[1]);
+            if (row._rawData[0]) idLookupMap.set(row._rawData[0], row._rawData[1]);
         });
 
         // 5. Update Cache globals
@@ -192,11 +199,13 @@ async function getSheetData() {
         cachedIds = idRows;
         lastFetchTime = now;
 
-        console.timeEnd("SheetFetch");
+        console.timeEnd(timerLabel);
         return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
 
     } catch (err) {
-        console.error("❌ Sheet Fetch Error:", err);
+        console.error("❌ Sheet Fetch Error:", err.message);
+        // If it fails, we want to try loading info again next time
+        isDocLoaded = false; 
         return { players: [], logs: [], idMap: [], idLookup: new Map() };
     }
 }
@@ -289,6 +298,8 @@ new SlashCommandBuilder()
 client.once('ready', async () => {
   console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+	console.log("🚀 Bot is online. Priming cache...");
+    await getSheetData();
     
     try {
         // 1. Register Slash Commands
