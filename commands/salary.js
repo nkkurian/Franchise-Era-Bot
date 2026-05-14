@@ -1,5 +1,4 @@
 const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ComponentType } = require('discord.js');
-const { MessageFlags } = require('discord.js'); 
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -9,47 +8,42 @@ module.exports = {
             option.setName('player').setDescription('The name of the player').setRequired(true)),
 
     async execute(interaction, getSheetData, getPlayerStats) {
-        console.log("DEBUG 1: Salary command started");
         //await interaction.deferReply();
       const input = interaction.options.getString("player").toLowerCase();
-        console.log("DEBUG 2: Fetching sheet data...");
-            const { players, logs, idLookup } = await getSheetData();
-            console.log(`DEBUG 3: Found ${players.length} players in cache.`);
+            const { players, logs, idMap } = await getSheetData();
             const matches = players.filter((r) =>
                 r._rawData[1]?.toLowerCase().includes(input),
             );
-            console.log(`DEBUG 4: Matches found: ${matches.length}`);
-            if (matches.length === 0) {
-                console.log("DEBUG 5: No matches found, sending 'Not Found' reply.");
+
+            if (matches.length === 0)
                 return await interaction.editReply(
                     `❌ Player **${input}** not found.`,
-                    );
-            } 
+                );
 
-            const sendSalaryResponse = async (targetInteraction, playerRow, isUpdate = false) => {
-                console.log(`DEBUG 6: Entering sendSalaryResponse for ${playerRow._rawData[1]}`);
-                const interactionId = targetInteraction.id;
-                console.log(`DEBUG 6: Entering response for ${playerRow._rawData[1]} (Interaction: ${interactionId})`);
-                console.log(`[START] Interaction ${interaction.id} for player: ${input}`);
-
-                
+            const sendSalaryResponse = async (
+                targetInteraction,
+                playerRow,
+                isUpdate = false,
+            ) => {
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
                 const capHit = playerRow._rawData[6] || "N/A";
 
                 // 1. Find Sleeper ID from idMap
-                const sleeperId = idLookup.get(pName.toLowerCase().trim());
-                console.log(`DEBUG 7: Sleeper ID found for ${pName}: ${sleeperId}`);
-                
+                const idRow = idMap.find(
+                    (row) =>
+                        row._rawData[1]?.toLowerCase() === pName.toLowerCase(),
+                );
+                const sleeperId = idRow ? idRow._rawData[0] : null;
+
                 // 2. Fetch Stats if we have an ID
-                console.log("DEBUG 8: Requesting Player Stats...");
-                const stats = sleeperId ? await getPlayerStats(sleeperId) : null;
-                console.log("DEBUG 9: Stats fetch complete.");
+                const stats = sleeperId
+                    ? await getPlayerStats(sleeperId)
+                    : null;
                 const displayYear = stats?.displayYear || "2025";
                 let statsField = `No live stats available for ${displayYear}.`;
 
                 if (stats) {
-                    console.log("DEBUG 10: Processing stats into fields...");
                     let s = [];
 
                     // Offensive Stats
@@ -155,15 +149,11 @@ module.exports = {
 
                 // 4. Add Headshot
                 if (sleeperId) {
-                    embed.setThumbnail(`https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`);
-                } else {
-                    // Fallback image if no Sleeper ID is found (Generic NFL Logo)
-                    embed.setThumbnail(`https://sleepercdn.com/images/v2/icons/player_default.webp`);
+                    embed.setThumbnail(
+                        `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
+                    );
                 }
-                if (!statsField || statsField.trim() === "") {
-                        statsField = "No stats found for this player.";
-                    }
-                console.log("DEBUG 11: Sending final payload to Discord...");
+
                 // Add history button if applicable
                 const components = [];
                 const hasHistory = logs.some(
@@ -181,60 +171,42 @@ module.exports = {
                 }
 
                 const payload = {
-                    content: "", // Explicitly set content to empty string instead of null
+                    content: null,
                     embeds: [embed],
                     components: components,
                 };
-                console.log("DEBUG 11: Attempting to send final payload to Discord...");
-                
-                try {
-                    if (isUpdate) {
-                        console.log("DEBUG: Updating button interaction...");
-                        return await targetInteraction.update(payload);
-                    } else {
-                        // Use targetInteraction (which is the 'interaction' from execute)
-                        return await targetInteraction.editReply(payload);
-                    }
-                } catch (discordError) {
-                    console.error("❌ DISCORD API ERROR:", discordError);
-                }
+                return isUpdate
+                    ? await targetInteraction.update(payload)
+                    : await targetInteraction.editReply(payload);
             };
-        
 
             // Handle single or multiple matches
             if (matches.length === 1) {
-                console.log("DEBUG 12: Single match found");
                 return await sendSalaryResponse(interaction, matches[0]);
             } else {
-                console.log("DEBUG 13: Multiple matches found");
                 const selectionRow = new ActionRowBuilder().addComponents(
-                    matches.slice(0, 5).map((m, i) =>
-                        new ButtonBuilder()
-                            .setCustomId(`select_player_${i}`)
-                            .setLabel(m._rawData[1])
-                            .setStyle(ButtonStyle.Primary)
-                    )
+                    matches
+                        .slice(0, 5)
+                        .map((m, i) =>
+                            new ButtonBuilder()
+                                .setCustomId(`select_player_${i}`)
+                                .setLabel(m._rawData[1])
+                                .setStyle(ButtonStyle.Primary),
+                        ),
                 );
-            
-                // 1. Send the selection buttons
                 const response = await interaction.editReply({
                     content: "Multiple found, please select:",
                     components: [selectionRow],
                 });
-            
-                // 2. Create the collector ONLY here
                 const collector = response.createMessageComponentCollector({
                     componentType: ComponentType.Button,
-                    time: 30000, // 30 seconds - safely under the 15-minute limit
+                    time: 30000,
                 });
-            
                 collector.on("collect", async (i) => {
                     const idx = parseInt(i.customId.split("_")[2]);
-                    // Call the helper, but don't start a new collector inside it!
                     await sendSalaryResponse(i, matches[idx], true);
                     collector.stop();
                 });
-                return; 
             }
         }
 }; 
