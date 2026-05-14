@@ -80,6 +80,8 @@ process.on('unhandledRejection', error => {
 });
 
 const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
+const idDoc = new GoogleSpreadsheet("12sQJfIHicd1P50ZDgDUfXT__21OukswPEdrUXj-N-cY", serviceAccountAuth,);
+
 
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
 app.use(express.json()); // Essential to read the data sent from Google
@@ -228,6 +230,42 @@ new SlashCommandBuilder()
     .addStringOption(o => o.setName('name').setDescription('Enter player name').setRequired(true)),
 
 	new SlashCommandBuilder()
+        .setName("sent-trade")
+        .setDescription("Alert a team that you sent them a trade offer")
+        .addStringOption((o) =>
+            o
+                .setName("team")
+                .setDescription("The team you sent the trade to")
+                .setRequired(true),
+        )
+        .addStringOption((o) =>
+            o
+                .setName("notes")
+                .setDescription(
+                    'Optional: What did you send? (e.g. "Sent for CMC")',
+                ),
+        ),
+    new SlashCommandBuilder()
+        .setName("trade-alert")
+        .setDescription("Post a trade block or buying alert")
+        .addStringOption((o) =>
+            o
+                .setName("action") // Changed from "message" to "action"
+                .setDescription("Are you trading away or looking for players?")
+                .setRequired(true)
+                .addChoices(
+                    {
+                        name: "📤 Trade Away (On the Block)",
+                        value: "TRADING AWAY",
+                    },
+                    {
+                        name: "📥 Trade For (Looking For)",
+                        value: "LOOKING FOR",
+                    },
+                ),
+        ),
+	
+	new SlashCommandBuilder()
         .setName('appeal')
         .setDescription('Submit an official appeal to the committee'),
 	
@@ -245,7 +283,8 @@ client.once('ready', async () => {
         // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
         setTimeout(async () => {
             await sendStartupTestMessage();
-            //await initializeData();
+            await initializeData();
+			// Inside initializeData()
             
             // Check Discord Connection Status
             if (client.ws.status !== 0) {
@@ -284,6 +323,29 @@ async function initializeData() {
     }
 }
 
+//Owners of teams map from Sheets
+async function getOwnerIdMap() {
+
+    try {
+        // 2. Load the spreadsheet metadata
+        await idDoc.loadInfo();
+
+        // 3. Access the specific tab
+        const sheet = idDoc.sheetsByTitle["Salary Calculators"];
+
+        if (!sheet) {
+            console.error(
+                "❌ Error: Could not find tab named 'salary calculators'",
+            );
+            return [];
+        }
+
+        return await sheet.getRows();
+    } catch (err) {
+        console.error("❌ Error in getOwnerIdMap:", err.message);
+        return [];
+    }
+}
 
 // Cleaned up Test Message Function
 async function sendStartupTestMessage() {
@@ -502,18 +564,31 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     } // <--- THIS ends the "isButton" check.
 
 // --- SLASH COMMANDS START HERE ---
-	if (interaction.isChatInputCommand()) {
-      const command = client.commands.get(interaction.commandName);
-      if (!command) return;
-      try {
-		  await interaction.deferReply();
-          await command.execute(interaction, getSheetData, getPlayerStats);
-      } catch (error) {
-          console.error(error);
-          if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: 'Error!', ephemeral: true });
-      }
-  }
-});
+	// index.js - Update this section specifically
+if (interaction.isChatInputCommand()) {
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+
+    // Commands that use Modals
+    if (interaction.commandName === "trade-alert" || interaction.commandName === "appeal") {
+        command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
+            .catch(err => console.error(`Modal Command Error:`, err));
+        return; 
+    }
+
+    // Standard Commands (Including sent-trade)
+    try {
+        // Pass ALL helper functions as arguments here
+        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+    } catch (error) {
+        console.error("Command Execution Error:", error);
+        // This prevent the "Unknown Interaction" crash if the code fails
+        if (!interaction.replied && !interaction.deferred) {
+            await interaction.reply({ content: 'Command failed to execute.', ephemeral: true });
+        }
+    }
+}
+}); 
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 let rosterToTeamName = {}; 
