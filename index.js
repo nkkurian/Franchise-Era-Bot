@@ -452,7 +452,6 @@ client.on('interactionCreate', async (interaction) => {
             }
         }
         return; // Exit the block
-    }
   
   if (interaction.isModalSubmit()) {
         if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
