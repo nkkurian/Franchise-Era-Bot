@@ -215,7 +215,8 @@ async function getSheetData() {
         isDocLoaded = false; 
         return { players: [], logs: [], idMap: [], idLookup: new Map() };
     }
-}
+}); 
+} 
 
 // --- COMMAND REGISTRATION (FIXED DESCRIPTIONS) ---
 const commands = [
