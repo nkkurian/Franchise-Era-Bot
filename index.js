@@ -304,31 +304,30 @@ new SlashCommandBuilder()
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
+  // 1. LOG TO CONSOLE IMMEDIATELY
   console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
-    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-	console.log("🚀 Bot is online. Priming cache...");
-    await getSheetData();
-    
-    try {
-        // 1. Register Slash Commands
-        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-        console.log("✅ Slash Commands Synced");
 
-        // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
-        setTimeout(async () => {
-            await sendStartupTestMessage();
-            await initializeData();
-			// Inside initializeData()
-            
-            // Check Discord Connection Status
-            if (client.ws.status !== 0) {
-                console.warn('⚠️ Discord connection cold. Status:', client.ws.status);
-            }
-        }, 3000);
+  // 2. SEND DISCORD MESSAGE IMMEDIATELY 
+  // We don't "await" this so it doesn't block the rest of the startup
+  sendStartupTestMessage(); 
 
-    } catch (err) { 
-        console.error("Startup Error:", err); 
-    }
+  // 3. DEFINE REST
+  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+  
+  try {
+    // 4. SYNC COMMANDS
+    console.log("📝 Syncing Slash Commands...");
+    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+    console.log("✅ Slash Commands Synced");
+
+    // 5. START BACKGROUND TASKS
+    // This calls initializeData() which handles getSheetData and updateTeamMap
+    await initializeData();
+    console.log("ready to go")
+
+  } catch (err) { 
+    console.error("❌ Startup Sequence Error:", err); 
+  }
 });
 
 setInterval(async () => {
@@ -343,15 +342,19 @@ setInterval(async () => {
 
 async function initializeData() {
     try {
-        console.log("📥 Pre-loading Sheet Data...");
+        console.log("📥 [1/3] Pre-loading Sheet Data...");
         await getSheetData(); 
+        console.log("✅ [1/3] Sheet Data Loaded.");
 
-        console.log("📥 Loading Sleeper Team Map...");
+        console.log("📥 [2/3] Loading Sleeper Team Map...");
         await updateTeamMap(); 
+        console.log("✅ [2/3] Sleeper Team Map Loaded.");
 
-         console.log("🔍 Starting Sleeper Poller...");
-         // await pollSleeper(); // Run once
-         // setInterval(pollSleeper, 60000); // Then every minute
+        console.log("🔍 [3/3] Starting Sleeper Poller...");
+        // If you choose to enable polling:
+         await pollSleeper(); 
+        console.log("✅ [3/3] Poller Initialized.");
+        
     } catch (err) {
         console.error("❌ Background Init Error:", err);
     }
