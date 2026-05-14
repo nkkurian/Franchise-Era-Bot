@@ -186,13 +186,10 @@ module.exports = {
                 console.log("DEBUG 11: Attempting to send final payload to Discord...");
                 
                 try {
-                    // If isUpdate is true, it means a BUTTON was clicked. 
-                    // Buttons provide their own interaction 'i' which hasn't been deferred yet.
                     if (isUpdate) {
                         console.log("DEBUG: Updating button interaction...");
                         return await targetInteraction.update(payload);
                     } else {
-                        console.log("DEBUG: Sending EditReply for the slash command...");
                         // Use targetInteraction (which is the 'interaction' from execute)
                         return await targetInteraction.editReply(payload);
                     }
@@ -205,40 +202,36 @@ module.exports = {
             // Handle single or multiple matches
             if (matches.length === 1) {
                 console.log("DEBUG 12: Single match found");
-                // ADD A RETURN HERE
                 return await sendSalaryResponse(interaction, matches[0]);
             } else {
-                console.log("DEBUG 13: Multiple matches found, sending buttons");
+                console.log("DEBUG 13: Multiple matches found");
                 const selectionRow = new ActionRowBuilder().addComponents(
-                    matches
-                        .slice(0, 5)
-                        .map((m, i) =>
-                            new ButtonBuilder()
-                                .setCustomId(`select_player_${i}`)
-                                .setLabel(m._rawData[1])
-                                .setStyle(ButtonStyle.Primary),
-                        ),
+                    matches.slice(0, 5).map((m, i) =>
+                        new ButtonBuilder()
+                            .setCustomId(`select_player_${i}`)
+                            .setLabel(m._rawData[1])
+                            .setStyle(ButtonStyle.Primary)
+                    )
                 );
+            
+                // 1. Send the selection buttons
                 const response = await interaction.editReply({
-                content: "Multiple found, please select:",
-                components: [selectionRow],
-            });
-
-            const collector = response.createMessageComponentCollector({
-                componentType: ComponentType.Button,
-                time: 30000,
-            });
-
-            collector.on("collect", async (i) => {
-                console.log(`[COLLECT] Interaction ${i.id}`);
-                const idx = parseInt(i.customId.split("_")[2]);
-                await sendSalaryResponse(i, matches[idx], true);
-                collector.stop();
-            });
-
-            collector.on("end", (c, reason) => {
-                console.log(`[END] Collector closed: ${reason}`);
-            });
+                    content: "Multiple found, please select:",
+                    components: [selectionRow],
+                });
+            
+                // 2. Create the collector ONLY here
+                const collector = response.createMessageComponentCollector({
+                    componentType: ComponentType.Button,
+                    time: 30000, // 30 seconds - safely under the 15-minute limit
+                });
+            
+                collector.on("collect", async (i) => {
+                    const idx = parseInt(i.customId.split("_")[2]);
+                    // Call the helper, but don't start a new collector inside it!
+                    await sendSalaryResponse(i, matches[idx], true);
+                    collector.stop();
+                });
                 return; 
             }
         }
