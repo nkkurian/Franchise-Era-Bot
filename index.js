@@ -159,50 +159,46 @@ let isFirstRun = true; // NEW: Controls the one-time historical post
 
 let idLookupMap = new Map();
 async function getSheetData() {
-  const now = Date.now();
-  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
-  }
-  
- try {
     const now = Date.now();
-  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
-  }
-  
-  try {
-    console.time("SheetFetch"); // Start a timer
-    
-    // ONLY loadInfo if the bot hasn't loaded the doc structure yet
-    if (!doc.title) { 
-        await doc.loadInfo(); 
+    // 1. Check Cache First
+    if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
+        return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
     }
 
-    // Fetching rows is the part that usually hangs
-    const [pRows, tRows, idRows] = await Promise.all([
-      doc.sheetsByTitle['PlayerList'].getRows(),
-      doc.sheetsByTitle['Transaction Log'].getRows(),
-      doc.sheetsByTitle['Sleeper_Players'].getRows()
-    ]);
-    
-    // CONVERT TO MAP FOR INSTANT SEARCHING
-    idLookupMap.clear();
-    idRows.forEach(row => {
-        // Assuming Column 0 is SleeperID and Column 1 is Name
-        idLookupMap.set(row._rawData[0], row._rawData[1]); 
-    });
+    try {
+        console.time("SheetFetch");
+        
+        // 2. Load Doc Metadata only once
+        if (!doc.title) {
+            await doc.loadInfo();
+        }
 
-    cachedPlayers = pRows;
-    cachedLogs = tRows;
-    cachedIds = idRows;
-    lastFetchTime = now;
-    
-    console.timeEnd("SheetFetch"); // See exactly how long this took in Render logs
-    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
-  } catch (err) {
-    console.error("❌ Sheet Fetch Error:", err);
-    return { players: [], logs: [], idMap: [], idLookup: new Map() };
-  }
+        // 3. Fetch Rows
+        const [pRows, tRows, idRows] = await Promise.all([
+            doc.sheetsByTitle['PlayerList'].getRows(),
+            doc.sheetsByTitle['Transaction Log'].getRows(),
+            doc.sheetsByTitle['Sleeper_Players'].getRows()
+        ]);
+
+        // 4. Update ID Map
+        idLookupMap.clear();
+        idRows.forEach(row => {
+            idLookupMap.set(row._rawData[0], row._rawData[1]);
+        });
+
+        // 5. Update Cache globals
+        cachedPlayers = pRows;
+        cachedLogs = tRows;
+        cachedIds = idRows;
+        lastFetchTime = now;
+
+        console.timeEnd("SheetFetch");
+        return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
+
+    } catch (err) {
+        console.error("❌ Sheet Fetch Error:", err);
+        return { players: [], logs: [], idMap: [], idLookup: new Map() };
+    }
 }
 
 // --- COMMAND REGISTRATION (FIXED DESCRIPTIONS) ---
