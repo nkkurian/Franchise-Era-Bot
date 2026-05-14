@@ -80,8 +80,6 @@ process.on('unhandledRejection', error => {
 });
 
 const doc = new GoogleSpreadsheet('1-G39QNK9o0qbgBp3nKjjXHGuuSH4bx_xqNsR51jABM8', serviceAccountAuth);
-const idDoc = new GoogleSpreadsheet("12sQJfIHicd1P50ZDgDUfXT__21OukswPEdrUXj-N-cY", serviceAccountAuth,);
-
 
 // --- NEW: FREE AGENCY WEBHOOK ENDPOINT ---
 app.use(express.json()); // Essential to read the data sent from Google
@@ -150,80 +148,40 @@ let cachedPlayers = [];
 let cachedLogs = [];
 let cachedIds = []; // Added to store Sleeper ID mappings
 let lastFetchTime = 0;
-const CACHE_LIFESPAN = 3600000; 
+const CACHE_LIFESPAN = 30000; 
 // This sets the "start time" to 2 hours ago, so the bot backfills recent trades
 const BACKFILL_MS = 2 * 60 * 60 * 1000; 
 const BOT_START_TIME = Date.now() - BACKFILL_MS;
 let processedTxIds = new Set();
 let isFirstRun = true; // NEW: Controls the one-time historical post
 
-let idLookupMap = new Map();
-let isDocLoaded = false; // Add this global variable at the top of your script
+// Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
 
 async function getSheetData() {
-    const now = Date.now();
+  const now = Date.now();
+  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
+  }
+  
+  try {
+    await doc.loadInfo();
+    const [pRows, tRows, idRows] = await Promise.all([
+      doc.sheetsByTitle['PlayerList'].getRows(),
+      doc.sheetsByTitle['Transaction Log'].getRows(),
+      doc.sheetsByTitle['Sleeper_Players'].getRows() // Fetches the ID sheet seen in your screenshots
+    ]);
     
-    // 1. Check Cache
-    if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-        return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
-    }
-
-    const timerLabel = `SheetFetch_${now}`;
-    console.time(timerLabel);
-
-    try {
-        // 2. Load Doc Metadata only once
-        if (!isDocLoaded) {
-            console.log("📑 Loading Google Sheet Metadata...");
-            await doc.loadInfo();
-            isDocLoaded = true;
-        }
-
-        // 3. Fetch Rows
-        // Add a check to make sure the sheets exist before calling getRows
-        const playerSheet = doc.sheetsByTitle['PlayerList'];
-        const logSheet = doc.sheetsByTitle['Transaction Log'];
-        const idSheet = doc.sheetsByTitle['Sleeper_Players'];
-
-        if (!playerSheet || !logSheet || !idSheet) {
-            throw new Error("One or more required sheets (PlayerList, Transaction Log, Sleeper_Players) are missing!");
-        }
-
-        const [pRows, tRows, idRows] = await Promise.all([
-            playerSheet.getRows(),
-            logSheet.getRows(),
-            idSheet.getRows()
-        ]);
-
-        // 4. Update Map & Cache
-       idLookupMap.clear();
-		idRows.forEach((row) => {
-		    // Column A is index 0 (Sleeper ID)
-		    // Column B is index 1 (Player Name)
-		    const id = row._rawData[0]?.trim(); 
-		    const name = row._rawData[1]?.trim(); 
-		    
-		    if (name && id) {
-		        // Store as: name (lowercase) -> id
-		        idLookupMap.set(name.toLowerCase(), id);
-		    }
-		});
-
-        cachedPlayers = pRows;
-        cachedLogs = tRows;
-        cachedIds = idRows;
-        lastFetchTime = now;
-
-        console.timeEnd(timerLabel);
-        // Simply return the data (Async functions wrap this in a promise automatically)
-        return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
-
-    } catch (err) {
-        console.error("❌ Sheet Fetch Error:", err.message);
-        isDocLoaded = false; 
-        // Return empty structures so the bot doesn't crash elsewhere
-        return { players: [], logs: [], idMap: [], idLookup: new Map() };
-    }
+    cachedPlayers = pRows;
+    cachedLogs = tRows;
+    cachedIds = idRows;
+    lastFetchTime = now;
+    
+    console.log(`📊 Cache Updated: ${pRows.length} players, ${idRows.length} IDs loaded.`);
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, doc: doc };
+  } catch (err) {
+    console.error("❌ Sheet Fetch Error:", err);
+    return { players: [], logs: [], idMap: [] };
+  }
 }
 
 // --- COMMAND REGISTRATION (FIXED DESCRIPTIONS) ---
@@ -270,72 +228,34 @@ new SlashCommandBuilder()
     .addStringOption(o => o.setName('name').setDescription('Enter player name').setRequired(true)),
 
 	new SlashCommandBuilder()
-        .setName("sent-trade")
-        .setDescription("Alert a team that you sent them a trade offer")
-        .addStringOption((o) =>
-            o
-                .setName("team")
-                .setDescription("The team you sent the trade to")
-                .setRequired(true),
-        )
-        .addStringOption((o) =>
-            o
-                .setName("notes")
-                .setDescription(
-                    'Optional: What did you send? (e.g. "Sent for CMC")',
-                ),
-        ),
-    new SlashCommandBuilder()
-        .setName("trade-alert")
-        .setDescription("Post a trade block or buying alert")
-        .addStringOption((o) =>
-            o
-                .setName("action") // Changed from "message" to "action"
-                .setDescription("Are you trading away or looking for players?")
-                .setRequired(true)
-                .addChoices(
-                    {
-                        name: "📤 Trade Away (On the Block)",
-                        value: "TRADING AWAY",
-                    },
-                    {
-                        name: "📥 Trade For (Looking For)",
-                        value: "LOOKING FOR",
-                    },
-                ),
-        ),
-	
-	new SlashCommandBuilder()
         .setName('appeal')
         .setDescription('Submit an official appeal to the committee'),
 	
 ].map(c => c.toJSON());
 
 client.once('ready', async () => {
-  // 1. LOG TO CONSOLE IMMEDIATELY
   console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    
+    try {
+        // 1. Register Slash Commands
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log("✅ Slash Commands Synced");
 
-  // 2. SEND DISCORD MESSAGE IMMEDIATELY 
-  // We don't "await" this so it doesn't block the rest of the startup
-  sendStartupTestMessage(); 
+        // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
+        setTimeout(async () => {
+            await sendStartupTestMessage();
+            //await initializeData();
+            
+            // Check Discord Connection Status
+            if (client.ws.status !== 0) {
+                console.warn('⚠️ Discord connection cold. Status:', client.ws.status);
+            }
+        }, 3000);
 
-  // 3. DEFINE REST
-  const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-  
-  try {
-    // 4. SYNC COMMANDS
-    console.log("📝 Syncing Slash Commands...");
-    await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-    console.log("✅ Slash Commands Synced");
-
-    // 5. START BACKGROUND TASKS
-    // This calls initializeData() which handles getSheetData and updateTeamMap
-    await initializeData();
-    console.log("ready to go")
-
-  } catch (err) { 
-    console.error("❌ Startup Sequence Error:", err); 
-  }
+    } catch (err) { 
+        console.error("Startup Error:", err); 
+    }
 });
 
 setInterval(async () => {
@@ -350,47 +270,20 @@ setInterval(async () => {
 
 async function initializeData() {
     try {
-        console.log("📥 [1/3] Pre-loading Sheet Data...");
+        console.log("📥 Pre-loading Sheet Data...");
         await getSheetData(); 
-        console.log("✅ [1/3] Sheet Data Loaded.");
 
-        console.log("📥 [2/3] Loading Sleeper Team Map...");
+        console.log("📥 Loading Sleeper Team Map...");
         await updateTeamMap(); 
-        console.log("✅ [2/3] Sleeper Team Map Loaded.");
 
-        console.log("🔍 [3/3] Starting Sleeper Poller...");
-        // If you choose to enable polling:
-         await pollSleeper(); 
-        console.log("✅ [3/3] Poller Initialized.");
-        
+         console.log("🔍 Starting Sleeper Poller...");
+         await pollSleeper(); // Run once
+         setInterval(pollSleeper, 60000); // Then every minute
     } catch (err) {
         console.error("❌ Background Init Error:", err);
     }
 }
 
-//Owners of teams map from Sheets
-async function getOwnerIdMap() {
-
-    try {
-        // 2. Load the spreadsheet metadata
-        await idDoc.loadInfo();
-
-        // 3. Access the specific tab
-        const sheet = idDoc.sheetsByTitle["Salary Calculators"];
-
-        if (!sheet) {
-            console.error(
-                "❌ Error: Could not find tab named 'salary calculators'",
-            );
-            return [];
-        }
-
-        return await sheet.getRows();
-    } catch (err) {
-        console.error("❌ Error in getOwnerIdMap:", err.message);
-        return [];
-    }
-}
 
 // Cleaned up Test Message Function
 async function sendStartupTestMessage() {
@@ -435,32 +328,17 @@ function createPlayerEmbed(pRow) {
 
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
-
-	if (!interaction.isChatInputCommand()) return;
-
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
-        
-        try {
-            await interaction.deferReply();
-            await command.execute(interaction, getSheetData, getPlayerStats);
-        } catch (error) {
-            console.error("❌ Command Execution Error:", error);
-            // Use catch on editReply so a dead interaction doesn't crash the whole bot
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply("❌ Error executing command.").catch(() => {});
-            }
-        }
-        return; // Exit the block
   
   if (interaction.isModalSubmit()) {
-        if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
-        if (interaction.customId === 'appealModal') return await appeals.handleAppealSubmit(interaction);
-        if (interaction.customId === 'adminLoginModal') return await vault.showAdminPanel(interaction);
+	if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
+    if (interaction.customId === 'appealModal') return await appeals.handleAppealSubmit(interaction);
+    if (interaction.customId === 'adminLoginModal') return await vault.showAdminPanel(interaction);
 	  
 if (interaction.customId.startsWith('vlt_fin_')) {
-        //await interaction.deferReply({ ephemeral: true });
-        const [, , action, playerName] = interaction.customId.split('_');
+    // CRITICAL: Stop the "Something went wrong" error by deferring immediately
+    await interaction.deferReply({ ephemeral: true });
+
+    const [, , action, playerName] = interaction.customId.split('_');
     
     // 1. Get raw inputs from the modal
     const rawSalary = interaction.fields.getTextInputValue('in_sal');
@@ -595,7 +473,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
             );
 
             if (history.length === 0) {
-                return await interaction.editReply({
+                return await interaction.reply({
                     content: `❌ No history found for ${playerName}`,
                     ephemeral: true,
                 });
@@ -622,6 +500,19 @@ if (interaction.customId.startsWith('vlt_fin_')) {
         }
 	  
     } // <--- THIS ends the "isButton" check.
+
+// --- SLASH COMMANDS START HERE ---
+	if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) return;
+      try {
+		  await interaction.deferReply();
+          await command.execute(interaction, getSheetData, getPlayerStats);
+      } catch (error) {
+          console.error(error);
+          if (!interaction.replied && !interaction.deferred) await interaction.reply({ content: 'Error!', ephemeral: true });
+      }
+  }
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
@@ -643,11 +534,9 @@ async function updateTeamMap() {
   } catch (e) { console.error("Team Map Error:", e); }
 }
 
-const getDetails = (pId, players, idMap, idLookupMap) => {
-  // FAST: Map lookup is instant
-  const name = idLookupMap.get(pId) || `Unknown (${pId})`;
-  
-  // Now find them in the Player Sheet
+const getDetails = (pId, players, idMap) => {
+  const idRow = idMap.find(row => row._rawData[0] === pId);
+  const name = idRow ? idRow._rawData[1] : `Unknown (${pId})`;
   const pData = players.find(p => p._rawData[1] === name);
   
   if (!pData) return { name, cap: 0, isDeadCap: false, text: `• **${name}**: $Unknown (Not in Sheet)` };
@@ -658,7 +547,7 @@ const getDetails = (pId, players, idMap, idLookupMap) => {
   const structure = pData._rawData[10] ? `\n    ┗ 📜 *${pData._rawData[10]}*` : "";
   
   return { name, cap, isDeadCap, text: `• **${name}**: $${cap.toLocaleString()} (${years}yrs)${structure}` };
-};
+}; 
 
 
 async function pollSleeper() {
@@ -713,7 +602,7 @@ async function processAndSend(tx, channel, players, idMap) {
   };
 
   for (const [pId, rId] of Object.entries(tx.adds || {})) {
-    const d = getDetails(pId, players, idMap, idLookupMap);
+    const d = getDetails(pId, players, idMap);
     const tName = initTeam(rId);
     teamSummaries[tName].adds.push(d.text);
     teamSummaries[tName].net -= d.cap;
@@ -764,44 +653,22 @@ process.on('uncaughtException', (err) => {
 });
 
 
-// // --- ADD THIS DEBUG LISTENER TEMPORARILY ---
-// client.on('debug', (info) => {
-//     // This will show exactly what the bot is doing (Heartbeats, Handshakes, etc.)
-//     if (info.includes('Heartbeat') || info.includes('Latency')) return; // Ignore spam
-//     console.log(`📡 [DEBUG]: ${info}`);
-// });
-
-// console.log("🔌 Attempting to connect to Discord...");
-
-// client.login(process.env.DISCORD_TOKEN).then(() => {
-//     console.log("🔓 Token accepted. Establishing gateway connection...");
-// }).catch(err => {
-//     console.error("❌ LOGIN FAILED IMMEDIATELY:");
-//     console.error(err);
-    
-//     if (err.message.includes("Used disallowed intents")) {
-//         console.error("👉 DISALLOWED INTENTS: Double check the Developer Portal (Message Content, etc) AND your code's Intent list.");
-//     }
-// });
-
+// --- ADD THIS DEBUG LISTENER TEMPORARILY ---
+client.on('debug', (info) => {
+    // This will show exactly what the bot is doing (Heartbeats, Handshakes, etc.)
+    if (info.includes('Heartbeat') || info.includes('Latency')) return; // Ignore spam
+    console.log(`📡 [DEBUG]: ${info}`);
+});
 
 console.log("🔌 Attempting to connect to Discord...");
 
-client.on('debug', m => {
-    if (m.includes('Failed to parse') || m.includes('400')) {
-        console.log('📡 NETWORK DEBUG:', m);
-    }
-});
-
-client.login(process.env.DISCORD_TOKEN)
-  .then(() => {
+client.login(process.env.DISCORD_TOKEN).then(() => {
     console.log("🔓 Token accepted. Establishing gateway connection...");
-  })
-  .catch(err => {
+}).catch(err => {
     console.error("❌ LOGIN FAILED IMMEDIATELY:");
     console.error(err);
     
     if (err.message.includes("Used disallowed intents")) {
-        console.error("👉 DISALLOWED INTENTS: Check Message Content Intent in Discord Developer Portal.");
+        console.error("👉 DISALLOWED INTENTS: Double check the Developer Portal (Message Content, etc) AND your code's Intent list.");
     }
-  });
+});
