@@ -165,8 +165,20 @@ async function getSheetData() {
   }
   
  try {
-    console.log("🔄 Cache expired or empty. Fetching fresh data from Google...");
-    await doc.loadInfo();
+    const now = Date.now();
+  if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
+  }
+  
+  try {
+    console.time("SheetFetch"); // Start a timer
+    
+    // ONLY loadInfo if the bot hasn't loaded the doc structure yet
+    if (!doc.title) { 
+        await doc.loadInfo(); 
+    }
+
+    // Fetching rows is the part that usually hangs
     const [pRows, tRows, idRows] = await Promise.all([
       doc.sheetsByTitle['PlayerList'].getRows(),
       doc.sheetsByTitle['Transaction Log'].getRows(),
@@ -185,7 +197,7 @@ async function getSheetData() {
     cachedIds = idRows;
     lastFetchTime = now;
     
-    console.log(`📊 Cache Updated: ${pRows.length} players, ${idRows.length} IDs mapped.`);
+    console.timeEnd("SheetFetch"); // See exactly how long this took in Render logs
     return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
   } catch (err) {
     console.error("❌ Sheet Fetch Error:", err);
