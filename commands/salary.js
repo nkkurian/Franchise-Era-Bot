@@ -10,7 +10,8 @@ module.exports = {
     async execute(interaction, getSheetData, getPlayerStats) {
         //await interaction.deferReply();
       const input = interaction.options.getString("player").toLowerCase();
-            const { players, logs, idMap } = await getSheetData();
+            const { players, idMap } = await getSheetData();
+            const playerName = interaction.options.getString('player').toLowerCase().trim();
             const matches = players.filter((r) =>
                 r._rawData[1]?.toLowerCase().includes(input),
             );
@@ -34,8 +35,7 @@ module.exports = {
                     (row) =>
                         row._rawData[1]?.toLowerCase() === pName.toLowerCase(),
                 );
-                const sleeperId = idRow ? idRow._rawData[0] : null;
-
+                const sleeperId = idMap.get(playerName);
                 // 2. Fetch Stats if we have an ID
                 const stats = sleeperId
                     ? await getPlayerStats(sleeperId)
