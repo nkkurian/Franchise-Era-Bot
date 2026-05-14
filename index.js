@@ -88,35 +88,35 @@ app.use(express.json()); // Essential to read the data sent from Google
 
 app.use('/', routes(client, doc)); // for extension and fa reports sent to teams. 
 
-let statsCache = { data: null, timestamp: 0 };
+let sleeperStatsCache = { data: null, scoring: null, timestamp: 0 };
 
 async function getPlayerStats(sleeperId) {
     if (!sleeperId) return null;
     const now = Date.now();
+    const ONE_HOUR = 60 * 60 * 1000;
 
     try {
-        // Only fetch from Sleeper if we don't have data or it's older than 1 hour
-        if (!statsCache.data || (now - statsCache.timestamp > 3600000)) {
-            const currentYear = 2026; 
-            const [res2026, resLeague] = await Promise.all([
-                axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`),
-                axios.get(`https://api.sleeper.app/v1/league/${process.env.SLEEPER_LEAGUE_ID}`)
+        // Only fetch fresh data if the cache is empty or older than 1 hour
+        if (!sleeperStatsCache.data || (now - sleeperStatsCache.timestamp > ONE_HOUR)) {
+            const leagueId = process.env.SLEEPER_LEAGUE_ID;
+            const [resStats, resLeague] = await Promise.all([
+                axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/2026`),
+                axios.get(`https://api.sleeper.app/v1/league/${leagueId}`)
             ]);
-            statsCache.data = { stats: res2026.data, scoring: resLeague.data.scoring_settings };
-            statsCache.timestamp = now;
+            sleeperStatsCache.data = resStats.data;
+            sleeperStatsCache.scoring = resLeague.data.scoring_settings;
+            sleeperStatsCache.timestamp = now;
         }
 
-        const playerStats = statsCache.data.stats[sleeperId];
-        const scoringSettings = statsCache.data.scoring;
-
-        if (!playerStats) return null;
+        const stats = sleeperStatsCache.data[sleeperId];
+        if (!stats) return null;
 
         let customTotal = 0;
-        for (const [stat, val] of Object.entries(scoringSettings)) {
-            if (playerStats[stat]) customTotal += playerStats[stat] * val;
+        for (const [stat, val] of Object.entries(sleeperStatsCache.scoring)) {
+            if (stats[stat]) customTotal += stats[stat] * val;
         }
 
-        return { ...playerStats, leagueScore: customTotal.toFixed(2) };
+        return { ...stats, leagueScore: customTotal.toFixed(2), displayYear: "2026" };
     } catch (err) {
         console.error("❌ Sleeper Stats Error:", err.message);
         return null;
@@ -557,26 +557,21 @@ if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
-    // Commands that use Modals
-    if (interaction.commandName === "trade-alert" || interaction.commandName === "appeal") {
-        command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap)
-            .catch(err => console.error(`Modal Command Error:`, err));
-        return; 
-    }
-
-    // Standard Commands (Including sent-trade)
     try {
-        // Pass ALL helper functions as arguments here
+        // Only defer if it's NOT a modal command (Modals can't be deferred)
+        if (interaction.commandName !== "trade-alert" && interaction.commandName !== "appeal") {
+            await interaction.deferReply();
+        }
+
         await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     } catch (error) {
         console.error("Command Execution Error:", error);
-        // This prevent the "Unknown Interaction" crash if the code fails
+        // Only reply if we haven't already deferred or replied
         if (!interaction.replied && !interaction.deferred) {
             await interaction.reply({ content: 'Command failed to execute.', ephemeral: true });
         }
     }
-}
-}); 
+} 
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
 let rosterToTeamName = {}; 
