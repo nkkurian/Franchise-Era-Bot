@@ -31,21 +31,6 @@ module.exports = {
                 const interactionId = targetInteraction.id;
                 console.log(`DEBUG 6: Entering response for ${playerRow._rawData[1]} (Interaction: ${interactionId})`);
                 console.log(`[START] Interaction ${interaction.id} for player: ${input}`);
-                    const collector = response.createMessageComponentCollector({
-                        componentType: ComponentType.Button,
-                        time: 30000,
-                    });
-                    
-                    collector.on("collect", async (i) => {
-                        console.log(`[COLLECT] Button clicked for ${i.customId} on interaction ${interaction.id}`);
-                        const idx = parseInt(i.customId.split("_")[2]);
-                        await sendSalaryResponse(i, matches[idx], true);
-                        collector.stop();
-                    });
-                    
-                    collector.on("end", (collected, reason) => {
-                        console.log(`[END] Collector for ${interaction.id} closed. Reason: ${reason}. Items collected: ${collected.size}`);
-                    });
 
                 
                 const pName = playerRow._rawData[1];
@@ -235,18 +220,25 @@ module.exports = {
                         ),
                 );
                 const response = await interaction.editReply({
-                    content: "Multiple found, please select:",
-                    components: [selectionRow],
-                });
-                const collector = response.createMessageComponentCollector({
-                    componentType: ComponentType.Button,
-                    time: 30000,
-                });
-                collector.on("collect", async (i) => {
-                    const idx = parseInt(i.customId.split("_")[2]);
-                    await sendSalaryResponse(i, matches[idx], true);
-                    collector.stop();
-                });
+                content: "Multiple found, please select:",
+                components: [selectionRow],
+            });
+
+            const collector = response.createMessageComponentCollector({
+                componentType: ComponentType.Button,
+                time: 30000,
+            });
+
+            collector.on("collect", async (i) => {
+                console.log(`[COLLECT] Interaction ${i.id}`);
+                const idx = parseInt(i.customId.split("_")[2]);
+                await sendSalaryResponse(i, matches[idx], true);
+                collector.stop();
+            });
+
+            collector.on("end", (c, reason) => {
+                console.log(`[END] Collector closed: ${reason}`);
+            });
                 return; 
             }
         }
