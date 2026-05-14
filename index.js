@@ -161,17 +161,21 @@ let idLookupMap = new Map();
 let isDocLoaded = false; // Add this global variable at the top of your script
 
 async function getSheetData() {
-    const now = Date.now();
-    
-    // 1. Check Cache First
-    if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
-        return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
-    }
+	return new Promise(async (resolve, reject) => {
+        // Force a timeout after 15 seconds
+        const timeout = setTimeout(() => {
+            console.error("🚨 TIMEOUT: getSheetData took too long (15s)!");
+            reject(new Error("Google Sheets Timeout"));
+        }, 15000);
 
     try {
-        // Use a unique label for the timer to avoid warnings if parallel calls happen
-        const timerLabel = `SheetFetch_${now}`;
-        console.time(timerLabel);
+            const now = Date.now();
+            if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
+                clearTimeout(timeout);
+                return resolve({ players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc });
+            }
+	        const timerLabel = `SheetFetch_${now}`;
+	        console.time(timerLabel);
         
         // 2. Load Doc Metadata only once using our flag
         if (!isDocLoaded) {
@@ -200,9 +204,12 @@ async function getSheetData() {
         lastFetchTime = now;
 
         console.timeEnd(timerLabel);
+		clearTimeout(timeout);
         return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIds, idLookup: idLookupMap, doc: doc };
 
     } catch (err) {
+		clearTimeout(timeout);
+		reject(err);
         console.error("❌ Sheet Fetch Error:", err.message);
         // If it fails, we want to try loading info again next time
         isDocLoaded = false; 
