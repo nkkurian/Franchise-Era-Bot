@@ -145,15 +145,16 @@ async function getSheetData() {
   if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
     return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
   }
-  
+  console.time("⏱️ Sheet Fetch Total"); // Start timer
   try {
     await doc.loadInfo();
+	  console.log("✅ Doc Info Loaded");
     const [pRows, tRows, idRows] = await Promise.all([
       doc.sheetsByTitle['PlayerList'].getRows(),
       doc.sheetsByTitle['Transaction Log'].getRows(),
       doc.sheetsByTitle['Sleeper_Players'].getRows()
     ]);
-    
+    console.timeEnd("⏱️ Sheet Fetch Total");
     // CONVERT TO MAP: This makes looking up IDs instant
     const newIdMap = new Map();
     idRows.forEach(row => {
