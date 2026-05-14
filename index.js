@@ -197,12 +197,15 @@ async function getSheetData() {
 
         // 4. Update Map & Cache
        idLookupMap.clear();
-		idRows.forEach(row => {
-		    const name = row._rawData[1]; // Player Name
-		    const id = row._rawData[0];   // Sleeper ID
+		idRows.forEach((row) => {
+		    // Column A is index 0 (Sleeper ID)
+		    // Column B is index 1 (Player Name)
+		    const id = row._rawData[0]?.trim(); 
+		    const name = row._rawData[1]?.trim(); 
+		    
 		    if (name && id) {
-		        // Force key to lowercase for easier matching
-		        idLookupMap.set(name.toLowerCase().trim(), id);
+		        // Store as: name (lowercase) -> id
+		        idLookupMap.set(name.toLowerCase(), id);
 		    }
 		});
 
@@ -433,20 +436,14 @@ function createPlayerEmbed(pRow) {
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
 
-	if (interaction.isChatInputCommand()) {
-        try {
-            await interaction.deferReply();
-        } catch (e) {
-            console.error("Failed to defer:", e);
-            return;
-        }
+	if (!interaction.isChatInputCommand()) return;
 
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
         
         try {
-            // 2. Now do the heavy lifting
-            return await command.execute(interaction, getSheetData, getPlayerStats);
+            await interaction.deferReply();
+            await command.execute(interaction, getSheetData, getPlayerStats);
         } catch (error) {
             console.error("❌ Command Execution Error:", error);
             // Use catch on editReply so a dead interaction doesn't crash the whole bot
