@@ -462,7 +462,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     }
     return;
   } 
-  });  
+  }  
   
   if (interaction.isButton()) {
 
