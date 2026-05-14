@@ -455,7 +455,7 @@ client.on('interactionCreate', async (interaction) => {
         if (interaction.customId === 'adminLoginModal') return await vault.showAdminPanel(interaction);
 	  
 if (interaction.customId.startsWith('vlt_fin_')) {
-        await interaction.deferReply({ ephemeral: true });
+        //await interaction.deferReply({ ephemeral: true });
         const [, , action, playerName] = interaction.customId.split('_');
     
     // 1. Get raw inputs from the modal
@@ -530,6 +530,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
     }
     return;
   } 
+}
   
   if (interaction.isButton()) {
 
@@ -591,7 +592,7 @@ if (interaction.customId.startsWith('vlt_fin_')) {
             );
 
             if (history.length === 0) {
-                return await interaction.reply({
+                return await interaction.editReply({
                     content: `❌ No history found for ${playerName}`,
                     ephemeral: true,
                 });
