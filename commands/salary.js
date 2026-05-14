@@ -38,14 +38,12 @@ module.exports = {
                 const capHit = playerRow._rawData[6] || "N/A";
 
                 // 1. Find Sleeper ID from idMap
-                const sleeperId = idLookup.get(pName);
-                console.log(`DEBUG 7: Sleeper ID found: ${sleeperId}`);
+                const sleeperId = idLookup.get(pName.toLowerCase().trim());
+                console.log(`DEBUG 7: Sleeper ID found for ${pName}: ${sleeperId}`);
                 
                 // 2. Fetch Stats if we have an ID
                 console.log("DEBUG 8: Requesting Player Stats...");
-                const stats = sleeperId
-                    ? await getPlayerStats(sleeperId)
-                    : null;
+                const stats = sleeperId ? await getPlayerStats(sleeperId) : null;
                 console.log("DEBUG 9: Stats fetch complete.");
                 const displayYear = stats?.displayYear || "2025";
                 let statsField = `No live stats available for ${displayYear}.`;
@@ -157,10 +155,14 @@ module.exports = {
 
                 // 4. Add Headshot
                 if (sleeperId) {
-                    embed.setThumbnail(
-                        `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
-                    );
+                    embed.setThumbnail(`https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`);
+                } else {
+                    // Fallback image if no Sleeper ID is found (Generic NFL Logo)
+                    embed.setThumbnail(`https://sleepercdn.com/images/v2/icons/player_default.webp`);
                 }
+                if (!statsField || statsField.trim() === "") {
+                        statsField = "No stats found for this player.";
+                    }
                 console.log("DEBUG 11: Sending final payload to Discord...");
                 // Add history button if applicable
                 const components = [];
