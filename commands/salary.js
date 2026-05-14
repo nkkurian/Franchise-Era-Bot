@@ -26,11 +26,7 @@ module.exports = {
                     );
             } 
 
-            const sendSalaryResponse = async (
-                targetInteraction,
-                playerRow,
-                isUpdate = false,
-            ) => {
+            const sendSalaryResponse = async (targetInteraction, playerRow, isUpdate = false) => {
                 console.log(`DEBUG 6: Entering sendSalaryResponse for ${playerRow._rawData[1]}`);
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
@@ -189,22 +185,18 @@ module.exports = {
                 console.log("DEBUG 11: Attempting to send final payload to Discord...");
                 
                 try {
+                    // If isUpdate is true, it means a BUTTON was clicked. 
+                    // Buttons provide their own interaction 'i' which hasn't been deferred yet.
                     if (isUpdate) {
                         console.log("DEBUG: Updating button interaction...");
                         return await targetInteraction.update(payload);
                     } else {
-                        console.log("DEBUG: Sending EditReply...");
-                        // Simplified: Removed the manual Promise.race timeout
-                        const result = await interaction.editReply(payload);
-                        console.log("DEBUG 12: Success!");
-                        return result;
+                        console.log("DEBUG: Sending EditReply for the slash command...");
+                        // Use targetInteraction (which is the 'interaction' from execute)
+                        return await targetInteraction.editReply(payload);
                     }
                 } catch (discordError) {
                     console.error("❌ DISCORD API ERROR:", discordError);
-                    // Fallback if editReply fails
-                    if (!interaction.replied && !interaction.deferred) {
-                         await interaction.reply({ content: "⚠️ Discord took too long to respond, but the action might have completed.", ephemeral: true });
-                    }
                 }
             };
         
