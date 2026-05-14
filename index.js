@@ -196,10 +196,15 @@ async function getSheetData() {
         ]);
 
         // 4. Update Map & Cache
-        idLookupMap.clear();
-        idRows.forEach(row => {
-            if (row._rawData[0]) idLookupMap.set(row._rawData[0], row._rawData[1]);
-        });
+       idLookupMap.clear();
+		idRows.forEach(row => {
+		    const name = row._rawData[0]; // Player Name
+		    const id = row._rawData[1];   // Sleeper ID
+		    if (name && id) {
+		        // Force key to lowercase for easier matching
+		        idLookupMap.set(name.toLowerCase().trim(), id);
+		    }
+		});
 
         cachedPlayers = pRows;
         cachedLogs = tRows;
