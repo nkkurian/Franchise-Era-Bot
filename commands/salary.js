@@ -10,7 +10,7 @@ module.exports = {
     async execute(interaction, getSheetData, getPlayerStats) {
         //await interaction.deferReply();
       const input = interaction.options.getString("player").toLowerCase();
-            const { players, idMap } = await getSheetData();
+            const { players, logs, idMap } = await getSheetData();
             const playerName = interaction.options.getString('player').toLowerCase().trim();
             const matches = players.filter((r) =>
                 r._rawData[1]?.toLowerCase().includes(input),
