@@ -23,21 +23,18 @@ module.exports = {
                 playerRow,
                 isUpdate = false,
             ) => {
-                console.log("⏱️ Starting sendSalaryResponse for:", playerRow._rawData[1]);
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
                 const capHit = playerRow._rawData[6] || "N/A";
-                console.log("🔍 Looking up Sleeper ID...");
 
-                //1. Find Sleeper ID from idMap
-                //1. FAST LOOKUP: Instant mapping from the Map object
+                // 1. Find Sleeper ID from idMap
+                // 1. FAST LOOKUP: Instant mapping from the Map object
                 const sleeperId = idMap.get(pName.toLowerCase().trim());
-                console.log("🏈 Fetching Sleeper Stats for ID:", sleeperId);
                 // 2. Fetch Stats if we have an ID
                 // const stats = sleeperId
                 //     ? await getPlayerStats(sleeperId)
                 //     : null;
-                console.log("✅ Stats fetch complete.");
+                const stats = null;
                 const displayYear = stats?.displayYear || "2025";
                 let statsField = `No live stats available for ${displayYear}.`;
 
@@ -95,7 +92,7 @@ module.exports = {
                     if (s.length > 0) statsField = s.join("\n");
                 }
 
-                //3. Build the Embed (Your Preferred Format)
+                // 3. Build the Embed (Your Preferred Format)
                 const embed = new EmbedBuilder()
                 .setTitle(`🏈 ${pName} (${pPos})`)
                 .setColor(0x3498db)
@@ -122,12 +119,12 @@ module.exports = {
                         value: capHit || "N/A",
                         inline: false, // Setting this to false forces it to its own line
                     },
-                    // // --- LINE 3 (Performance) ---
-                    // {
-                    //     name: `📈 ${displayYear} Performance`,
-                    //     value: statsField,
-                    //     inline: false,
-                    // },
+                    // --- LINE 3 (Performance) ---
+                    {
+                        name: `📈 ${displayYear} Performance`,
+                        value: statsField,
+                        inline: false,
+                    },
                 );
 
                 // 🎯 NEW: Dynamic Structure Field
@@ -146,11 +143,11 @@ module.exports = {
                 }
 
                 // 4. Add Headshot
-                // if (sleeperId) {
-                //     embed.setThumbnail(
-                //         `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
-                //     );
-                // }
+                if (sleeperId) {
+                    embed.setThumbnail(
+                        `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
+                    );
+                }
 
                 // Add history button if applicable
                 const components = [];
@@ -173,7 +170,6 @@ module.exports = {
                     embeds: [embed],
                     components: components,
                 };
-                console.log("📤 Attempting to send response to Discord...");
                 return isUpdate
                     ? await targetInteraction.update(payload)
                     : await targetInteraction.editReply(payload);
