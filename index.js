@@ -113,7 +113,15 @@ async function getPlayerStats(sleeperId) {
 
             const resLeague = await axios.get(`https://api.sleeper.app/v1/league/${leagueId}`);
             
-            sleeperStatsCache.data = resStats.data;
+            const filteredStats = {};
+			for (const [id, stats] of Object.entries(resStats.data)) {
+			    // Only keep players who have 'gp' (Games Played) or 'pts_ppr' (Points)
+			    // This removes thousands of empty entries and saves massive memory
+			    if (stats.gp > 0 || stats.pts_ppr > 0) {
+			        filteredStats[id] = stats;
+			    }
+			}
+			sleeperStatsCache.data = filteredStats;
             sleeperStatsCache.scoring = resLeague.data.scoring_settings;
             sleeperStatsCache.timestamp = now;
             sleeperStatsCache.year = yearToFetch;
@@ -740,6 +748,11 @@ process.on('uncaughtException', (err) => {
     console.error('🚫 Uncaught Exception:', err);
 });
 
+(async () => {
+    console.log("🚀 Pre-loading Sleeper Stats in background...");
+    await getPlayerStats("1234"); // Dummy call to fill the cache
+    console.log("✅ Background Stats Cache Primed.");
+})();
 
 // --- ADD THIS DEBUG LISTENER TEMPORARILY ---
 client.on('debug', (info) => {
