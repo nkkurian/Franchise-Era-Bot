@@ -93,7 +93,7 @@ let sleeperStatsCache = { data: null, scoring: null, timestamp: 0 };
 async function getPlayerStats(sleeperId) {
     if (!sleeperId) return null;
     const now = Date.now();
-    const ONE_HOUR = 60 * 60 * 1000;
+    const ONE_HOUR = 60 * 60 * 1000 * 24 *7;
 
     try {
         // Cache check
