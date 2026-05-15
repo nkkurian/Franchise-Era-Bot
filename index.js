@@ -332,7 +332,7 @@ async function initializeData() {
         // 1. Load Stats FIRST (so we know it works)
         console.log("🚀 Pre-loading Sleeper Stats for the week...");
         try {
-            await getPlayerStats("1234");
+            getPlayerStats("1234").catch(e => console.error("Stats background load error", e));
             console.log("🏁 BACKGROUND TASK: Sleeper Stats fully cached.");
         } catch (e) {
             console.error("❌ Stats Pre-load Failed:", e.message);
@@ -425,6 +425,35 @@ function createPlayerEmbed(pRow) {
 
 // --- INTERACTION HANDLER ---
 client.on('interactionCreate', async (interaction) => {
+	// --- SLASH COMMANDS START HERE ---
+	// index.js - Update this section specifically
+	if (interaction.isChatInputCommand()) {
+	    const command = client.commands.get(interaction.commandName);
+	    if (!command) return;
+	
+	    // 1. Define commands that show a Modal (Modals CANNOT be deferred)
+	    const isModalCommand = ["trade-alert", "appeal"].includes(interaction.commandName);
+	
+	    if (!isModalCommand) {
+	        try {
+	            // We use 'ephemeral: true' if you want the "Thinking..." to only be seen by the user
+	            await interaction.deferReply(); 
+	        } catch (error) {
+	            console.error("❌ Failed to defer:", error.message);
+	            return; // Exit if the interaction is already dead
+	        }
+	    }
+	
+	    // 2. Execute command
+	    try {
+	        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+	    } catch (error) {
+	        console.error("Command Execution Error:", error);
+	        if (interaction.deferred) {
+	            await interaction.editReply({ content: '❌ An error occurred while processing this command.' });
+	        }
+	    }
+	}
   
   if (interaction.isModalSubmit()) {
 	if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
@@ -598,35 +627,6 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 	  
     } // <--- THIS ends the "isButton" check.
 
-// --- SLASH COMMANDS START HERE ---
-	// index.js - Update this section specifically
-	if (interaction.isChatInputCommand()) {
-	    const command = client.commands.get(interaction.commandName);
-	    if (!command) return;
-	
-	    // 1. Define commands that show a Modal (Modals CANNOT be deferred)
-	    const isModalCommand = ["trade-alert", "appeal"].includes(interaction.commandName);
-	
-	    if (!isModalCommand) {
-	        try {
-	            // We use 'ephemeral: true' if you want the "Thinking..." to only be seen by the user
-	            await interaction.deferReply(); 
-	        } catch (error) {
-	            console.error("❌ Failed to defer:", error.message);
-	            return; // Exit if the interaction is already dead
-	        }
-	    }
-	
-	    // 2. Execute command
-	    try {
-	        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
-	    } catch (error) {
-	        console.error("Command Execution Error:", error);
-	        if (interaction.deferred) {
-	            await interaction.editReply({ content: '❌ An error occurred while processing this command.' });
-	        }
-	    }
-	}
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
