@@ -96,27 +96,42 @@ async function getPlayerStats(sleeperId) {
     const ONE_HOUR = 60 * 60 * 1000;
 
     try {
-        // Only fetch fresh data if the cache is empty or older than 1 hour
+        // Cache check
         if (!sleeperStatsCache.data || (now - sleeperStatsCache.timestamp > ONE_HOUR)) {
             const leagueId = process.env.SLEEPER_LEAGUE_ID;
-            const [resStats, resLeague] = await Promise.all([
-                axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/2026`),
-                axios.get(`https://api.sleeper.app/v1/league/${leagueId}`)
-            ]);
+            
+            // Try fetching 2026 first
+            let yearToFetch = "2026";
+            let resStats = await axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${yearToFetch}`);
+            
+            // OFFSEASON LOGIC: If 2026 is empty (offseason), fetch 2025 instead
+            if (!resStats.data || Object.keys(resStats.data).length < 100) { 
+                console.log("🏈 2026 stats empty (Offseason). Falling back to 2025.");
+                yearToFetch = "2025";
+                resStats = await axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${yearToFetch}`);
+            }
+
+            const resLeague = await axios.get(`https://api.sleeper.app/v1/league/${leagueId}`);
+            
             sleeperStatsCache.data = resStats.data;
             sleeperStatsCache.scoring = resLeague.data.scoring_settings;
             sleeperStatsCache.timestamp = now;
+            sleeperStatsCache.year = yearToFetch;
         }
 
-        //const stats = sleeperStatsCache.data[sleeperId];
-        if (!stats) return null;
+        const pStats = sleeperStatsCache.data[sleeperId];
+        if (!pStats) return null;
 
         let customTotal = 0;
         for (const [stat, val] of Object.entries(sleeperStatsCache.scoring)) {
-            if (stats[stat]) customTotal += stats[stat] * val;
+            if (pStats[stat]) customTotal += pStats[stat] * val;
         }
 
-        return { ...stats, leagueScore: customTotal.toFixed(2), displayYear: "2026" };
+        return { 
+            ...pStats, 
+            leagueScore: customTotal.toFixed(2), 
+            displayYear: sleeperStatsCache.year 
+        };
     } catch (err) {
         console.error("❌ Sleeper Stats Error:", err.message);
         return null;
