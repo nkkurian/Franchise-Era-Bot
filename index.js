@@ -578,31 +578,37 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 // --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
 if (interaction.isChatInputCommand()) {
-    const command = client.commands.get(interaction.commandName);
-    if (!command) return;
+        const command = client.commands.get(interaction.commandName);
+        if (!command) return;
 
-    // DEFER IMMEDIATELY - Don't wait for anything else
-    if (interaction.commandName !== "trade-alert" && interaction.commandName !== "appeal") {
+        // 1. Respond to Discord IMMEDIATELY
+        // Modals cannot be deferred, so we skip them
+        const skipDefer = ["trade-alert", "appeal"];
+        
+        if (!skipDefer.includes(interaction.commandName)) {
+            try {
+                // This MUST happen within 3 seconds
+                await interaction.deferReply(); 
+            } catch (error) {
+                console.error("❌ CRITICAL: Could not defer in time:", error);
+                return; // Stop execution because the interaction is dead
+            }
+        }
+
+        // 2. Now do the heavy lifting
         try {
-            await interaction.deferReply(); 
-        } catch (e) {
-            console.error("Failed to defer:", e);
-            return; // Exit if we can't even defer
+            await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+        } catch (error) {
+            console.error("Command Execution Error:", error);
+            const errorMsg = '❌ There was an error executing this command!';
+            
+            if (interaction.deferred) {
+                await interaction.editReply({ content: errorMsg });
+            } else if (!interaction.replied) {
+                await interaction.reply({ content: errorMsg, ephemeral: true });
+            }
         }
     }
-
-    try {
-        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
-    } catch (error) {
-        console.error("Command Execution Error:", error);
-        // If we deferred, we MUST use editReply
-        if (interaction.deferred) {
-            await interaction.editReply({ content: '❌ Command failed to execute.' });
-        } else if (!interaction.replied) {
-            await interaction.reply({ content: '❌ Command failed to execute.', ephemeral: true });
-        }
-    }
-}
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
