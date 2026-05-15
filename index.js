@@ -108,7 +108,7 @@ async function getPlayerStats(sleeperId) {
             sleeperStatsCache.timestamp = now;
         }
 
-        const stats = sleeperStatsCache.data[sleeperId];
+        //const stats = sleeperStatsCache.data[sleeperId];
         if (!stats) return null;
 
         let customTotal = 0;
