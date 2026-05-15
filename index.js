@@ -170,24 +170,26 @@ let isFirstRun = true; // NEW: Controls the one-time historical post
 // Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
 
 let cachedIdMap = new Map(); // Store as a Map for speed
-let isFetching = false; // Add this outside the function
+// Ensure this is at the top level of index.js
+let isFetching = false; 
 
 async function getSheetData() {
   const now = Date.now();
   
-  // 1. Return cache if fresh
+  // 1. If cache is fresh, return it instantly (No blocking)
   if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
     return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
   }
 
-  // 2. If already fetching, wait a tiny bit or return old cache to avoid overlapping
+  // 2. CRITICAL: If a fetch is already happening, DO NOT wait.
+  // Return the stale cache immediately so the interaction can defer/reply.
   if (isFetching) {
-      console.log("⏳ [DEBUG]: Fetch already in progress, serving stale cache to prevent overlap.");
       return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
   }
 
-  isFetching = true; // Set the lock
-  console.time("⏱️ Sheet Fetch Total"); 
+  isFetching = true; 
+	const timerLabel = `⏱️ Sheet Fetch Total-${Date.now()}`;  console.time(timerLabel);
+	console.time(timerLabel);
   
   try {
     await doc.loadInfo();
@@ -196,11 +198,10 @@ async function getSheetData() {
       doc.sheetsByTitle['Transaction Log'].getRows(),
       doc.sheetsByTitle['Sleeper_Players'].getRows()
     ]);
-    console.timeEnd("⏱️ Sheet Fetch Total");
-    // CONVERT TO MAP: This makes looking up IDs instant
+
     const newIdMap = new Map();
     idRows.forEach(row => {
-        const sleeperName = row._rawData[1]?.toLowerCase().trim(); // Adjust index if needed
+        const sleeperName = row._rawData[1]?.toLowerCase().trim();
         const sleeperId = row._rawData[0]; 
         if (sleeperName) newIdMap.set(sleeperName, sleeperId);
     });
@@ -213,10 +214,10 @@ async function getSheetData() {
     return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
   } catch (err) {
     console.error("❌ Sheet Fetch Error:", err);
-    return { players: [], logs: [], idMap: new Map() };
+    return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap };
   } finally {
-    isFetching = false; // RELEASE the lock
-    console.timeEnd("⏱️ Sheet Fetch Total");
+    isFetching = false; 
+    console.timeEnd(timerLabel);
   }
 }
 
@@ -346,19 +347,26 @@ async function initializeData() {
         console.log("🚀 Pre-loading Sleeper Stats...");
         getPlayerStats("1234").catch(e => console.error("Stats background load error", e));
 
-        // REMOVE the direct getSheetData() call here. 
-        // Let pollSleeper handle the first load.
-
         console.log("📥 Loading Sleeper Team Map...");
         await updateTeamMap(); 
 
         console.log("🔍 Starting Sleeper Poller...");
-        await pollSleeper(); // This will perform the first getSheetData()
-        setInterval(pollSleeper, 60000); 
+        // Start the first run
+        runPoller(); 
 
     } catch (err) {
         console.error("❌ Background Init Error:", err);
     }
+}
+
+async function runPoller() {
+    try {
+        await pollSleeper();
+    } catch (err) {
+        console.error("Poll execution error:", err);
+    }
+    // Wait 60s AFTER the last one finishes before starting the next
+    setTimeout(runPoller, 60000); 
 }
 
 //Owners of teams map from Sheets
