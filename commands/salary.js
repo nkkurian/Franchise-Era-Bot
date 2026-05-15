@@ -31,69 +31,69 @@ module.exports = {
 
                 // 1. Find Sleeper ID from idMap
                 // 1. FAST LOOKUP: Instant mapping from the Map object
-                const sleeperId = idMap.get(pName.toLowerCase().trim());
-                console.log("🏈 Fetching Sleeper Stats for ID:", sleeperId);
-                // 2. Fetch Stats if we have an ID
-                const stats = sleeperId
-                    ? await getPlayerStats(sleeperId)
-                    : null;
-                console.log("✅ Stats fetch complete.");
-                const displayYear = stats?.displayYear || "2025";
-                let statsField = `No live stats available for ${displayYear}.`;
+                // const sleeperId = idMap.get(pName.toLowerCase().trim());
+                // console.log("🏈 Fetching Sleeper Stats for ID:", sleeperId);
+                // // 2. Fetch Stats if we have an ID
+                // const stats = sleeperId
+                //     ? await getPlayerStats(sleeperId)
+                //     : null;
+                // console.log("✅ Stats fetch complete.");
+                // const displayYear = stats?.displayYear || "2025";
+                // let statsField = `No live stats available for ${displayYear}.`;
 
-                if (stats) {
-                    let s = [];
+                // if (stats) {
+                //     let s = [];
 
-                    // Offensive Stats
-                    if (stats.pass_yd)
-                        s.push(
-                            `• **Pass:** ${stats.pass_yd} Yds, ${stats.pass_td || 0} TD`,
-                        );
-                    if (stats.rush_yd)
-                        s.push(
-                            `• **Rush:** ${stats.rush_yd} Yds, ${stats.rush_td || 0} TD`,
-                        );
+                //     // Offensive Stats
+                //     if (stats.pass_yd)
+                //         s.push(
+                //             `• **Pass:** ${stats.pass_yd} Yds, ${stats.pass_td || 0} TD`,
+                //         );
+                //     if (stats.rush_yd)
+                //         s.push(
+                //             `• **Rush:** ${stats.rush_yd} Yds, ${stats.rush_td || 0} TD`,
+                //         );
 
-                    // Updated Receiving Line with TDs
-                    if (stats.rec || stats.rec_yd || stats.rec_td) {
-                        s.push(
-                            `• **Rec:** ${stats.rec || 0} Rec, ${stats.rec_yd || 0} Yds, ${stats.rec_td || 0} TD`,
-                        );
-                    }
+                //     // Updated Receiving Line with TDs
+                //     if (stats.rec || stats.rec_yd || stats.rec_td) {
+                //         s.push(
+                //             `• **Rec:** ${stats.rec || 0} Rec, ${stats.rec_yd || 0} Yds, ${stats.rec_td || 0} TD`,
+                //         );
+                //     }
 
-                    // 🎯 THE FIX: Only show Defensive Stats for Defensive Players
-                    const defensivePositions = [
-                        "DE",
-                        "DT",
-                        "DL",
-                        "LB",
-                        "CB",
-                        "S",
-                        "DB",
-                        "IDP",
-                    ];
-                    const isDefensivePlayer = defensivePositions.includes(
-                        pPos.toUpperCase(),
-                    );
+                //     // 🎯 THE FIX: Only show Defensive Stats for Defensive Players
+                //     const defensivePositions = [
+                //         "DE",
+                //         "DT",
+                //         "DL",
+                //         "LB",
+                //         "CB",
+                //         "S",
+                //         "DB",
+                //         "IDP",
+                //     ];
+                //     const isDefensivePlayer = defensivePositions.includes(
+                //         pPos.toUpperCase(),
+                //     );
 
-                    if (isDefensivePlayer) {
-                        const tkl =
-                            stats.tkl ||
-                            (stats.idp_tkl || 0) + (stats.idp_tkl_ast || 0);
-                        const sack = stats.sack || stats.idp_sack || 0;
-                        const int = stats.int || stats.idp_int || 0;
+                //     if (isDefensivePlayer) {
+                //         const tkl =
+                //             stats.tkl ||
+                //             (stats.idp_tkl || 0) + (stats.idp_tkl_ast || 0);
+                //         const sack = stats.sack || stats.idp_sack || 0;
+                //         const int = stats.int || stats.idp_int || 0;
 
-                        if (tkl > 0) s.push(`• **Tackles:** ${tkl} Total`);
-                        if (sack > 0) s.push(`• **Sacks:** ${sack.toFixed(1)}`);
-                        if (int > 0) s.push(`• **INTs:** ${int}`);
-                    }
+                //         if (tkl > 0) s.push(`• **Tackles:** ${tkl} Total`);
+                //         if (sack > 0) s.push(`• **Sacks:** ${sack.toFixed(1)}`);
+                //         if (int > 0) s.push(`• **INTs:** ${int}`);
+                //     }
 
-                    // Custom League Score
-                    if (stats.leagueScore)
-                        s.push(`\n🏆 **League Score: ${stats.leagueScore}**`);
+                //     // Custom League Score
+                //     if (stats.leagueScore)
+                //         s.push(`\n🏆 **League Score: ${stats.leagueScore}**`);
 
-                    if (s.length > 0) statsField = s.join("\n");
-                }
+                //     if (s.length > 0) statsField = s.join("\n");
+                // }
 
                 // 3. Build the Embed (Your Preferred Format)
                 const embed = new EmbedBuilder()
@@ -122,12 +122,12 @@ module.exports = {
                         value: capHit || "N/A",
                         inline: false, // Setting this to false forces it to its own line
                     },
-                    // --- LINE 3 (Performance) ---
-                    {
-                        name: `📈 ${displayYear} Performance`,
-                        value: statsField,
-                        inline: false,
-                    },
+                    // // --- LINE 3 (Performance) ---
+                    // {
+                    //     name: `📈 ${displayYear} Performance`,
+                    //     value: statsField,
+                    //     inline: false,
+                    // },
                 );
 
                 // 🎯 NEW: Dynamic Structure Field
@@ -146,11 +146,11 @@ module.exports = {
                 }
 
                 // 4. Add Headshot
-                if (sleeperId) {
-                    embed.setThumbnail(
-                        `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
-                    );
-                }
+                // if (sleeperId) {
+                //     embed.setThumbnail(
+                //         `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
+                //     );
+                // }
 
                 // Add history button if applicable
                 const components = [];
