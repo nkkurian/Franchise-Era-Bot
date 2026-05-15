@@ -558,21 +558,28 @@ if (interaction.isChatInputCommand()) {
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
 
-    try {
-        // Only defer if it's NOT a modal command (Modals can't be deferred)
-        if (interaction.commandName !== "trade-alert" && interaction.commandName !== "appeal") {
-            await interaction.deferReply();
+    // DEFER IMMEDIATELY - Don't wait for anything else
+    if (interaction.commandName !== "trade-alert" && interaction.commandName !== "appeal") {
+        try {
+            await interaction.deferReply(); 
+        } catch (e) {
+            console.error("Failed to defer:", e);
+            return; // Exit if we can't even defer
         }
+    }
 
+    try {
         await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
     } catch (error) {
         console.error("Command Execution Error:", error);
-        // Only reply if we haven't already deferred or replied
-        if (!interaction.replied && !interaction.deferred) {
-            await interaction.reply({ content: 'Command failed to execute.', ephemeral: true });
+        // If we deferred, we MUST use editReply
+        if (interaction.deferred) {
+            await interaction.editReply({ content: '❌ Command failed to execute.' });
+        } else if (!interaction.replied) {
+            await interaction.reply({ content: '❌ Command failed to execute.', ephemeral: true });
         }
     }
-} 
+}
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
