@@ -88,7 +88,12 @@ app.use(express.json()); // Essential to read the data sent from Google
 
 app.use('/', routes(client, doc)); // for extension and fa reports sent to teams. 
 
-let sleeperStatsCache = { data: null, scoring: null, timestamp: 0 };
+let sleeperStatsCache = {
+    data: null,
+    scoring: null,
+    timestamp: 0,
+    year: "2026"
+};
 
 async function getPlayerStats(sleeperId) {
     if (!sleeperId) return null;
@@ -321,19 +326,30 @@ setInterval(async () => {
 
 async function initializeData() {
     try {
+        // 1. Load Stats FIRST (so we know it works)
+        console.log("🚀 Pre-loading Sleeper Stats for the week...");
+        try {
+            await getPlayerStats("1234");
+            console.log("🏁 BACKGROUND TASK: Sleeper Stats fully cached.");
+        } catch (e) {
+            console.error("❌ Stats Pre-load Failed:", e.message);
+        }
+
+        // 2. Load Sheet Data
         console.log("📥 Pre-loading Sheet Data...");
         await getSheetData(); 
+        console.log("✅ Sheet Data Pre-loaded.");
 
+        // 3. Load Team Map
         console.log("📥 Loading Sleeper Team Map...");
         await updateTeamMap(); 
+        console.log("✅ Team Map Loaded.");
 
-		console.log("🚀 Pre-loading Sleeper Stats for the week...");
-        await getPlayerStats("1234");
-        console.log("🏁 BACKGROUND TASK: Sleeper Stats fully cached.");
+        // 4. Start Poller
+        console.log("🔍 Starting Sleeper Poller...");
+        await pollSleeper(); 
+        setInterval(pollSleeper, 60000); 
 
-         console.log("🔍 Starting Sleeper Poller...");
-         await pollSleeper(); // Run once
-         setInterval(pollSleeper, 60000); // Then every minute
     } catch (err) {
         console.error("❌ Background Init Error:", err);
     }
