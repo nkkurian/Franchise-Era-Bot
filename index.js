@@ -295,7 +295,7 @@ client.once('ready', async () => {
         // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
         setTimeout(async () => {
             await sendStartupTestMessage();
-            await initializeData();
+            initializeData();
 			// Inside initializeData()
             
             // Check Discord Connection Status
