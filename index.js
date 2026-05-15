@@ -92,26 +92,28 @@ let sleeperStatsCache = {
     data: null,
     scoring: null,
     timestamp: 0,
-    year: "2025"
+    year: "2026"
 };
 
 async function getPlayerStats(sleeperId) {
     if (!sleeperId) return null;
     const now = Date.now();
-    const ONE_HOUR = 60 * 60 * 1000 * 24 *7;
+    const ONE_WEEK = 60 * 60 * 1000 * 24 * 7;
 
     try {
-        // Cache check
-        if (!sleeperStatsCache.data || (now - sleeperStatsCache.timestamp > ONE_HOUR)) {
+        // Force refresh if cache is empty or expired
+        if (!sleeperStatsCache.data || (now - sleeperStatsCache.timestamp > ONE_WEEK)) {
             const leagueId = process.env.SLEEPER_LEAGUE_ID;
             
-            // Try fetching 2026 first
-            let yearToFetch = "2026";
+            // Use the year defined in your cache object as the starting point
+            let yearToFetch = sleeperStatsCache.year || "2026"; 
+            console.log(`🏈 Attempting to fetch stats for ${yearToFetch}...`);
+            
             let resStats = await axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${yearToFetch}`);
             
-            // OFFSEASON LOGIC: If 2026 is empty (offseason), fetch 2025 instead
+            // If the preferred year is empty, fallback to 2025
             if (!resStats.data || Object.keys(resStats.data).length < 100) { 
-                console.log("🏈 2026 stats empty (Offseason). Falling back to 2025.");
+                console.log(`⚠️ ${yearToFetch} stats empty. Falling back to 2025.`);
                 yearToFetch = "2025";
                 resStats = await axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${yearToFetch}`);
             }
@@ -119,17 +121,18 @@ async function getPlayerStats(sleeperId) {
             const resLeague = await axios.get(`https://api.sleeper.app/v1/league/${leagueId}`);
             
             const filteredStats = {};
-			for (const [id, stats] of Object.entries(resStats.data)) {
-			    // Only keep players who have 'gp' (Games Played) or 'pts_ppr' (Points)
-			    // This removes thousands of empty entries and saves massive memory
-			    if (stats.gp > 0 || stats.pts_ppr > 0) {
-			        filteredStats[id] = stats;
-			    }
-			}
-			sleeperStatsCache.data = filteredStats;
+            for (const [id, stats] of Object.entries(resStats.data)) {
+                if (stats.gp > 0 || stats.pts_ppr > 0) {
+                    filteredStats[id] = stats;
+                }
+            }
+
+            sleeperStatsCache.data = filteredStats;
             sleeperStatsCache.scoring = resLeague.data.scoring_settings;
             sleeperStatsCache.timestamp = now;
             sleeperStatsCache.year = yearToFetch;
+            
+            console.log(`✅ Cache updated with ${Object.keys(filteredStats).length} players from ${yearToFetch}`);
         }
 
         const pStats = sleeperStatsCache.data[sleeperId];
