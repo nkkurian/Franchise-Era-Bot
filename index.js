@@ -327,6 +327,10 @@ async function initializeData() {
         console.log("📥 Loading Sleeper Team Map...");
         await updateTeamMap(); 
 
+		console.log("🚀 Pre-loading Sleeper Stats for the week...");
+        await getPlayerStats("1234");
+        console.log("🏁 BACKGROUND TASK: Sleeper Stats fully cached.");
+
          console.log("🔍 Starting Sleeper Poller...");
          await pollSleeper(); // Run once
          setInterval(pollSleeper, 60000); // Then every minute
@@ -749,11 +753,6 @@ process.on('uncaughtException', (err) => {
     console.error('🚫 Uncaught Exception:', err);
 });
 
-(async () => {
-    console.log("🚀 Pre-loading Sleeper Stats in background...");
-    await getPlayerStats("1234"); // Dummy call to fill the cache
-    console.log("🏁 BACKGROUND TASK: Sleeper Stats are fully loaded and cached for the week.");
-})();
 
 // --- ADD THIS DEBUG LISTENER TEMPORARILY ---
 client.on('debug', (info) => {
