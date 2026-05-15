@@ -577,38 +577,33 @@ if (interaction.customId.startsWith('vlt_fin_')) {
 
 // --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
-if (interaction.isChatInputCommand()) {
-        const command = client.commands.get(interaction.commandName);
-        if (!command) return;
-
-        // 1. Respond to Discord IMMEDIATELY
-        // Modals cannot be deferred, so we skip them
-        const skipDefer = ["trade-alert", "appeal"];
-        
-        if (!skipDefer.includes(interaction.commandName)) {
-            try {
-                // This MUST happen within 3 seconds
-                await interaction.deferReply(); 
-            } catch (error) {
-                console.error("❌ CRITICAL: Could not defer in time:", error);
-                return; // Stop execution because the interaction is dead
-            }
-        }
-
-        // 2. Now do the heavy lifting
-        try {
-            await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
-        } catch (error) {
-            console.error("Command Execution Error:", error);
-            const errorMsg = '❌ There was an error executing this command!';
-            
-            if (interaction.deferred) {
-                await interaction.editReply({ content: errorMsg });
-            } else if (!interaction.replied) {
-                await interaction.reply({ content: errorMsg, ephemeral: true });
-            }
-        }
-    }
+	if (interaction.isChatInputCommand()) {
+	    const command = client.commands.get(interaction.commandName);
+	    if (!command) return;
+	
+	    // 1. Define commands that show a Modal (Modals CANNOT be deferred)
+	    const isModalCommand = ["trade-alert", "appeal"].includes(interaction.commandName);
+	
+	    if (!isModalCommand) {
+	        try {
+	            // We use 'ephemeral: true' if you want the "Thinking..." to only be seen by the user
+	            await interaction.deferReply(); 
+	        } catch (error) {
+	            console.error("❌ Failed to defer:", error.message);
+	            return; // Exit if the interaction is already dead
+	        }
+	    }
+	
+	    // 2. Execute command
+	    try {
+	        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+	    } catch (error) {
+	        console.error("Command Execution Error:", error);
+	        if (interaction.deferred) {
+	            await interaction.editReply({ content: '❌ An error occurred while processing this command.' });
+	        }
+	    }
+	}
 });
 
 const SLEEPER_LEAGUE_ID = '1312556169230815232';
@@ -757,7 +752,7 @@ process.on('uncaughtException', (err) => {
 (async () => {
     console.log("🚀 Pre-loading Sleeper Stats in background...");
     await getPlayerStats("1234"); // Dummy call to fill the cache
-    console.log("✅ Background Stats Cache Primed.");
+    console.log("🏁 BACKGROUND TASK: Sleeper Stats are fully loaded and cached for the week.");
 })();
 
 // --- ADD THIS DEBUG LISTENER TEMPORARILY ---
