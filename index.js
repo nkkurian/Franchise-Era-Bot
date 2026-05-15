@@ -92,7 +92,7 @@ let sleeperStatsCache = {
     data: null,
     scoring: null,
     timestamp: 0,
-    year: "2026"
+    year: "2025"
 };
 
 async function getPlayerStats(sleeperId) {
