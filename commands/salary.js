@@ -34,8 +34,10 @@ module.exports = {
                 // const stats = sleeperId
                 //     ? await getPlayerStats(sleeperId)
                 //     : null;
+                const stats = null;
                 const displayYear = stats?.displayYear || "2025";
                 let statsField = `No live stats available for ${displayYear}.`;
+                
 
                 if (stats) {
                     let s = [];
