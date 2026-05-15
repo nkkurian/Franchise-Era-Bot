@@ -188,8 +188,8 @@ async function getSheetData() {
   }
 
   isFetching = true; 
-	const timerLabel = `⏱️ Sheet Fetch Total-${Date.now()}`;  console.time(timerLabel);
-	console.time(timerLabel);
+	const timerLabel = `⏱️ Sheet Fetch Total-${Date.now()}`;
+	console.time(timerLabel); 
   
   try {
     await doc.loadInfo();
