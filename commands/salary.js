@@ -23,17 +23,21 @@ module.exports = {
                 playerRow,
                 isUpdate = false,
             ) => {
+                console.log("⏱️ Starting sendSalaryResponse for:", playerRow._rawData[1]);
                 const pName = playerRow._rawData[1];
                 const pPos = playerRow._rawData[2];
                 const capHit = playerRow._rawData[6] || "N/A";
+                console.log("🔍 Looking up Sleeper ID...");
 
                 // 1. Find Sleeper ID from idMap
                 // 1. FAST LOOKUP: Instant mapping from the Map object
                 const sleeperId = idMap.get(pName.toLowerCase().trim());
+                console.log("🏈 Fetching Sleeper Stats for ID:", sleeperId);
                 // 2. Fetch Stats if we have an ID
                 const stats = sleeperId
                     ? await getPlayerStats(sleeperId)
                     : null;
+                console.log("✅ Stats fetch complete.");
                 const displayYear = stats?.displayYear || "2025";
                 let statsField = `No live stats available for ${displayYear}.`;
 
@@ -169,6 +173,7 @@ module.exports = {
                     embeds: [embed],
                     components: components,
                 };
+                console.log("📤 Attempting to send response to Discord...");
                 return isUpdate
                     ? await targetInteraction.update(payload)
                     : await targetInteraction.editReply(payload);
