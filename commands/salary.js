@@ -9,17 +9,14 @@ module.exports = {
 
     async execute(interaction, getSheetData, getPlayerStats) {
         //await interaction.deferReply();
-      const input = interaction.options.getString("player").toLowerCase();
-            const { players, logs, idMap, doc } = await getSheetData();
-            const playerName = interaction.options.getString('player').toLowerCase().trim();
-            const matches = players.filter((r) =>
-                r._rawData[1]?.toLowerCase().includes(input),
+      const input = interaction.options.getString("player").toLowerCase().trim();
+        const { players, logs, idMap } = await getSheetData();
+        const matches = players.filter((r) =>
+                r._rawData[1]?.toLowerCase().includes(input)
             );
-
-            if (matches.length === 0)
-                return await interaction.editReply(
-                    `❌ Player **${input}** not found.`,
-                );
+        if (matches.length === 0) {
+        return await interaction.editReply(`❌ Player **${input}** not found.`);
+    }
 
             const sendSalaryResponse = async (
                 targetInteraction,
