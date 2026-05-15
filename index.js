@@ -170,16 +170,27 @@ let isFirstRun = true; // NEW: Controls the one-time historical post
 // Replace 'YOUR_SHEET_ID' with the long string from your spreadsheet URL
 
 let cachedIdMap = new Map(); // Store as a Map for speed
+let isFetching = false; // Add this outside the function
 
 async function getSheetData() {
   const now = Date.now();
+  
+  // 1. Return cache if fresh
   if (now - lastFetchTime < CACHE_LIFESPAN && cachedPlayers.length > 0) {
     return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
   }
-  console.time("⏱️ Sheet Fetch Total"); // Start timer
+
+  // 2. If already fetching, wait a tiny bit or return old cache to avoid overlapping
+  if (isFetching) {
+      console.log("⏳ [DEBUG]: Fetch already in progress, serving stale cache to prevent overlap.");
+      return { players: cachedPlayers, logs: cachedLogs, idMap: cachedIdMap, doc: doc };
+  }
+
+  isFetching = true; // Set the lock
+  console.time("⏱️ Sheet Fetch Total"); 
+  
   try {
     await doc.loadInfo();
-	  console.log("✅ Doc Info Loaded");
     const [pRows, tRows, idRows] = await Promise.all([
       doc.sheetsByTitle['PlayerList'].getRows(),
       doc.sheetsByTitle['Transaction Log'].getRows(),
@@ -203,6 +214,9 @@ async function getSheetData() {
   } catch (err) {
     console.error("❌ Sheet Fetch Error:", err);
     return { players: [], logs: [], idMap: new Map() };
+  } finally {
+    isFetching = false; // RELEASE the lock
+    console.timeEnd("⏱️ Sheet Fetch Total");
   }
 }
 
@@ -329,28 +343,17 @@ setInterval(async () => {
 
 async function initializeData() {
     try {
-        // 1. Load Stats FIRST (so we know it works)
-        console.log("🚀 Pre-loading Sleeper Stats for the week...");
-        try {
-            getPlayerStats("1234").catch(e => console.error("Stats background load error", e));
-            console.log("🏁 BACKGROUND TASK: Sleeper Stats fully cached.");
-        } catch (e) {
-            console.error("❌ Stats Pre-load Failed:", e.message);
-        }
+        console.log("🚀 Pre-loading Sleeper Stats...");
+        getPlayerStats("1234").catch(e => console.error("Stats background load error", e));
 
-        // 2. Load Sheet Data
-        console.log("📥 Pre-loading Sheet Data...");
-        await getSheetData(); 
-        console.log("✅ Sheet Data Pre-loaded.");
+        // REMOVE the direct getSheetData() call here. 
+        // Let pollSleeper handle the first load.
 
-        // 3. Load Team Map
         console.log("📥 Loading Sleeper Team Map...");
         await updateTeamMap(); 
-        console.log("✅ Team Map Loaded.");
 
-        // 4. Start Poller
         console.log("🔍 Starting Sleeper Poller...");
-        await pollSleeper(); 
+        await pollSleeper(); // This will perform the first getSheetData()
         setInterval(pollSleeper, 60000); 
 
     } catch (err) {
@@ -428,32 +431,41 @@ client.on('interactionCreate', async (interaction) => {
 	// --- SLASH COMMANDS START HERE ---
 	// index.js - Update this section specifically
 	if (interaction.isChatInputCommand()) {
-	    const command = client.commands.get(interaction.commandName);
-	    if (!command) return;
-	
-	    // 1. Define commands that show a Modal (Modals CANNOT be deferred)
-	    const isModalCommand = ["trade-alert", "appeal"].includes(interaction.commandName);
-	
-	    if (!isModalCommand) {
-	        try {
-	            // We use 'ephemeral: true' if you want the "Thinking..." to only be seen by the user
-	            await interaction.deferReply(); 
-	        } catch (error) {
-	            console.error("❌ Failed to defer:", error.message);
-	            return; // Exit if the interaction is already dead
-	        }
-	    }
-	
-	    // 2. Execute command
-	    try {
-	        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
-	    } catch (error) {
-	        console.error("Command Execution Error:", error);
-	        if (interaction.deferred) {
-	            await interaction.editReply({ content: '❌ An error occurred while processing this command.' });
-	        }
-	    }
-	}
+    const startTime = Date.now(); // ⏱️ Start the clock immediately
+    const command = client.commands.get(interaction.commandName);
+    
+    if (!command) return;
+
+    const isModalCommand = ["trade-alert", "appeal"].includes(interaction.commandName);
+
+    if (!isModalCommand) {
+        try {
+            console.log(`⏳ [DEBUG]: Received /${interaction.commandName}. Attempting to defer...`);
+            
+            await interaction.deferReply(); 
+            
+            const elapsed = Date.now() - startTime;
+            console.log(`✅ [DEBUG]: Deferred /${interaction.commandName} in ${elapsed}ms`);
+        } catch (error) {
+            const elapsed = Date.now() - startTime;
+            console.error(`❌ Failed to defer /${interaction.commandName} after ${elapsed}ms:`, error.message);
+            
+            if (elapsed > 3000) {
+                console.warn("⚠️ DIAGNOSIS: The bot's brain was busy for over 3 seconds. The Sheet or Sleeper fetch blocked this command.");
+            }
+            return; 
+        }
+    }
+
+    try {
+        await command.execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap);
+    } catch (error) {
+        console.error("Command Execution Error:", error);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: '❌ An error occurred while processing this command.' });
+        }
+    }
+}
   
   if (interaction.isModalSubmit()) {
 	if (interaction.customId === 'vault_player_search_modal') return await vault.showActionBranch(interaction);
