@@ -95,7 +95,7 @@ module.exports = {
                     if (s.length > 0) statsField = s.join("\n");
                 }
 
-                3. Build the Embed (Your Preferred Format)
+                //3. Build the Embed (Your Preferred Format)
                 const embed = new EmbedBuilder()
                 .setTitle(`🏈 ${pName} (${pPos})`)
                 .setColor(0x3498db)
