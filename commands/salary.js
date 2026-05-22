@@ -42,6 +42,19 @@ module.exports = {
                     { name: "💸 Cap Hit", value: capHit, inline: false }
                     // Note: I removed the Performance field here so it stays hidden
                 );
+
+                const structureVal = playerRow._rawData[10];
+            if (
+                structureVal &&
+                structureVal.toLowerCase() !== "standard" &&
+                structureVal.trim() !== ""
+            ) {
+                embed.addFields({
+                    name: "📜 Structure",
+                    value: structureVal,
+                    inline: false,
+                });
+            }
         
             // Keep the headshot logic since sleeperId still exists
             if (sleeperId) {
