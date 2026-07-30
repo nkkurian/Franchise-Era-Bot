@@ -1177,7 +1177,6 @@ async function pollAllLeagues() {
     const { data: configs, error } = await supabase
         .from("league_configs")
         .select("*")
-        .eq("audit_enabled", true);
 
     if (error) {
         console.error("🚨 Supabase Fetch Error:", error.message);
