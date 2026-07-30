@@ -1194,7 +1194,7 @@ async function pollAllLeagues() {
         try {
             const guild = client.guilds.cache.get(config.guild_id);
             if (!guild) {
-                console.warn(`⏩ Skipping League: Bot is not connected to Guild ID ${config.guild_id}`);
+                console.warn(`⏩ Skipping League (Sleeper ID: ${config.sleeper_id}): Bot is not in Guild ${config.guild_id}`);
                 continue;
             }
 
