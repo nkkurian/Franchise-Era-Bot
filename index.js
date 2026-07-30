@@ -1285,7 +1285,7 @@ setInterval(pollAllLeagues, 60000); // Check all leagues every minute
 
 //Added this
 async function getTeamMap(sleeperId) {
-    if (!sleeperLeagueId) {
+    if (!sleeperId) {
         console.warn("⚠️ [getTeamMap] Skipped: No Sleeper League ID configured.");
         return {};
     }
@@ -1294,20 +1294,28 @@ async function getTeamMap(sleeperId) {
             fetch(`https://api.sleeper.app/v1/league/${sleeperId}/users`),
             fetch(`https://api.sleeper.app/v1/league/${sleeperId}/rosters`),
         ]);
+
+        if (!uRes.ok || !rRes.ok) {
+            console.warn(`⚠️ [getTeamMap] Failed to fetch users or rosters for league ${sleeperId}`);
+            return {};
+        }
+
         const users = await uRes.json();
         const rosters = await rRes.json();
 
-        let map = {}; // Create a local map
-        rosters.forEach((r) => {
-            const user = users.find((u) => u.user_id === r.owner_id);
-            map[r.roster_id] =
-                user?.metadata?.team_name ||
-                user?.display_name ||
-                `Team ${r.roster_id}`;
-        });
-        return map; // Return it to the loop
+        let map = {};
+        if (Array.isArray(rosters) && Array.isArray(users)) {
+            rosters.forEach((r) => {
+                const user = users.find((u) => u.user_id === r.owner_id);
+                map[r.roster_id] =
+                    user?.metadata?.team_name ||
+                    user?.display_name ||
+                    `Team ${r.roster_id}`;
+            });
+        }
+        return map;
     } catch (e) {
-        console.error("Team Map Error:", e);
+        console.error("Team Map Error:", e.message);
         return {};
     }
 }
