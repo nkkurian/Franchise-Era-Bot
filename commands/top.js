@@ -20,72 +20,103 @@ module.exports = {
                     { name: 'Kicker', value: 'K' }
                 )),
 
-    async execute(interaction, getSheetData) {
-		//await interaction.deferReply();
-		const { players } = await getSheetData();
-      const count = interaction.options.getInteger('count') || 10; 
-	  const posFilter = interaction.options.getString('position') || 'ALL';
-	
-	  let filteredPlayers = players.filter(p => p._rawData[1]); 
-	  
-	  if (posFilter !== 'ALL') {
-	    filteredPlayers = filteredPlayers.filter(p => {
-	      const playerPos = p._rawData[2]?.toUpperCase();
-	      
-	      // Handle Defensive Line grouping
-	      if (posFilter === 'DL') {
-	        return ['DL', 'DE', 'DT'].includes(playerPos);
-	      }
-	      
-	      // Handle Defensive Back grouping
-	      if (posFilter === 'DB') {
-	        return ['DB', 'CB', 'S'].includes(playerPos);
-	      }
-	      
-	      // Standard exact match for QB, RB, WR, TE, LB, K
-	      return playerPos === posFilter;
-	    });
-	  }
-	
-	  const leaderboard = filteredPlayers
-	    .map(p => {
-	      const salaryStr = p._rawData[4] || "$0.00";
-	      let salaryNum = parseFloat(salaryStr.replace(/[$,]/g, '')) || 0;
-	      if (salaryStr.toLowerCase().includes('m') && salaryNum < 1000) {
-	        salaryNum *= 1000000;
-	      }
-	
-	      return {
-	        team: p._rawData[0] || "FA",
-	        name: p._rawData[1],
-	        pos: p._rawData[2],
-	        salaryNum: salaryNum,
-	        salaryStr: salaryStr
-	      };
-	    })
-	    .sort((a, b) => b.salaryNum - a.salaryNum)
-	    .slice(0, count);
-	
-	  if (leaderboard.length === 0) {
-	    return await interaction.editReply(`❌ No players found for: **${posFilter}**.`);
-	  }
-	
-	  const listText = leaderboard.map((p, i) => 
-	    `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
-	  ).join('\n');
-	
-	  // Dynamic Title logic for the embed
-	  let displayPos = posFilter;
-	  if (posFilter === 'DL') displayPos = 'DL/DE/DT';
-	  if (posFilter === 'DB') displayPos = 'DB/CB/S';
-	  if (posFilter === 'ALL') displayPos = 'Overall';
-	
-	  const topEmbed = new EmbedBuilder()
-	    .setTitle(`💰 League Top ${leaderboard.length} ${displayPos} Salaries`)
-	    .setColor(0x2ecc71)
-	    .setDescription(listText)
-	    .setTimestamp();
-	
-	  return await interaction.editReply({ embeds: [topEmbed] });
-	},
+    async execute(interaction, supabase, config, getSheetData, getPlayerStats, getOwnerIdMap) {
+        await interaction.deferReply();
+  
+        // Pass the server ID so it fetches the correct spreadsheet
+        const { players } = await getSheetData(interaction.guild.id);
+        const count = interaction.options.getInteger('count') || 10; 
+        const posFilter = interaction.options.getString('position') || 'ALL';
+  
+        // Grab your Supabase column mapping configuration
+        const mapping = config?.column_mapping || config?.settings || config;
+
+        let filteredPlayers = players.filter(p => {
+            if (!p) return false;
+            const pName = p.name || p.playerName || p.rowRef?.get(mapping?.id_player_col || "Player Name");
+            return !!pName;
+        });
+  
+        if (posFilter !== 'ALL') {
+            filteredPlayers = filteredPlayers.filter(p => {
+                // Dynamically grab position from object properties or the mapped sheet column
+                const playerPos = (p.position || p.pos || p.rowRef?.get(mapping?.position_col || "Position"))?.toUpperCase().trim();
+
+                // Handle Defensive Line grouping
+                if (posFilter === 'DL') {
+                    return ['DL', 'DE', 'DT'].includes(playerPos);
+                }
+
+                // Handle Defensive Back grouping
+                if (posFilter === 'DB') {
+                    return ['DB', 'CB', 'S'].includes(playerPos);
+                }
+
+                // Standard exact match for QB, RB, WR, TE, OL, LB, K
+                return playerPos === posFilter;
+            });
+        }
+  
+        const leaderboard = filteredPlayers
+        .map(p => {
+            // Extract values dynamically using Supabase mappings or clean properties
+            const rawSalary = p.aav || p.salary || p.capHit || p.rowRef?.get(mapping?.salary_col || "Salary") || "$0.00";
+            const pName = p.name || p.playerName || p.rowRef?.get(mapping?.id_player_col || "Player Name");
+            const pPos = p.position || p.pos || p.rowRef?.get(mapping?.position_col || "Position") || "N/A";
+            const pTeam = p.team || p.teamAffiliation || p.rowRef?.get(mapping?.team_col || "Team") || "FA";
+
+            // Parse currency string safely into a mathematical number for sorting
+            // Safe mathematical parsing of raw sheet values
+            let salaryNum = 0;
+            const cleanSalaryStr = String(rawSalary).toLowerCase().replace(/[$, ]/g, '');
+
+            if (typeof rawSalary === 'number') {
+                salaryNum = rawSalary;
+            } else if (cleanSalaryStr.includes('m')) {
+                // If it's formatted as "$30.5M", parse the float and convert to millions
+                salaryNum = (parseFloat(cleanSalaryStr.replace('m', '')) || 0) * 1000000;
+            } else {
+                // Standard raw digit formatting (e.g., "30500000")
+                salaryNum = parseFloat(cleanSalaryStr) || 0;
+            }
+
+            // Standardize output display formatting for the leaderboard text
+            const finalSalaryStr = salaryNum >= 1000000 
+                ? `$${(salaryNum / 1000000).toFixed(2)}M` 
+                : `$${salaryNum.toLocaleString()}`;
+
+            // Clean up the output string display format
+            return {
+            team: pTeam,
+            name: pName,
+            pos: pPos,
+            salaryNum: salaryNum,
+            salaryStr: finalSalaryStr
+            };
+        })
+        .sort((a, b) => b.salaryNum - a.salaryNum)
+        .slice(0, count);
+  
+      if (leaderboard.length === 0) {
+        return await interaction.editReply(`❌ No players found for: **${posFilter}**.`);
+      }
+  
+      const listText = leaderboard.map((p, i) => 
+        `${i + 1}. **${p.name}** (${p.pos}) - ${p.team}: **${p.salaryStr}**`
+      ).join('\n');
+  
+      // Dynamic Title logic for the embed
+      let displayPos = posFilter;
+      if (posFilter === 'DL') displayPos = 'DL/DE/DT';
+      if (posFilter === 'DB') displayPos = 'DB/CB/S';
+      if (posFilter === 'ALL') displayPos = 'Overall';
+  
+      const topEmbed = new EmbedBuilder()
+        .setTitle(`💰 League Top ${leaderboard.length} ${displayPos} Salaries`)
+        .setColor(0x2ecc71)
+        .setDescription(listText)
+        .setTimestamp();
+  
+      return await interaction.editReply({ embeds: [topEmbed] });
+    },
 }; 

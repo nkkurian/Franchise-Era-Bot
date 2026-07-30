@@ -13,7 +13,7 @@ module.exports = {
         .setDescription("Post a trade block or buying alert")
         .addStringOption((o) =>
             o
-                .setName("action") // This creates the dropdown
+                .setName("action")
                 .setDescription("Are you trading away or looking for players?")
                 .setRequired(true)
                 .addChoices(
@@ -28,10 +28,17 @@ module.exports = {
                 ),
         ),
 
-    async execute(interaction) {
+    async execute(interaction, supabase, config, getSheetData, getPlayerStats, getOwnerIdMap) {
+        // 🛠️ Grab the pre-existing supabase instance from the Discord client context
+        //const supabase = interaction.client.supabase; 
+
+        if (!supabase) {
+            console.error("❌ Supabase client is missing on interaction.client");
+            return;
+        }
+
         const actionType = interaction.options.getString("action");
 
-        // This MUST happen immediately (within 3 seconds)
         const modal = new ModalBuilder()
             .setCustomId(`trade_modal_${interaction.id}`)
             .setTitle(
@@ -65,7 +72,6 @@ module.exports = {
 
         await interaction.showModal(modal);
 
-        // Collector to handle the submission
         try {
             const submission = await interaction.awaitModalSubmit({
                 filter: (i) => i.customId === `trade_modal_${interaction.id}`,
@@ -74,15 +80,38 @@ module.exports = {
 
             await submission.deferReply({ ephemeral: true });
 
-            const assets = submission.fields.getTextInputValue("trade_assets");
-            const notes =
-                submission.fields.getTextInputValue("trade_notes") ||
-                "No extra notes.";
-            const logChannelId = "1489845470321836032";
-            const roleId = "1455969357334188093";
+            // Fetch dynamic channels and roles using the shared DB client
+            const { data: config, error } = await supabase
+                .from("league_configs")
+                .select("trade_channel_id, trade_role_id")
+                .eq("guild_id", interaction.guild.id)
+                .single();
 
-            const logChannel =
-                await interaction.client.channels.fetch(logChannelId);
+            if (error || !config) {
+                console.error("❌ Database Lookup Error for Trade Config:", error?.message);
+                return await submission.editReply(
+                    "❌ **Configuration Missing.** This server hasn't set up its trade channels or roles via the configuration manager yet."
+                );
+            }
+
+            const tradeChannelId = config.trade_channel_id;
+            const tradeRoleId = config.trade_role_id;
+
+            if (!tradeChannelId) {
+                return await submission.editReply(
+                    "❌ **Configuration Missing.** No trade log channel assigned in the server configuration."
+                );
+            }
+
+            const targetChannel = await interaction.client.channels.fetch(tradeChannelId).catch(() => null);
+            if (!targetChannel) {
+                return await submission.editReply(
+                    "❌ **Channel Not Found.** The configured trade channel could not be found or read by the bot."
+                );
+            }
+
+            const assets = submission.fields.getTextInputValue("trade_assets");
+            const notes = submission.fields.getTextInputValue("trade_notes") || "No extra notes.";
 
             const alertEmbed = new EmbedBuilder()
                 .setTitle(`📢 ${actionType}: ${interaction.user.username}`)
@@ -98,14 +127,18 @@ module.exports = {
                 .setTimestamp()
                 .setFooter({ text: "DM this user to negotiate!" });
 
-            await logChannel.send({
-                content: `🔔 <@&${roleId}> **- New Trade Alert!**`,
+            const pingContent = tradeRoleId 
+                ? `🔔 <@&${tradeRoleId}> **- New Trade Alert!**` 
+                : `🔔 **New Trade Alert!**`;
+
+            await targetChannel.send({
+                content: pingContent,
                 embeds: [alertEmbed],
             });
 
-            await submission.editReply("✅ Your trade alert has been posted!");
+            await submission.editReply("✅ Your trade alert has been successfully posted!");
         } catch (err) {
-            console.error(err);
+            console.error("❌ Trade Alert Execution Error:", err);
         }
     },
 };

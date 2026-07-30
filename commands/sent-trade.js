@@ -16,109 +16,112 @@ module.exports = {
                 .setDescription("Optional: Details about the trade"),
         ),
 
-    async execute(interaction, getSheetData, getPlayerStats, getOwnerIdMap) {
+        // Add 'config' to your arguments here
+        async execute(interaction, supabase, config, getSheetData, getPlayerStats) {
         // Keeping it ephemeral so only the sender sees the confirmation
-        try {
-            // ACKNOWLEDGE IMMEDIATELY
-            //await interaction.deferReply({ ephemeral: true });
-        } catch (e) {
-            console.error("Failed to defer interaction:", e);
-            return;
-        }
+                await interaction.deferReply({ ephemeral: true });
 
-        try {
-            const channelId = "1489845470321836032";
-            const logChannel =
-                await interaction.client.channels.fetch(channelId);
+                try {
+                    if (!supabase) {
+                        return await interaction.editReply(
+                            "❌ **System Error.** Database client is uninitialized in this context."
+                        );
+                    }
 
-            if (!logChannel) {
-                return await interaction.editReply(
-                    "❌ Error: Could not find the trade log channel.",
-                );
-            }
+                    // 🛠️ FIX: Restored the query to pull down dbConfig from Supabase
+                    const { data: dbConfig, error } = await supabase
+                        .from("league_configs")
+                        .select("trade_channel_id")
+                        .eq("guild_id", interaction.guild.id)
+                        .single();
 
-            const teamInput = interaction.options.getString("team");
-            const notes =
-                interaction.options.getString("notes") || "No notes provided.";
+                    // Handle scenario where configuration doesn't exist yet
+                    if (error || !dbConfig || !dbConfig.trade_channel_id) {
+                        console.error("❌ Database Lookup Error for Sent-Trade Config:", error?.message);
+                        return await interaction.editReply(
+                            "❌ **Configuration Missing.** This server hasn't set up its trade alerts log channel yet via the configuration manager."
+                        );
+                    }
 
-            // --- OWNER LOOKUP LOGIC ---
-            let ownerPing = "";
-            let teamDisplayName = teamInput;
-
-            try {
-                const rows = await getOwnerIdMap();
-                const ownerRow = rows.find(
-                    (r) =>
-                        r._rawData[0] &&
-                        r._rawData[0]
-                            .toLowerCase()
-                            .includes(teamInput.toLowerCase()),
-                );
-
-                if (ownerRow) {
-                    teamDisplayName = ownerRow._rawData[0]; // Proper name from sheet
-                    const rawIds = ownerRow._rawData[1]; // Column B (Owner IDs)
-
-                    if (rawIds) {
-                        // 1. Split by comma if multiple IDs exist
-                        // 2. Trim whitespace
-                        // 3. Format as Role Mentions <@&ID>
-                        ownerPing = rawIds.split(',')
-                            .map(id => `<@${id.trim()}>`)
-                            .join(' ');
+                    const tradeChannelId = dbConfig.trade_channel_id;
+                    const logChannel = await interaction.client.channels.fetch(tradeChannelId).catch(() => null);
+    
+                if (!logChannel) {
+                    return await interaction.editReply(
+                        "❌ Error: Could not find the trade log channel.",
+                    );
+                }
+    
+                const teamInput = interaction.options.getString("team");
+                const notes =
+                    interaction.options.getString("notes") || "No notes provided.";
+    
+                // --- DYNAMIC DATABASE ROLE LOOKUP LOGIC ---
+                let ownerPing = "";
+                let teamDisplayName = teamInput;
+    
+                if (config?.sleeper_team_roles) {
+                    // Loop through the database roles config to find the team name match
+                    for (const [userId, data] of Object.entries(config.sleeper_team_roles)) {
+                        if (data.teamName && data.teamName.toLowerCase().includes(teamInput.toLowerCase())) {
+                            teamDisplayName = data.teamName; // Set formal casing name
+    
+                            // If they have a synced Discord role mapped to this team, use it to ping!
+                            if (data.roleId) {
+                                ownerPing = `<@&${data.roleId}>`; // 👈 Role ping syntax (<@&ID>)
+                            }
+                            break;
+                        }
                     }
                 }
-            } catch (sheetError) {
-                console.error("Sheet Lookup Error:", sheetError);
-            }
-
-            // --- CREATE THE EMBED ---
-            const logEmbed = new EmbedBuilder()
-                .setTitle("🚨 New Trade Offer Sent")
-                .setColor(0xffa500) // Orange
-                .addFields(
-                    {
-                        name: "From",
-                        value: `${interaction.user}`,
-                        inline: true,
-                    },
-                    {
-                        name: "To Team",
-                        value: `**${teamDisplayName}**`,
-                        inline: true,
-                    },
-                    { name: "Notes", value: notes },
-                )
-                .setTimestamp()
-                .setFooter({ text: "Franchise Pro Trade Alerts" });
-
-            // --- SEND TO CHANNEL ---
-            // If we found an owner, we include the ping in the message content
-            await logChannel.send({
-                content: ownerPing
-                    ? `🔔 ${ownerPing} - You have a new trade offer!`
-                    : `🔔 **Trade sent to ${teamInput}** (Owner ID not found)`,
-                embeds: [logEmbed],
-            });
-
-            // --- FINAL RESPONSE ---
-            await interaction.editReply(
-                ownerPing
-                    ? `✅ Alert sent! **${teamDisplayName}** (${ownerPing}) has been notified.`
-                    : `✅ Alert sent for **${teamInput}**, but I couldn't find that team in the ID sheet to ping them.`,
-            );
-        } catch (error) {
-            console.error("Sent-Trade Error:", error);
-
-            if (error.code === 50001) {
-                return await interaction.editReply(
-                    "❌ Bot Error: I don't have permission to access the trade-log channel.",
+    
+                // --- CREATE THE EMBED ---
+                const logEmbed = new EmbedBuilder()
+                    .setTitle("🚨 New Trade Offer Sent")
+                    .setColor(0xffa500) // Orange
+                    .addFields(
+                        {
+                            name: "From",
+                            value: `${interaction.user}`,
+                            inline: true,
+                        },
+                        {
+                            name: "To Team",
+                            value: `**${teamDisplayName}**`,
+                            inline: true,
+                        },
+                        { name: "Notes", value: notes },
+                    )
+                    .setTimestamp()
+                    .setFooter({ text: "Franchise Pro Trade Alerts" });
+    
+                // --- SEND TO CHANNEL ---
+                // If we found an owner, we include the ping in the message content
+                await logChannel.send({
+                    content: ownerPing
+                        ? `🔔 ${ownerPing} - You have a new trade offer!`
+                        : `🔔 **Trade sent to ${teamInput}** (Owner ID not found)`,
+                    embeds: [logEmbed],
+                });
+    
+                // --- FINAL RESPONSE ---
+                await interaction.editReply(
+                    ownerPing
+                        ? `✅ Alert sent! **${teamDisplayName}** has been notified.`
+                        : `✅ Alert sent for **${teamInput}**, but I couldn't find a configured Discord role matching that team to ping. Please let an admin know.`,
+                );
+            } catch (error) {
+                console.error("Sent-Trade Error:", error);
+    
+                if (error.code === 50001) {
+                    return await interaction.editReply(
+                        "❌ Bot Error: I don't have permission to access the trade-log channel.",
+                    );
+                }
+    
+                await interaction.editReply(
+                    "❌ Something went wrong while processing the trade alert.",
                 );
             }
-
-            await interaction.editReply(
-                "❌ Something went wrong while processing the trade alert.",
-            );
-        }
-    },
+        },
 };
