@@ -630,32 +630,42 @@ module.exports = {
             return await interaction.followUp({ content: "❌ Please configure a valid **League ID** first under Sleeper Settings.", ephemeral: true });
         }
 
-        let currentRoles = config?.sleeper_team_roles || {};
+        const storedRoles = config?.sleeper_team_roles || {};
+let currentRoles = {};
 
-        // 🔄 SELF-HEALING HOOK: If database map is empty, pull raw records live from Sleeper API
-        if (Object.keys(currentRoles).length === 0) {
-            try {
-                const [usersRes, rostersRes] = await Promise.all([
-                    fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/users`),
-                    fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/rosters`)
-                ]);
-                const sleeperUsers = await usersRes.json();
-                const sleeperRosters = await rostersRes.json();
+// Always fetch live rosters/users from Sleeper to get current team names
+if (config?.sleeper_id) {
+    try {
+        const [usersRes, rostersRes] = await Promise.all([
+            fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/users`),
+            fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/rosters`)
+        ]);
+        const sleeperUsers = await usersRes.json();
+        const sleeperRosters = await rostersRes.json();
 
-                if (sleeperUsers && sleeperRosters) {
-                    const primaryOwnerIds = new Set(sleeperRosters.map(r => r.owner_id).filter(Boolean));
-                    const primaryUsers = sleeperUsers.filter(u => primaryOwnerIds.has(u.user_id));
+        if (sleeperUsers && sleeperRosters) {
+            const primaryOwnerIds = new Set(sleeperRosters.map(r => r.owner_id).filter(Boolean));
+            const primaryUsers = sleeperUsers.filter(u => primaryOwnerIds.has(u.user_id));
 
-                    primaryUsers.forEach(user => {
-                        const username = user.display_name || "Unknown Manager";
-                        const officialTeamName = user.metadata?.team_name || `${username}'s Team`;
-                        currentRoles[user.user_id] = { teamName: officialTeamName, roleId: null, roleName: null };
-                    });
-                }
-            } catch (apiErr) {
-                console.error("🚨 Background API Fetch failed:", apiErr);
-            }
+            primaryUsers.forEach(user => {
+                const username = user.display_name || "Unknown Manager";
+                const officialTeamName = user.metadata?.team_name || `${username}'s Team`;
+                
+                // Keep the existing mapped roleId/roleName if it already exists in Supabase
+                const existing = storedRoles[user.user_id] || {};
+
+                currentRoles[user.user_id] = {
+                    teamName: officialTeamName,
+                    roleId: existing.roleId || null,
+                    roleName: existing.roleName || null
+                };
+            });
         }
+    } catch (apiErr) {
+        console.error("🚨 Background API Fetch failed, falling back to cached DB:", apiErr);
+        currentRoles = storedRoles; // Fallback to DB if Sleeper API fails
+    }
+    }   
 
         // 3. Build formatting stacks for the Select Menu and the Overview Embed
         const selectMenuOptions = [];

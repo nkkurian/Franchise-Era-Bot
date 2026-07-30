@@ -602,21 +602,32 @@ client.on("interactionCreate", async (interaction) => {
             "setup_confirm_save_roles",
             "setup_select_admin_role",
             "setup_log_channel",
-            "setup_trade_channel", // 🛠️ FIX: Added to skip the router interception
-            "setup_trade_role", // 🛠️ FIX: Added to skip the router interception
-            "setup_appeals_votes_btn", // 🛠️ BYPASS ADDED
-            "setup_appeals_votes_modal", // 🛠️ BYPASS ADDED
+            "setup_trade_channel", 
+            "setup_trade_role", 
+            "setup_appeals_votes_btn", 
+            "setup_appeals_votes_modal", 
             "setup_appeals_channel",
-            "setup_vault_config_btn",   // ✨ BYPASS ADDED: Vault Setup Button
+            "setup_vault_config_btn",   
             "setup_select_audit_ping_role",
             "setup_vault_pass_modal",
         ].includes(interaction.customId) &&
-        !interaction.customId.startsWith("nav_") &&
-        !interaction.customId.includes("roles_page_");
+    !interaction.customId.startsWith("setup_sync_team_roles") && // 🛠️ FIX: Dynamic pagination bypass (catches setup_sync_team_roles_page_X)
+    !interaction.customId.startsWith("nav_") &&
+    !interaction.customId.includes("roles_page_");
 
-    if (isSetupComponent) {
-        return await setupRouter.handleMenus(interaction, supabase);
-    }
+if (isSetupComponent) {
+    return await setupRouter.handleMenus(interaction, supabase);
+}
+
+// 🎭 ROUTE ROLE SYNCHRONIZATION BUTTONS TO setupManager
+if (interaction.customId && interaction.customId.startsWith("setup_sync_team_roles")) {
+    return await setupManager.syncSleeperTeamRoles(interaction, supabase);
+}
+
+if (interaction.customId === "setup_confirm_save_roles") {
+    return await setupManager.handleConfirmSaveRoles(interaction, supabase);
+}
+
 
     // 🔔 HANDLE TRADE ROLE DROPDOWN SUBMISSION - PLACED BEFORE THE UNIVERSAL FILTER
     if (
