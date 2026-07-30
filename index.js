@@ -1194,41 +1194,53 @@ async function pollAllLeagues() {
     for (const config of configs) {
         try {
             const guild = client.guilds.cache.get(config.guild_id);
-            if (!guild) continue;
+            if (!guild) {
+                console.warn(`⏩ Skipping League: Bot is not connected to Guild ID ${config.guild_id}`);
+                continue;
+            }
+
+            if (!config.sleeper_id) {
+                console.warn(`⏩ Skipping Guild ${config.guild_id}: Missing sleeper_id in config.`);
+                continue;
+            }
+
+            console.log(`📡 Fetching data for Sleeper League ${config.sleeper_id} (Week ${nflWeek})...`);
             // 2. Fetch data specific to THIS league
             // We need the sheet data to know who the players are
-            const { players, idMap, doc } = await getSheetData(config.guild_id);
-
-            // We need the team map to know which Roster ID belongs to which Team Name
+            const { players, doc } = await getSheetData(config.guild_id);
             const teamMap = await getTeamMap(config.sleeper_id);
 
-            // 3. Fetch Sleeper transactions (Using Week 1 for 2026 Off-season/Early Season)
+            // Fetch transactions for the calculated NFL week
             const res = await fetch(
-                `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${nflWeek}`,
+                `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${nflWeek}`
             );
 
             if (!res.ok) {
-                console.warn(
-                    `⚠️ Sleeper API unreachable for league: ${config.sleeper_id}`,
-                );
+                console.warn(`⚠️ Sleeper API unreachable for league: ${config.sleeper_id}`);
                 continue;
             }
 
             const allTx = await res.json();
 
             if (!Array.isArray(allTx) || allTx.length === 0) {
-                console.log(
-                    `No transactions found for league ${config.sleeper_id} (Week 1)`,
-                );
+                console.log(`ℹ️ No transactions found for league ${config.sleeper_id} in Week ${nflWeek}`);
                 continue;
             }
 
             // 4. Sort transactions by time so we process oldest to newest
+            // Filter completed transactions and sort oldest -> newest
             const sortedTx = allTx
-                .filter((tx) => tx.status === "complete") // Only keep completed ones
+                .filter((tx) => tx.status === "complete")
                 .sort((a, b) => a.status_updated - b.status_updated);
 
-            const limitedTx = sortedTx.slice(-10);
+            if (sortedTx.length === 0) {
+                console.log(`ℹ️ No completed transactions found for league ${config.sleeper_id}`);
+                continue;
+            }
+
+            // Grab the 10 most recent completed transactions
+            const targetTxList = sortedTx.slice(-10);
+            console.log(`📋 Found ${sortedTx.length} completed txs. Processing the most recent ${targetTxList.length}...`);
 
             console.log(
                 `Processing only the last ${limitedTx.length} transactions for league ${config.sleeper_id}`,
@@ -1241,26 +1253,37 @@ async function pollAllLeagues() {
 
                 // 5. Fetch the specific log channel for THIS league
                 const logChannel = await client.channels
-                    .fetch(config.log_channel_id)
-                    .catch(() => null);
+                .fetch(config.log_channel_id)
+                .catch((err) => {
+                    console.error(`❌ Channel Fetch Error for ID ${config.log_channel_id}:`, err.message);
+                    return null;
+                });
 
-                if (logChannel) {
-                    console.log(
-                        `📤 New Transaction! Sending Tx ${tx.transaction_id} to #${logChannel.name}`,
-                    );
+            if (!logChannel) {
+                console.error(`❌ Channel Error: Log channel ${config.log_channel_id} not accessible by bot.`);
+                continue;
+            }
 
-                    await processAndSend(
-                        tx,
-                        logChannel,
-                        players,
-                        teamMap,
-                        config,
-                        doc
-                    );
+            for (const tx of targetTxList) {
+                const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
 
-                    // Mark as processed
-                    processedTxIds.add(txKey);
-                } else {
+                // Skip if this transaction was already processed during this bot session
+                if (processedTxIds.has(txKey)) continue;
+
+                console.log(`📤 Sending Transaction ${tx.transaction_id} to #${logChannel.name}...`);
+
+                await processAndSend(
+                    tx,
+                    logChannel,
+                    players,
+                    teamMap,
+                    config,
+                    doc
+                );
+
+                // Track in-memory so it isn't resent on subsequent polling cycles
+                processedTxIds.add(txKey);
+            } else {
                     console.error(
                         `❌ Channel Error: Could not find channel ${config.log_channel_id} for league ${config.sleeper_id}`,
                     );
