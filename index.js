@@ -980,7 +980,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
         }
 
         // 2. Open Manual Mapping Select Menu View
-        if (interaction.customId === "nav_manual_roles") {
+        if (interaction.customId.startsWith("nav_manual_roles")) {
             await setupManager.sendManualRoleMappingMenu(interaction, supabase);
         }
         // Isolate manual audit safely on its own level
@@ -1276,6 +1276,10 @@ setInterval(pollAllLeagues, 60000); // Check all leagues every minute
 
 //Added this
 async function getTeamMap(sleeperId) {
+    if (!sleeperLeagueId) {
+        console.warn("⚠️ [getTeamMap] Skipped: No Sleeper League ID configured.");
+        return {};
+    }
     try {
         const [uRes, rRes] = await Promise.all([
             fetch(`https://api.sleeper.app/v1/league/${sleeperId}/users`),
@@ -1322,6 +1326,10 @@ cron.schedule("0 10 * * 3", async () => {
 
         for (const config of configs) {
             if (!config.guild_id) continue;
+            if (!client.guilds.cache.has(config.guild_id)) {
+                console.log(`⏩ Skipping Guild: ${config.guild_id} (Bot is no longer in this server)`);
+                continue;
+            }
             console.log(`🤖 Processing automated CAP audit for Guild: ${config.guild_id}`);
 
             // Pass "cap" as the 5th parameter to tell the function to ONLY check cap math
@@ -1347,6 +1355,10 @@ cron.schedule("30 12 * * 0", async () => {
 
         for (const config of configs) {
             if (!config.guild_id) continue;
+            if (!client.guilds.cache.has(config.guild_id)) {
+                console.log(`⏩ Skipping Guild: ${config.guild_id} (Bot is no longer in this server)`);
+                continue;
+            }
             console.log(`🤖 Processing automated LINEUP audit for Guild: ${config.guild_id}`);
 
             // Pass "lineups" as the 5th parameter to tell the function to ONLY check lineups
@@ -1361,7 +1373,7 @@ cron.schedule("30 12 * * 0", async () => {
 cron.schedule("0 4 * * 2", async () => {
     console.log("⏳ Running Scheduled Weekly Sleeper Database Sync & Cache Reload...");
     try {
-
+        if (!global.sleeperCache) global.sleeperCache = new Map();
         // 1. Fetch fresh player details from Sleeper and upsert to Supabase
         await runScheduledLibrarySync(supabase);
         console.log("✅ Sleeper library data successfully synchronized to Supabase.");
