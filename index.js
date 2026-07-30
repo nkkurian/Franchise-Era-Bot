@@ -1237,7 +1237,7 @@ async function pollAllLeagues() {
                 continue;
             }
 
-            const targetTxList = sortedTx.slice(-10);
+            const targetTxList = sortedTx.slice(-2);
             console.log(`📋 Found ${sortedTx.length} completed txs. Processing the most recent ${targetTxList.length}...`);
 
             // Fetch the specific log channel for THIS league
