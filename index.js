@@ -1238,21 +1238,11 @@ async function pollAllLeagues() {
                 continue;
             }
 
-            // Grab the 10 most recent completed transactions
             const targetTxList = sortedTx.slice(-10);
             console.log(`📋 Found ${sortedTx.length} completed txs. Processing the most recent ${targetTxList.length}...`);
 
-            console.log(
-                `Processing only the last ${limitedTx.length} transactions for league ${config.sleeper_id}`,
-            );
-
-            for (const tx of limitedTx) {
-                const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
-
-                if (processedTxIds.has(txKey)) continue;
-
-                // 5. Fetch the specific log channel for THIS league
-                const logChannel = await client.channels
+            // Fetch the specific log channel for THIS league
+            const logChannel = await client.channels
                 .fetch(config.log_channel_id)
                 .catch((err) => {
                     console.error(`❌ Channel Fetch Error for ID ${config.log_channel_id}:`, err.message);
@@ -1264,6 +1254,7 @@ async function pollAllLeagues() {
                 continue;
             }
 
+            // Process each of the target transactions
             for (const tx of targetTxList) {
                 const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
 
@@ -1283,12 +1274,8 @@ async function pollAllLeagues() {
 
                 // Track in-memory so it isn't resent on subsequent polling cycles
                 processedTxIds.add(txKey);
-            } else {
-                    console.error(
-                        `❌ Channel Error: Could not find channel ${config.log_channel_id} for league ${config.sleeper_id}`,
-                    );
-                }
             }
+
         } catch (err) {
             console.error(`❌ Error polling league ${config.sleeper_id}:`, err);
         }
