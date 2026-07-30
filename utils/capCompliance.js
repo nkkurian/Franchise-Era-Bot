@@ -49,7 +49,6 @@ async function runWeeklyAudit(client, supabase, getSheetData, guildId, currentCo
                             const user = usersRes.data.find(u => u.user_id === r.owner_id);
                             sleeperUserMap[r.roster_id] = user ? user.display_name : `Roster ${r.roster_id}`;
                         });
-                        console.log("🗺️ Built Sleeper User Map:", JSON.stringify(sleeperUserMap, null, 2));
                     } catch (apiErr) {
                         console.error("⚠️ Sleeper API sync skipped:", apiErr.message);
                     }
@@ -64,14 +63,14 @@ async function runWeeklyAudit(client, supabase, getSheetData, guildId, currentCo
             ),
         ];
 
-        console.log(`👥 Identified Unique Spreadsheet Franchises (${teams.length}):`, teams);
+        
         const mapping = currentConfig?.column_mapping || {};
         const capSpaceCoordinate = mapping.team_cap || "F2";
 
-        console.log(`🤖 Audit Engine: Pulling Cap Space dynamically from cell ${capSpaceCoordinate}`);
+        
 
         for (const teamName of teams) {
-            console.log(`\n🔍 [LOOPING SHEET TEAM]: "${teamName}"`);
+            
             const sheet = currentDoc.sheetsByIndex.find((s) =>
                 s.title.toLowerCase().includes(teamName.toLowerCase())
             );
@@ -120,8 +119,7 @@ async function runWeeklyAudit(client, supabase, getSheetData, guildId, currentCo
                         ? matchup.starters
                         : (rosterStartersMap[rosterId] || []);
 
-                    console.log(`🔍 Checking Sleeper Lineup for: "${sleeperName}" (Roster ID: ${rosterId}) - ${starters.length} slots found`);
-
+                    
                     starters.forEach((starterId, index) => {
                         const slotName = `slot position #${index + 1}`;
 
@@ -162,14 +160,9 @@ async function runWeeklyAudit(client, supabase, getSheetData, guildId, currentCo
             }
         }
 
-        console.log("\n==================================================");
-        console.log("📊 FINAL DATA TO BE PACKED INTO DISCORD EMBED:");
-        console.log("❌ Cap Violations Total:", nonCompliant.length);
-        console.log("📉 Tanking Violations Total:", tankingViolations.length);
-        console.log("==================================================\n");
+        
     
-        const logChannelId = currentConfig?.log_channel_id || "1477399855541518366"; 
-        console.log(`📡 Fetching channel deployment target ID: <#${logChannelId}>`);
+        const logChannelId = currentConfig?.log_channel_id
         const logChannel = await client.channels.fetch(logChannelId);
         const reportEmbed = new EmbedBuilder()
             .setTitle("📅 Weekly League Audit Report")
@@ -180,7 +173,7 @@ async function runWeeklyAudit(client, supabase, getSheetData, guildId, currentCo
             // 1. Process Cap Issues Completely
         if (auditMode === "all" || auditMode === "cap") {
             if (nonCompliant.length > 0) {
-                const capRoleId = currentConfig?.admin_role_id || "1399502952506458252";
+                const capRoleId = currentConfig?.admin_role_id
                 pingContent = `⚠️ <@&${capRoleId}> **Action Required:** Cap issues detected.`;
                 reportEmbed.addFields({
                     name: "🚨 Non-Compliant Teams (Negative Cap)",
