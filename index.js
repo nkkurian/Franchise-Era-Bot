@@ -1193,6 +1193,8 @@ async function pollAllLeagues() {
 
     for (const config of configs) {
         try {
+            const guild = client.guilds.cache.get(config.guild_id);
+            if (!guild) continue;
             // 2. Fetch data specific to THIS league
             // We need the sheet data to know who the players are
             const { players, idMap, doc } = await getSheetData(config.guild_id);
