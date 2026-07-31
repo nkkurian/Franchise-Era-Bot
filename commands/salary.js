@@ -152,24 +152,29 @@ module.exports = {
                     .setTitle(`🏈 ${pName} (${pPos})`)
                     .setColor(0x3498db)
                     .addFields(
-                        // --- LINE 1 (Profile Info - 3 Columns) ---
+                        // // --- LINE 1 (Profile Info - 3 Columns) ---
+                        // {
+                        //     name: "📋 Team",
+                        //     value: teamAffiliation,
+                        //     inline: true,
+                        // },
+                        // {
+                        //     name: "🎂 Age",
+                        //     value: playerAge ? `${playerAge} years old` : "Unknown",
+                        //     inline: true,
+                        // },
+                        // {
+                        //     name: "🏥 Injury Status",
+                        //     value: injuryStatus,
+                        //     inline: true, 
+                        // },
+
+                        // --- LINE 2 (Contract Info - 3 Columns) ---
                         {
                             name: "📋 Team",
                             value: teamAffiliation,
                             inline: true,
                         },
-                        {
-                            name: "🎂 Age",
-                            value: playerAge ? `${playerAge} years old` : "Unknown",
-                            inline: true,
-                        },
-                        {
-                            name: "🏥 Injury Status",
-                            value: injuryStatus,
-                            inline: true, 
-                        },
-
-                        // --- LINE 2 (Contract Info - 3 Columns) ---
                         {
                             name: "💰 Yearly Salary",
                             value: yearlySalary,

@@ -281,12 +281,12 @@ module.exports = {
                     });
                 }
 
-                // Shifted upwards and changed inline to true to force it onto the top row grid
-                teamEmbed.addFields({
-                    name: "🔮 Franchise Direction",
-                    value: `**${buildStatus}**`,
-                    inline: true,
-                });
+                // // Shifted upwards and changed inline to true to force it onto the top row grid
+                // teamEmbed.addFields({
+                //     name: "🔮 Franchise Direction",
+                //     value: `**${buildStatus}**`,
+                //     inline: true,
+                // });
 
                 // Add the remaining static elements underneath
                 teamEmbed.addFields(
