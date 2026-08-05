@@ -166,13 +166,14 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
             for (const [statName, pointValue] of Object.entries(
                 scoringSettings,
             )) {
-                if (activeStats[statName]) {
-                    customTotal += activeStats[statName] * pointValue;
+                const val = activeStats[statName] ?? activeStats[`idp_${statName}`] ?? 0;
+                if (val) {
+                    customTotal += val * pointValue;
                 }
             }
         } else {
             // Fallback to standard PPR if no league settings available
-            customTotal = activeStats.pts_ppr || 0;
+            customTotal = activeStats.pts_ppr || activeStats.pts_idp || activeStats.pts_std || 0;
         }
 
         // 4. Return the object
@@ -219,6 +220,7 @@ let isFirstRun = true; // NEW: Controls the one-time historical post
 
 // Added this
 let leagueCache = {};
+
 async function getSheetData(guildId) {
     if (!guildId) return { players: [], logs: [], idMap: [], doc: null };
 
@@ -241,15 +243,31 @@ async function getSheetData(guildId) {
     const sheetId = config.sheet_id;
     const now = Date.now();
 
-    // 2. Check Cache First (Optional but recommended)
+    // 2. Check Cache First
     if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 30000 && leagueCache[sheetId].data?.doc) {
         return leagueCache[sheetId].data;
     }
 
     try {
-        // 3. Use Service Account Auth ONLY
-        const dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
+        // --- AUTH SETUP FOR V3.3.0 ---
+        let rawKey = process.env.GOOGLE_KEY || "";
+        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
+            rawKey = rawKey.slice(1, -1);
+        }
+        const formattedKey = rawKey.replace(/\\n/g, "\n");
+
+        // Step A: Instantiate with ONLY sheetId
+        const dynamicDoc = new GoogleSpreadsheet(sheetId);
+
+        // Step B: Authenticate using Service Account credentials (v3 Syntax)
+        await dynamicDoc.useServiceAccountAuth({
+            client_email: process.env.GOOGLE_EMAIL,
+            private_key: formattedKey,
+        });
+
+        // Step C: Load sheet info
         await dynamicDoc.loadInfo();
+        // ------------------------------
 
         const pTab = config.tab_players || "PlayerList";
         const lTab = config.tab_logs || "Transaction Log";
@@ -267,7 +285,7 @@ async function getSheetData(guildId) {
             return { players: [], logs: [], idMap: [], doc: null };
         }
 
-        // 5. Fetch Rows (Using empty array fallback if optional tabs are missing)
+        // 5. Fetch Rows
         const [pRows, tRows, idRows] = await Promise.all([
             playerSheet.getRows(),
             logSheet ? logSheet.getRows() : [],
@@ -284,13 +302,12 @@ async function getSheetData(guildId) {
                 );
                 if (!parsed) return null;
 
-                // Attach the raw Google Sheet row reference so commands can write edits back to cells
                 return {
                     ...parsed,
                     rowRef: row,
                 };
             })
-            .filter(Boolean); // Filters out any corrupted rows
+            .filter(Boolean);
 
         const freshData = {
             players: processedPlayers,
@@ -520,7 +537,7 @@ client.on("interactionCreate", async (interaction) => {
             });
         }
     }
-        
+
     // 📢 HANDLE APPEALS CHANNEL DROPDOWN SUBMISSION (Placed safely before the setup router filter)
     if (
         interaction.isChannelSelectMenu() &&
@@ -724,7 +741,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
     // 📩 MODAL SUBMISSIONS GO HERE
     if (interaction.isModalSubmit()) {
         const { customId } = interaction;
-        
+
         if (interaction.customId === "setup_vault_pass_modal") {
             try {
                 const newPassword = interaction.fields.getTextInputValue("vault_pass_input");
@@ -861,7 +878,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
     }
     if (interaction.isButton()) {
         const { customId } = interaction;
-        
+
 
         // Navigation Layout Engine Router
         if (customId === "nav_main")
@@ -1082,7 +1099,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
     } // <--- THIS ends the "isButton" check.
 
     const getOwnerIdMap = getTeamMap;
-    
+
     if (interaction.isStringSelectMenu() && interaction.customId === "portal_secret_menu_choice") {
         const loginCmd = client.commands.get("login");
         if (loginCmd && typeof loginCmd.handleSecretMenuChoice === "function") {
@@ -1102,7 +1119,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
     // Added this
     // --- SLASH COMMANDS START HERE ---
     if (interaction.isChatInputCommand()) {
-        
+
         // 1. FETCH CONFIG FIRST (Moved to the very top so it's defined everywhere)
         let currentConfig = null;
         try {
@@ -1414,4 +1431,3 @@ process.on("unhandledRejection", (reason, promise) => {
 process.on("uncaughtException", (err) => {
     console.error("🚫 Uncaught Exception:", err);
 });
-
