@@ -118,44 +118,48 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
     if (!playerSleeperId) return null;
 
     try {
-        const currentYear = 2026;
-        const lastYear = 2025;
+        const stateRes = await axios.get("https://api.sleeper.app/v1/state/nfl");
+        const currentYear = parseInt(stateRes.data.season);
+        const lastYear = currentYear - 1;
 
         // 1. Fetch Stats for both years
-        // Note: resLeague will only work if we have a leagueSleeperId
         const promises = [
-            axios.get(
-                `https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`,
-            ),
-            axios.get(
-                `https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`,
-            ),
+            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`),
+            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`),
         ];
 
         if (leagueSleeperId) {
             promises.push(
-                axios.get(
-                    `https://api.sleeper.app/v1/league/${leagueSleeperId}`,
-                ),
+                axios.get(`https://api.sleeper.app/v1/league/${leagueSleeperId}`)
             );
         }
 
-        const [res2026, res2025, resLeague] = await Promise.all(promises);
+        const [resCurrent, resLast, resLeague] = await Promise.all(promises);
 
-        // FIX: Match the argument name 'playerSleeperId'
-        const stats2026 = res2026.data[playerSleeperId];
-        const stats2025 = res2025.data[playerSleeperId];
+        const statsCurrent = resCurrent.data[playerSleeperId];
+        const statsLast = resLast.data[playerSleeperId];
 
-        // 2. Identify which year is "Real"
-        const hasRealData2026 =
-            stats2026 &&
-            (stats2026.pts_ppr > 0 ||
-                stats2026.tkl > 0 ||
-                stats2026.pass_yd > 0 ||
-                stats2026.sack > 0);
+        // 2. Define validator BEFORE calling it
+        const hasRealData = (s) => {
+            if (!s) return false;
+            return (
+                (s.pts_ppr || 0) > 0 ||
+                (s.pts_idp || 0) > 0 ||
+                (s.pass_yd || 0) > 0 ||
+                (s.tkl || 0) > 0 ||
+                (s.idp_tkl || 0) > 0 ||
+                (s.idp_tkl_solo || 0) > 0 ||
+                (s.sack || 0) > 0 ||
+                (s.idp_sack || 0) > 0
+            );
+        };
 
-        const activeStats = hasRealData2026 ? stats2026 : stats2025;
-        const yearUsed = hasRealData2026 ? currentYear : lastYear;
+        // 3. Check stats and select the active dataset
+        const hasRealDataCurrent = hasRealData(statsCurrent);
+        const hasRealDataLast = hasRealData(statsLast);
+
+        const activeStats = hasRealDataCurrent ? statsCurrent : (hasRealDataLast ? statsLast : null);
+        const yearUsed = hasRealDataCurrent ? currentYear : lastYear;
 
         if (!activeStats) return null;
 
@@ -163,17 +167,22 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
         let customTotal = 0;
         if (resLeague && resLeague.data.scoring_settings) {
             const scoringSettings = resLeague.data.scoring_settings;
-            for (const [statName, pointValue] of Object.entries(
-                scoringSettings,
-            )) {
-                const val = activeStats[statName] ?? activeStats[`idp_${statName}`] ?? 0;
+
+            for (const [statName, pointValue] of Object.entries(scoringSettings)) {
+                // Look for exact key, or idp_ key, or fallback variations
+                const val = 
+                    activeStats[statName] ?? 
+                    activeStats[`idp_${statName}`] ?? 
+                    (statName === "tkl" ? (activeStats.idp_tkl || activeStats.tkl) : 0) ?? 
+                    0;
+
                 if (val) {
                     customTotal += val * pointValue;
                 }
             }
         } else {
-            // Fallback to standard PPR if no league settings available
-            customTotal = activeStats.pts_ppr || activeStats.pts_idp || activeStats.pts_std || 0;
+            // Fallback to standard IDP / PPR points if no league settings available
+            customTotal = activeStats.pts_ppr ?? activeStats.pts_std ?? activeStats.pts_half_ppr ?? activeStats.pts_idp ?? 0;
         }
 
         // 4. Return the object

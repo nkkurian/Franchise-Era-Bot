@@ -22,7 +22,12 @@ async function syncSleeperLibrary(supabaseClient) {
         const playersToUpsert = [];
 
         // 🎯 UPDATED: Fully accommodates Offensive, Kicker, and IDP positions
-        const targetPositions = ["QB", "RB", "WR", "TE", "K", "DL", "LB", "DB"];
+        const targetPositions = [
+            "QB", "RB", "WR", "TE", "K", 
+            "DL", "DE", "DT", "NT", 
+            "LB", "ILB", "OLB", "MLB", 
+            "DB", "CB", "S", "FS", "SS", "EDGE", "IDP"
+        ];
 
         for (const [playerId, data] of Object.entries(allPlayers)) {
             // Standardize position tracking to uppercase to protect against formatting discrepancies

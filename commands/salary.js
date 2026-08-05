@@ -42,7 +42,6 @@ module.exports = {
                     isUpdate = false,
                 ) => {
                     const pName = playerRow.name;
-                    const pPos = playerRow.position;
                     const teamAffiliation = playerRow.team || "FA";
 
                     // 🔄 Pull dynamic league header configuration keys from Supabase
@@ -60,50 +59,50 @@ module.exports = {
                     const yearlySalary = `$${(rawSalary / 1000000).toFixed(2)}M`;
                     const capHit = `$${(rawCapHit / 1000000).toFixed(2)}M`;
 
-                    // ⚡ NEW HIGH-SPEED MEMORY LOOKUP ⚡
-                    // Normalize the name exactly like your sync library does
-                    const normalizedTargetName = pName.toLowerCase().replace(/\b(jr|sr|iii|ii|iv|v|vth)\b/gi, '').replace(/[^a-z0-9]/gi, '').trim();
+                    const normalizedTargetName = pName
+                        .toLowerCase()
+                        .replace(/\b(jr|sr|iii|ii|iv|v|vth)\b/gi, '')
+                        .replace(/[^a-z0-9]/gi, '')
+                        .trim();
 
                     let sleeperId = null;
-                    let playerAge = null;
-                    let injuryStatus = "🟢 Healthy / Active"; // Default status
+                    let bestMatchPlayer = null;
 
-                    // Find the ID by matching search keys in our memory cache
-                    // Find the ID by matching search keys in our memory cache
-                    for (const [id, cachedPlayer] of global.sleeperCache.entries()) {
-                        // Standard key check
-                        const matchKey = cachedPlayer.searchKey === normalizedTargetName;
+                    if (global.sleeperCache && global.sleeperCache.size > 0) {
+                        for (const [id, cachedPlayer] of global.sleeperCache.entries()) {
+                            if (!cachedPlayer) continue;
 
-                        // Fallback: strip the full name property the exact same way just in case
-                        const cleanFullName = cachedPlayer.full_name?.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
-                        const matchFallback = cleanFullName === normalizedTargetName;
+                            const rawName = cachedPlayer.name || "";
+                            const rawSearchKey = cachedPlayer.searchKey || cachedPlayer.search_full_name || "";
 
-                        if (matchKey || matchFallback) {
-                            sleeperId = id;
+                            // Remove ALL non-alphanumeric characters (including spaces) for comparisons
+                            const cleanCachedName = rawName.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
+                            const cleanCachedKey = rawSearchKey.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
 
-                            // 🎂 Extract Age safely
-                            if (cachedPlayer.age !== undefined && cachedPlayer.age !== null) {
-                                playerAge = Math.floor(parseFloat(cachedPlayer.age));
+                            // Compare against aliases or partial first/last combinations
+                            const isMatch = 
+                                cleanCachedKey === normalizedTargetName || 
+                                cleanCachedName === normalizedTargetName ||
+                                cleanCachedName.includes(normalizedTargetName);
+
+                            if (isMatch) {
+                                sleeperId = id;
+                                bestMatchPlayer = cachedPlayer; 
+                                break;
                             }
-
-                            // 🏥 Parse Injury Status
-                            if (cachedPlayer.injury_status) {
-                                injuryStatus = `🚑 ${cachedPlayer.injury_status}`;
-                            } else if (cachedPlayer.status && cachedPlayer.status !== "Active") {
-                                injuryStatus = `⚠️ ${cachedPlayer.status}`;
-                            }
-                            break;
                         }
                     }
+                    
+                    const pPos = bestMatchPlayer?.position || playerRow.position || "FA";
 
                     // 🔍 DEBUG LOG: If this triggers, your name normalization didn't find a match at all
                     if (!sleeperId) {
                         console.log(`❌ [DEBUG] No Sleeper cache match found for normalized name: "${normalizedTargetName}"`);
                     }
 
-                // 2. Fetch Stats if we have an ID
                     // 2. Fetch Stats if we have an ID
-                    const stats = sleeperId ? await getPlayerStats(sleeperId) : null;
+                    const sleeperLeagueId = config?.sleeper_id;
+                    const stats = sleeperId ? await getPlayerStats(sleeperId, sleeperLeagueId) : null;
                     const displayYear = stats?.displayYear || "2025";
                     let statsField = `No live stats available for ${displayYear}.`;
 
@@ -123,20 +122,34 @@ module.exports = {
                         }
 
                         // 🎯 IDP / Defensive Positions Array Matching
-                        const defensivePositions = ["DE", "DT", "DL", "LB", "CB", "S", "DB", "IDP"];
+                        const defensivePositions = [
+                            "DE", "DT", "DL", "NT", 
+                            "LB", "ILB", "OLB", "MLB", 
+                            "CB", "S", "FS", "SS", "DB", 
+                            "IDP", "EDGE"
+                        ];
                         const isDefensivePlayer = defensivePositions.includes(pPos.toUpperCase());
 
                         if (isDefensivePlayer) {
-                            // Pull total combination tackles or fall back to base IDP records
-                            const tkl = stats.tkl || ((stats.idp_tkl || 0) + (stats.idp_tkl_ast || 0));
+                            // 1. Total Tackles (Solo + Assisted)
+                            const solo = stats.idp_tkl_solo || stats.tkl_solo || 0;
+                            const ast = stats.idp_tkl_ast || stats.tkl_ast || 0;
+                            const totalTkl = stats.tkl || stats.idp_tkl || (solo + ast);
+
+                            // 2. Defensive Metrics
                             const sack = stats.sack || stats.idp_sack || 0;
                             const inter = stats.int || stats.idp_int || 0;
-                            const ff = stats.ff || stats.idp_ff || 0; // Forced Fumbles
+                            const ff = stats.ff || stats.idp_ff || 0;
+                            const fr = stats.fr || stats.idp_fr || 0; // Forced Recoveries
+                            const pd = stats.pd || stats.idp_pass_def || stats.idp_pd || 0; // Pass Deflections
+                            const tfl = stats.tfl || stats.idp_tkl_loss || 0; // Tackles for Loss
 
-                            if (tkl > 0) s.push(`• **Tackles:** ${tkl} Total`);
+                            if (totalTkl > 0) s.push(`• **Tackles:** ${totalTkl} (${solo} Solo, ${ast} Ast)`);
+                            if (tfl > 0) s.push(`• **Tackles for Loss:** ${tfl}`);
                             if (sack > 0) s.push(`• **Sacks:** ${sack.toFixed(1)}`);
                             if (inter > 0) s.push(`• **INTs:** ${inter}`);
-                            if (ff > 0) s.push(`• **Forced Fumbles:** ${ff}`);
+                            if (pd > 0) s.push(`• **Passes Defended:** ${pd}`);
+                            if (ff > 0 || fr > 0) s.push(`• **Fumbles:** ${ff} FF, ${fr} FR`);
                         }
 
                         // Custom League Score
@@ -152,24 +165,6 @@ module.exports = {
                     .setTitle(`🏈 ${pName} (${pPos})`)
                     .setColor(0x3498db)
                     .addFields(
-                        // // --- LINE 1 (Profile Info - 3 Columns) ---
-                        // {
-                        //     name: "📋 Team",
-                        //     value: teamAffiliation,
-                        //     inline: true,
-                        // },
-                        // {
-                        //     name: "🎂 Age",
-                        //     value: playerAge ? `${playerAge} years old` : "Unknown",
-                        //     inline: true,
-                        // },
-                        // {
-                        //     name: "🏥 Injury Status",
-                        //     value: injuryStatus,
-                        //     inline: true, 
-                        // },
-
-                        // --- LINE 2 (Contract Info - 3 Columns) ---
                         {
                             name: "📋 Team",
                             value: teamAffiliation,
