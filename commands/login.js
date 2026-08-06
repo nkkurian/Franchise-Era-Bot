@@ -301,6 +301,65 @@ module.exports = {
         });
     },
 
+    async handleSecretMenuChoice(interaction) {
+        const chosenCmd = interaction.values[0]; // 'team' or 'salary'
+
+        const modal = new ModalBuilder()
+            .setCustomId(`portal_secret_modal_${chosenCmd}`)
+            .setTitle(`🕵️ Private /${chosenCmd} Query`);
+
+        const targetInput = new TextInputBuilder()
+            .setCustomId("secret_cmd_target")
+            .setLabel(chosenCmd === "salary" ? "Enter Player Name" : "Enter Team Name")
+            .setPlaceholder(chosenCmd === "salary" ? "e.g., Patrick Mahomes" : "e.g., Dallas Cowboys")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(true);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(targetInput));
+        return await interaction.showModal(modal);
+    },
+
+    // 🟢 ADD THIS: Process the submitted search input privately
+    async handleSecretModalSubmit(interaction, supabase, currentConfig, getSheetData, getPlayerStats, getOwnerIdMap) {
+        try {
+            // Extracts 'team' or 'salary' from 'portal_secret_modal_team'
+            const cmdType = interaction.customId.replace("portal_secret_modal_", "");
+            const cmdTarget = interaction.fields.getTextInputValue("secret_cmd_target").trim();
+
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferReply({ flags: [64] }); // Ephemeral
+            }
+
+            interaction.options = {
+                getString: (name) => cmdTarget, 
+                getUser: (name) => null,
+                getMember: (name) => null,
+                getInteger: (name) => null,
+                getBoolean: (name) => null
+            };
+
+            if (cmdType === "salary") {
+                const salaryCommand = interaction.client.commands.get("salary");
+                if (!salaryCommand) return await interaction.editReply("❌ Module error: `/salary` command file not found.");
+                return await salaryCommand.execute(interaction, supabase, currentConfig, getSheetData, getPlayerStats, getOwnerIdMap);
+            }
+
+            if (cmdType === "team") {
+                const teamCommand = interaction.client.commands.get("team");
+                if (!teamCommand) return await interaction.editReply("❌ Module error: `/team` command file not found.");
+                return await teamCommand.execute(interaction, supabase, currentConfig, getSheetData, getPlayerStats, getOwnerIdMap);
+            }
+
+        } catch (modalErr) {
+            console.error("❌ Fatal crash in secret modal executor:", modalErr);
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: "💥 An error occurred processing your secret query.", flags: [64] });
+            } else {
+                await interaction.editReply("💥 An error occurred processing your secret query.");
+            }
+        }
+    },
+
     async handleRestructureButton(interaction) {
         const modal = new ModalBuilder()
             .setCustomId("portal_restructure_modal")
@@ -489,64 +548,7 @@ module.exports = {
         }
     },
 
-    async handleSecretMenuChoice(interaction) {
-        const chosenCmd = interaction.values[0]; // 'team' or 'salary'
-
-        const modal = new ModalBuilder()
-            .setCustomId(`portal_secret_modal_${chosenCmd}`)
-            .setTitle(`🕵️ Private /${chosenCmd} Query`);
-
-        const targetInput = new TextInputBuilder()
-            .setCustomId("secret_cmd_target")
-            .setLabel(chosenCmd === "salary" ? "Enter Player Name" : "Enter Team Name")
-            .setPlaceholder(chosenCmd === "salary" ? "e.g., Patrick Mahomes" : "e.g., Dallas Cowboys")
-            .setStyle(TextInputStyle.Short)
-            .setRequired(true);
-
-        modal.addComponents(new ActionRowBuilder().addComponents(targetInput));
-        return await interaction.showModal(modal);
-    },
-
-    // 🟢 ADD THIS: Process the submitted search input privately
-    async handleSecretModalSubmit(interaction, supabase, currentConfig, getSheetData, getPlayerStats, getOwnerIdMap) {
-        try {
-            // Extracts 'team' or 'salary' from 'portal_secret_modal_team'
-            const cmdType = interaction.customId.replace("portal_secret_modal_", "");
-            const cmdTarget = interaction.fields.getTextInputValue("secret_cmd_target").trim();
-
-            if (!interaction.deferred && !interaction.replied) {
-                await interaction.deferReply({ flags: [64] }); // Ephemeral
-            }
-
-            interaction.options = {
-                getString: (name) => cmdTarget, 
-                getUser: (name) => null,
-                getMember: (name) => null,
-                getInteger: (name) => null,
-                getBoolean: (name) => null
-            };
-
-            if (cmdType === "salary") {
-                const salaryCommand = interaction.client.commands.get("salary");
-                if (!salaryCommand) return await interaction.editReply("❌ Module error: `/salary` command file not found.");
-                return await salaryCommand.execute(interaction, supabase, currentConfig, getSheetData, getPlayerStats, getOwnerIdMap);
-            }
-
-            if (cmdType === "team") {
-                const teamCommand = interaction.client.commands.get("team");
-                if (!teamCommand) return await interaction.editReply("❌ Module error: `/team` command file not found.");
-                return await teamCommand.execute(interaction, supabase, currentConfig, getSheetData, getPlayerStats, getOwnerIdMap);
-            }
-
-        } catch (modalErr) {
-            console.error("❌ Fatal crash in secret modal executor:", modalErr);
-            if (!interaction.replied && !interaction.deferred) {
-                await interaction.reply({ content: "💥 An error occurred processing your secret query.", flags: [64] });
-            } else {
-                await interaction.editReply("💥 An error occurred processing your secret query.");
-            }
-        }
-    },
+    
 
     async handleExtensionButton(interaction) {
         const modal = new ModalBuilder()

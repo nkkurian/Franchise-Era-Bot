@@ -1018,12 +1018,18 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
         // Convert the dangling else if into a standard, isolated if statement
         if (interaction.customId.startsWith("view_ext_")) {
-            const playerName = interaction.customId.replace("view_ext_", "");
+        const playerName = interaction.customId.replace("view_ext_", "");
             const { logs } = await getSheetData(interaction.guild.id);
             const history = logs.filter((l) => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
 
+            // 🟢 Check if the parent message was private/ephemeral (Flag 64)
+            const isSecret = interaction.message?.flags?.has(64);
+
             if (history.length === 0) {
-                return await interaction.reply({ content: `❌ No history found for ${playerName}`, flags: [64] });
+                return await interaction.reply({ 
+                    content: `❌ No history found for ${playerName}`, 
+                    flags: [64] // Keep errors private
+                });
             }
 
             const histEmbed = new EmbedBuilder()
@@ -1043,7 +1049,10 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 });
             });
 
-            return await interaction.reply({ embeds: [histEmbed] });
+            return await interaction.reply({ 
+                embeds: [histEmbed],
+                flags: isSecret ? [64] : []
+            });
         }
         // Route transaction buttons safely
         if (customId.startsWith("tx_waiver_") || customId.startsWith("tx_edit_")) {
