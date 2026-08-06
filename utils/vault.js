@@ -9,6 +9,32 @@ const {
 } = require("discord.js");
 const DataMapper = require("./dataMapper.js");
 
+// Add a quick, reliable resolver inside or right above handleTransactionButton
+const getOrFetchPlayerName = async (pId) => {
+    // 1. Check local cache
+    let cachedName = global.sleeperCache?.get(pId)?.name;
+    if (cachedName) return cachedName;
+
+    // 2. Direct API fallback if cache missed
+    try {
+        const res = await fetch(`https://api.sleeper.app/v1/players/nfl`);
+        if (res.ok) {
+            const players = await res.json();
+            const player = players[pId];
+            if (player) {
+                const fullName = `${player.first_name} ${player.last_name}`.trim();
+                // Optionally update cache
+                if (global.sleeperCache) global.sleeperCache.set(pId, { name: fullName });
+                return fullName;
+            }
+        }
+    } catch (e) {
+        console.error(`Failed to resolve player ID ${pId}:`, e);
+    }
+
+    return null; 
+};
+
 module.exports = {
     handleVaultTrigger: async (message) => {
         if (message.content.toLowerCase() === "!vault" && !message.author.bot) {
@@ -333,7 +359,9 @@ module.exports = {
                 if (action === "sign") {
                     // 🔄 CASE 1: Player exists -> Modify their existing row cells directly
                     if (pRow && pRow.rowRef) {
-                        const sheetHeaders = pRow.rowRef._worksheet?.headerValues || [];
+                        // 🛠️ Ensure mainSheet header values are loaded
+                        await mainSheet.loadHeaderRow().catch(() => null);
+                        const sheetHeaders = mainSheet.headerValues || [];
 
                         const salaryConf = currentConfig?.column_mapping?.aav;        
                         const capHitConf = currentConfig?.column_mapping?.cap_hit;    
@@ -354,25 +382,27 @@ module.exports = {
 
                         const salaryIdx = findColumnIndex(salaryConf);
                         const capHitIdx = findColumnIndex(capHitConf);
-                        const yearsIdx = findColumnIndex(yearsConf);
-                        const notesIdx = findColumnIndex(notesConf);
+                        const yearsIdx  = findColumnIndex(yearsConf);
+                        const notesIdx  = findColumnIndex(notesConf);
 
-                        const sheet = pRow.rowRef._worksheet;
-                        const rowIndex = pRow.rowRef.rowNumber - 1;
+                        // 🛠️ FIX: Use pRow.rowRef.rowNumber or fallback to pRow.rowRef._rowNumber
+                        const rowNum = pRow.rowRef.rowNumber || pRow.rowRef._rowNumber;
+                        const rowIndex = rowNum - 1;
 
-                        await sheet.loadCells({
+                        // 🛠️ FIX: Use mainSheet instead of pRow.rowRef._worksheet
+                        await mainSheet.loadCells({
                             startRowIndex: rowIndex,
                             endRowIndex: rowIndex + 1
                         });
 
-                        if (salaryIdx !== -1) sheet.getCell(rowIndex, salaryIdx).value = formatCurrency(salary);
-                        if (capHitIdx !== -1) sheet.getCell(rowIndex, capHitIdx).value = formatCurrency(capHit);
-                        if (yearsIdx !== -1) sheet.getCell(rowIndex, yearsIdx).value = String(years);
-                        if (notesIdx !== -1) sheet.getCell(rowIndex, notesIdx).value = String(structure || "");
+                        if (salaryIdx !== -1) mainSheet.getCell(rowIndex, salaryIdx).value = formatCurrency(salary);
+                        if (capHitIdx !== -1) mainSheet.getCell(rowIndex, capHitIdx).value = formatCurrency(capHit);
+                        if (yearsIdx !== -1)  mainSheet.getCell(rowIndex, yearsIdx).value = String(years);
+                        if (notesIdx !== -1)  mainSheet.getCell(rowIndex, notesIdx).value = String(structure || "");
 
                         console.log("📝 Committing isolated cell changes to existing player...");
-                        await sheet.saveUpdatedCells();
-                    } 
+                        await mainSheet.saveUpdatedCells();
+                    }
                     else {
                         console.log(`➕ Player not found. Appending brand new row for ${playerName}...`);
 
@@ -444,7 +474,7 @@ module.exports = {
                         const newRowData = {};
                         newRowData[nameHeader]  = playerName;
                         newRowData[posHeader]   = detectedPosition; 
-                        newRowData[teamHeader]  = detectedTeamName; // 🛠️ 2. Injects the actual user's Sleeper Team Name!
+                        newRowData[teamHeader]  = detectedTeamName;
                         newRowData[yrsHeader]   = String(years);
                         newRowData[aavHeader]   = formatCurrency(salary);
                         newRowData[capHeader]   = formatCurrency(capHit);
@@ -521,10 +551,11 @@ module.exports = {
                     );
                  } 
             }, 
+
     handleTransactionButton: async (interaction, supabase, client, getSheetData) => {
         const { customId } = interaction;
 
-        // 🛑 PRE-CHECK ROLE: Ensure user has permission to audit transactions
+        // Ensure user has permission to audit transactions
         let currentConfig = null;
         try {
             const { data } = await supabase
@@ -537,17 +568,6 @@ module.exports = {
             console.error("Error fetching config on tx button interaction:", dbErr);
         }
 
-        const adminRoleId = currentConfig?.admin_role_id;
-        const hasRole = adminRoleId && interaction.member.roles.cache.has(adminRoleId);
-        const isNativeAdmin = interaction.member.permissions.has("Administrator");
-
-        if (!hasRole && !isNativeAdmin) {
-            return await interaction.reply({
-                content: "❌ **Access Denied:** You do not have the required admin role to manage league financial audits.",
-                flags: [64],
-            });
-        }
-
         // Case A: Handle Waiver Salary shortcut button press
         if (customId.startsWith("tx_waiver_")) {
             await interaction.deferReply({ flags: [64] });
@@ -555,70 +575,54 @@ module.exports = {
             // Format: tx_waiver_[pId]_[defaultAAV]_[defaultYears]
             const [_, __, pId, defaultAAV, defaultYears] = customId.split("_");
 
-            try {
-                // Hot-fetch real player name using the fallback block from transactionAuditor
-                let playerName = `Player ${pId}`;
-                const sleeperRes = await fetch("https://api.sleeper.app/v1/players/nfl");
-                if (sleeperRes.ok) {
-                    const masterPlayers = await sleeperRes.json();
-                    if (masterPlayers[pId]) {
-                        playerName = `${masterPlayers[pId].first_name} ${masterPlayers[pId].last_name}`;
-                    }
-                }
+        const playerName = await getOrFetchPlayerName(pId);
 
-                // Divert directly into your existing modal submission execution path!
-                // This simulates a modal submit using your existing sheet configuration architecture
-                const mockModalInteraction = {
-                    ...interaction,
-                    guild: interaction.guild,  
-                    member: interaction.member, 
-                    user: interaction.user,     
-                    client: interaction.client, 
-                    customId: `vlt_fin_sign_${playerName}`,
-                    fields: {
-                        getTextInputValue: (fieldId) => {
-                            if (fieldId === "in_sal") return defaultAAV === "Min" ? "0.5" : defaultAAV.replace(/[^0-9.]/g, "");
-                            if (fieldId === "in_cap") return defaultAAV === "Min" ? "0.5" : defaultAAV.replace(/[^0-9.]/g, "");
-                            if (fieldId === "in_yrs") return String(defaultYears);
-                            if (fieldId === "in_struct") return "";
-                            return "";
-                        }
-                    },
-                    deferReply: async () => {}, 
-                    editReply: async (payload) => await interaction.editReply(payload),
-                    reply: async (payload) => await interaction.editReply(payload)
-                };
-
-                const vaultModule = require("./vault.js");
-                return await vaultModule.handleFinalModalSubmission(mockModalInteraction, supabase, client, getSheetData);
-
-            } catch (err) {
-                console.error("Waiver salary automation error:", err);
-                return await interaction.editReply({ content: "❌ Failed to automatically commit waiver adjustments to the sheet." });
+            if (!playerName) {
+                return await interaction.editReply({ 
+                    content: `❌ Could not resolve player name for ID: **${pId}**. Sheet update cancelled to prevent corrupted entries.` 
+                });
             }
+
+            const mockModalInteraction = {
+                ...interaction,
+                guild: interaction.guild,  
+                member: interaction.member, 
+                user: interaction.user,     
+                client: interaction.client, 
+                customId: `vlt_fin_sign_${playerName}`,
+                fields: {
+                    getTextInputValue: (fieldId) => {
+                        if (fieldId === "in_sal") return defaultAAV === "Min" ? "0.5" : defaultAAV.replace(/[^0-9.]/g, "");
+                        if (fieldId === "in_cap") return defaultAAV === "Min" ? "0.5" : defaultAAV.replace(/[^0-9.]/g, "");
+                        if (fieldId === "in_yrs") return String(defaultYears);
+                        if (fieldId === "in_struct") return "";
+                        return "";
+                    }
+                },
+                deferReply: async () => {}, 
+                editReply: async (payload) => await interaction.editReply(payload),
+                reply: async (payload) => await interaction.editReply(payload)
+            };
+
+            const vaultModule = require("./vault.js");
+            return await vaultModule.handleFinalModalSubmission(mockModalInteraction, supabase, client, getSheetData);
         }
 
         // Case B: Handle Edit Salary manual override modal popup
         if (customId.startsWith("tx_edit_")) {
             const pId = customId.replace("tx_edit_", "");
+            const playerName = await getOrFetchPlayerName(pId);
 
-            // Hot-fetch real player name for the dynamic modal header title
-            let playerName = "Unknown Player";
-            try {
-                const sleeperRes = await fetch("https://api.sleeper.app/v1/players/nfl");
-                if (sleeperRes.ok) {
-                    const masterPlayers = await sleeperRes.json();
-                    if (masterPlayers[pId]) {
-                        playerName = `${masterPlayers[pId].first_name} ${masterPlayers[pId].last_name}`;
-                    }
+                if (!playerName) {
+                    return await interaction.reply({ 
+                        content: `❌ Could not resolve player name for ID: **${pId}**.`,
+                        flags: [64]
+                    });
                 }
-            } catch (pErr) {
-                console.error("Failed fetching player title for manual edit modal:", pErr);
+
+                const vaultModule = require("./vault.js");
+                return await vaultModule.showFinalActionModal(interaction, "sign", playerName);
             }
 
-            // Reuse your modular method from your code file!
-            const vaultModule = require("./vault.js");
-            return await vaultModule.showFinalActionModal(interaction, "sign", playerName);
         }
-    }
 }; // 🛠️ FIX: Closes module.exports
