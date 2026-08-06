@@ -28,10 +28,8 @@ module.exports = {
                         `❌ Team **${teamInput}** not found in the spreadsheet.`,
                     );
                 }
-                // =========================================================
                 // 🎟️ EXTRA FEATURE: DYNAMIC SLEEPER DRAFT CAPITAL LOOKUP
-                // =========================================================
-                let draftPicksDisplay = "*No draft asset ledger found or League ID unconfigured.*";
+                let draftPicksDisplay = "*No draft asset.*";
                 let totalPickCount = 0;
                 let hiddenPicksCount = 0;
                 let leftColumnDisplay = "⚪ None";
@@ -105,8 +103,6 @@ module.exports = {
                                 const ownedTradedPicks = allTradedPicks.filter(pick => pick.owner_id === rosterId);
                                 const soldPicks = allTradedPicks.filter(pick => pick.roster_id === rosterId && pick.owner_id !== rosterId);
 
-                                // 5. Calculate native capital assets minus traded capital assets
-                                let hiddenPicksCount = 0; // Tracks rounds 3+
 
                                 // 5. Calculate native capital assets minus traded capital assets
                                 dynamicSeasons.forEach(season => {
@@ -193,57 +189,50 @@ module.exports = {
                } catch(e) {
                    console.log("Could not find Extensions Cell:", extCellA1);
                }
-
-                // =========================================================
-                // 🌱 DYNAMIC BUILD STATUS CALCULATION
-                // =========================================================
-                let buildStatus = "⚖️ Balanced";
-
-                // Parse Cap Space to a clean number
-                const capCleanNum = parseFloat(String(capSpace).replace(/[$,]/g, "")) || 0;
-
-                if (capCleanNum <= 5000000 && totalPickCount < 12) {
-                    buildStatus = "🔥 Win-Now / Contender (All-In)";
-                } else if (capCleanNum > 15000000 && totalPickCount >= 14) {
-                    buildStatus = "🌱 Rebuilding / Asset Hoarder";
-                } else if (capCleanNum <= 2000000 && totalPickCount >= 13) {
-                    buildStatus = "🔄 Retooling (Heavy Assets & Max Cap)";
-                } else if (capCleanNum > 20000000 && totalPickCount < 10) {
-                    buildStatus = "💵 Free Agent Hunter (High Cap / Few Picks)";
-                }
-        
                 // 5. Protected player filter logic
-                const teamPlayers = players.filter((p) => {
-                    if (!p) return false;
-        
-                    // Check for a standard object property, fallback to dynamic config property mappings
-                    const playerTeam = p.team || p.teamAffiliation || p.rowRef?.get(config?.column_mapping?.team_col || "Team");
-        
-                    return typeof playerTeam === 'string' && playerTeam.toLowerCase().includes(teamInput);
-                });
+        const getPlayerVal = (p, keys, colMapKey, defaultCol) => {
+            for (const key of keys) {
+                if (p[key] !== undefined && p[key] !== null) return p[key];
+            }
+            const colName = config?.column_mapping?.[colMapKey] || defaultCol;
+            if (p.rowRef && typeof p.rowRef.get === 'function') {
+                return p.rowRef.get(colName);
+            }
+            if (p._rawData && Array.isArray(p._rawData)) {
+                return p._rawData[0]; // fallback
+            }
+            return null;
+        };
 
-                
-                const topEarners = teamPlayers
-                    .map((p) => {
-                        
-                        const salaryStr = p.aav || p.salary || p.capHit || p.rowRef?.get(config?.column_mapping?.salary_col || "Salary") || "$0.00";
-                        const pName = p.name || p.playerName || p.rowRef?.get(config?.column_mapping?.id_player_col || "Player Name") || "Unknown Player";
-                        const pPos = p.position || p.pos || p.rowRef?.get(config?.column_mapping?.position_col || "Position") || "N/A";
+        // 5. Protected player filter logic
+        const teamPlayers = players.filter((p) => {
+            if (!p) return false;
 
-                        // Clean out currency formatting symbols to handle sorting math safely
-                        const salaryNum = typeof salaryStr === 'number' 
-                            ? salaryStr 
-                            : parseFloat(String(salaryStr).replace(/[$,]/g, "")) || 0;
+            const playerTeam = getPlayerVal(p, ['team', 'teamAffiliation', 'Team'], 'team_col', 'Team');
 
-                        return {
-                            name: pName,
-                            pos: pPos,
-                            salary: typeof salaryStr === 'number' ? `$${(salaryStr / 1000000).toFixed(2)}M` : salaryStr,
-                            num: salaryNum,
-                        };
-                    })
-                    .sort((a, b) => b.num - a.num)
-                    .slice(0, 5); // Keeps your top 5 earners list intact
+            return typeof playerTeam === 'string' && playerTeam.toLowerCase().includes(teamInput);
+        });
+
+        const topEarners = teamPlayers
+            .map((p) => {
+                const salaryStr = getPlayerVal(p, ['aav', 'salary', 'capHit', 'Salary'], 'salary_col', 'Salary') || "$0.00";
+                const pName = getPlayerVal(p, ['name', 'playerName', 'Name', 'Player'], 'id_player_col', 'Player Name') || "Unknown Player";
+                const pPos = getPlayerVal(p, ['position', 'pos', 'Position'], 'position_col', 'Position') || "N/A";
+
+                // Clean out currency formatting symbols to handle sorting math safely
+                const salaryNum = typeof salaryStr === 'number' 
+                    ? salaryStr 
+                    : parseFloat(String(salaryStr).replace(/[$,]/g, "")) || 0;
+
+                return {
+                    name: pName,
+                    pos: pPos,
+                    salary: typeof salaryStr === 'number' ? `$${(salaryStr / 1000000).toFixed(2)}M` : salaryStr,
+                    num: salaryNum,
+                };
+            })
+            .sort((a, b) => b.num - a.num)
+            .slice(0, 5);
 
                 const earnerList = topEarners.length > 0
                     ? topEarners
@@ -280,13 +269,6 @@ module.exports = {
                         inline: true,
                     });
                 }
-
-                // // Shifted upwards and changed inline to true to force it onto the top row grid
-                // teamEmbed.addFields({
-                //     name: "🔮 Franchise Direction",
-                //     value: `**${buildStatus}**`,
-                //     inline: true,
-                // });
 
                 // Add the remaining static elements underneath
                 teamEmbed.addFields(

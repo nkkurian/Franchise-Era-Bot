@@ -1114,6 +1114,12 @@ if (interaction.customId === "setup_confirm_save_roles") {
         if (customId.startsWith("portal_fa_")) {
             return await handleFreeAgencyHub(interaction);
         }
+        if (customId.startsWith("portal_secret_btn_")) {
+            const loginCmd = client.commands.get("login");
+            if (loginCmd && typeof loginCmd.handleSecretButtonClick === "function") {
+                return await loginCmd.handleSecretButtonClick(interaction);
+            }
+        }
     } // <--- THIS ends the "isButton" check.
 
     const getOwnerIdMap = getTeamMap;

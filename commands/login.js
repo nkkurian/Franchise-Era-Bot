@@ -274,35 +274,29 @@ module.exports = {
             await interaction.editReply("💥 An error occurred while opening your front office portal.");
         }
     },
-    // 🟢 ADD THIS: Intercepts the button click to display the form pop-up
+    // Buttons for Secret Commands
     async handleSecretsButton(interaction) {
-        const secretMenuRow = new ActionRowBuilder().addComponents(
-            new StringSelectMenuBuilder()
-                .setCustomId("portal_secret_menu_choice")
-                .setPlaceholder("⚡ Choose a command to run privately...")
-                .addOptions(
-                    new StringSelectMenuOptionBuilder()
-                        .setLabel("📊 View Team Finances (/team)")
-                        .setDescription("Search a team's contract lengths and cap hits privately.")
-                        .setValue("team")
-                        .setEmoji("📋"),
-                    new StringSelectMenuOptionBuilder()
-                        .setLabel("💸 Calculate Salary (/salary)")
-                        .setDescription("Run salary evaluations privately.")
-                        .setValue("salary")
-                        .setEmoji("💰")
-                )
+        const secretButtonsRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("portal_secret_btn_salary")
+                .setLabel("Player Salary (/salary)")
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId("portal_secret_btn_team")
+                .setLabel("Team Finances (/team)")
+                .setStyle(ButtonStyle.Secondary)
         );
 
         return await interaction.reply({
-            content: "🕵️ **Anything you run will be out of sight for everyone else.",
-            components: [secretMenuRow],
-            flags: [64] // Ephemeral: true
+            content: "🕵️ **Anything you run will be out of sight for everyone else.**",
+            components: [secretButtonsRow],
+            flags: [64]
         });
     },
 
-    async handleSecretMenuChoice(interaction) {
-        const chosenCmd = interaction.values[0]; // 'team' or 'salary'
+    async handleSecretButtonClick(interaction) {
+        // Extracts 'salary' or 'team' from 'portal_secret_btn_salary'
+        const chosenCmd = interaction.customId.replace("portal_secret_btn_", "");
 
         const modal = new ModalBuilder()
             .setCustomId(`portal_secret_modal_${chosenCmd}`)
