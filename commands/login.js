@@ -12,6 +12,7 @@ const {
 } = require("discord.js");
 const { supabase } = require("../utils/supabaseClient");
 
+// Determines who made the last actual offer/counter in the history
 function getLastOfferSender(historyText) {
     if (!historyText) return "GM"; // Default initial state
 
@@ -49,6 +50,7 @@ function formatHistoryEntry(type, userTag, years, aav, bonus, note) {
     return `${icon} **[${type}]** — *${userTag}*\n📄 **${years} Yrs @ ${formattedAav}/yr**${bonusText}${noteText}`;
 }
 
+// Formats currency values into clean short notation
 function formatCurrency(val) {
     if (!val) return "0";
 
@@ -70,6 +72,7 @@ function formatCurrency(val) {
     return `${num}`;
 }
 
+// Builds the GM's action buttons with conditional logic
 function buildGmActionRow(actionType, params, historyText = "") {
     const { safePlayerName, safeTeamName, assignedAgentId, agentChannelId } = params;
 
@@ -109,6 +112,7 @@ function buildGmActionRow(actionType, params, historyText = "") {
     return [row];
 }
 
+// Builds the Agent's action buttons with conditional logic
 function buildAgentActionRow(params, historyText = "") {
     const { safePlayerName, safeTeamName, gmChannelId, masterMessageId } = params;
 
@@ -144,7 +148,7 @@ function buildAgentActionRow(params, historyText = "") {
     return [row];
 }
 
-// Add this helper function inside login.js
+// Helper function for temp free agency hub
 async function handleFreeAgencyHub(interaction) {
     const devEmbed = new EmbedBuilder()
         .setTitle("🏈 Free Agency Hub — Under Development")
@@ -164,6 +168,18 @@ async function handleFreeAgencyHub(interaction) {
         embeds: [devEmbed],
         ephemeral: true
     });
+}
+
+// Helper to look up Team Role ID from config based on team name
+function getTeamRoleId(config, safeTeamName) {
+    const rawTeamName = safeTeamName ? safeTeamName.replace(/-/g, " ") : "";
+
+    for (const [key, details] of Object.entries(config?.sleeper_team_roles || {})) {
+        if (details.teamName?.toLowerCase() === rawTeamName.toLowerCase()) {
+            return details.roleId || key; // Returns roleId if explicit, or role ID key
+        }
+    }
+    return null;
 }
 
 module.exports = {
@@ -542,8 +558,6 @@ module.exports = {
         }
     },
 
-    
-
     async handleExtensionButton(interaction) {
         const modal = new ModalBuilder()
             .setCustomId("portal_extension_modal")
@@ -803,15 +817,13 @@ module.exports = {
 async handleAgentAction(interaction) {
     try {
         const parts = interaction.customId.split("_");
+        const originChannelId = parts.pop() || interaction.channelId;
+        const gmMasterMessageId = parts.pop();
+        const safeTeamName = parts.pop();
+        const safePlayerName = parts.pop();
         const action = parts[1]; // "approve", "counter", "message", or "reject"
 
-        const originChannelId = parts[5] || interaction.channelId;
-
-        const safePlayerName = parts[2];
-        const safeTeamName = parts[3];
-
         const playerName = safePlayerName ? safePlayerName.replace(/-/g, " ") : "Player";
-        const gmMasterMessageId = parts[4]
 
         // --- Case A: APPROVAL MODAL ---
         if (action === "approve") {
@@ -948,15 +960,19 @@ async handleAgentAction(interaction) {
         try {
             await interaction.deferUpdate(); 
             const parts = interaction.customId.split("_");
-            // Custom ID Structure: ["agent", "submit", action, safePlayerName, safeTeamName, originChannelId]
-            const action = parts[2]; 
-            const safePlayerName = parts[3];
-            const safeTeamName = parts[4];
-            const masterMessageId = parts[parts.length - 2];
-            const originChannelId = parts[parts.length - 1];
 
-            const playerName = safePlayerName ? safePlayerName.replace(/_/g, " ") : "Player";
-            if (!masterMessageId) return console.error("❌ Could not find interaction message ID");
+            // Pop from right-to-left to avoid name hyphen/underscore index shifts
+            const originChannelId = parts.pop();
+            const masterMessageId = parts.pop();
+            const safeTeamName   = parts.pop();
+            const safePlayerName = parts.pop();
+
+            const action = parts[2]; // "approve", "counter", "message", "reject"
+            const playerName = safePlayerName ? safePlayerName.replace(/-/g, " ") : "Player";
+
+            if (!masterMessageId || masterMessageId === "undefined") {
+                return console.error("❌ Invalid masterMessageId received:", masterMessageId);
+            }
 
             let originChannel = null;
             if (originChannelId && originChannelId !== "undefined") {
@@ -965,16 +981,16 @@ async handleAgentAction(interaction) {
 
             const oldEmbed = interaction.message.embeds[0];
             if (!oldEmbed) return;
+            // Fetch config to resolve team role
+            const config = currentConfig || (await supabase
+                .from("league_configs")
+                .select("sleeper_team_roles")
+                .eq("guild_id", interaction.guildId)
+                .single()).data;
 
-            const submittedByField = oldEmbed.fields?.find(f => f.name && (f.name.includes("Submitted By") || f.name.includes("Status")));
-
-            // Extract raw numbers from either message content or the embed field
-            const contentMention = interaction.message.content?.match(/\d+/)?.[0];
-            const embedMention = submittedByField?.value?.match(/\d+/)?.[0];
-
-            // Fallback safely to a user mention string
-            const gmId = contentMention || embedMention;
-            const gmPing = gmId ? `<@${gmId}>` : `<@${interaction.user.id}>`;
+            // Resolve Team Role ID for <@&ROLE_ID> ping format
+            const teamRoleId = getTeamRoleId(config, safeTeamName);
+            const teamPing = teamRoleId ? `<@&${teamRoleId}>` : `**${safeTeamName.replace(/-/g, " ")}**`;
 
             const updatedEmbed = EmbedBuilder.from(oldEmbed);
 
@@ -999,7 +1015,7 @@ async handleAgentAction(interaction) {
 
                 if (originChannel) {
                     await originChannel.send({
-                        content: `🎉 ${gmPing}, **Contract Approved!**\nThe player agent (${interaction.user}) has **approved** the contract extension request for **${playerName}**!\n\n> **Agent Handshake Note:**\n> *"${note}"*`
+                        content: `🎉 ${teamPing}, **Contract Approved!**\nThe player agent (${interaction.user}) has **approved** the contract extension request for **${playerName}**!\n\n> **Agent Handshake Note:**\n> *"${note}"*`
                     }).catch(() => null);
                 }
             }
@@ -1045,7 +1061,6 @@ async handleAgentAction(interaction) {
                 assignedAgentId: interaction.user.id,
                 gmChannelId: originChannelId,
                 masterMessageId,
-                gmId
             };
 
             // 1. Update the Agent channel message
@@ -1054,28 +1069,27 @@ async handleAgentAction(interaction) {
                 components: buildAgentActionRow(buttonParams, historyText)
             }).catch(() => null);
 
-            // 2. Dispatch updated counter card to the GM channel
+                // 2. Update the GM master card in-place
                 if (originChannel) {
                     const gmComponents = buildGmActionRow("COUNTER", buttonParams, historyText);
-
-                    // 1. Fetch the existing master card message in the GM channel
                     const masterMsg = await originChannel.messages.fetch(masterMessageId).catch(() => null);
 
                     if (masterMsg) {
-                        // Edit the single active card with the updated counter embed and buttons
+                        // 1. Update the Master Card directly in place
                         await masterMsg.edit({
+                            content: null,
                             embeds: [updatedAgentEmbed],
                             components: gmComponents
                         }).catch(err => console.error("❌ Failed to edit GM master embed:", err));
 
-                        // Send a lightweight ping notification with a direct jump link to the updated card
+                        // 2. Send a simple text ping to alert the team (No extra embeds!)
                         await originChannel.send({
-                            content: `🔔 ${gmPing}, **Counter offer received from Agent regarding ${playerName}!**\n👉 [View Updated Card](${masterMsg.url})`
+                            content: `🔔 ${teamPing}, **Counter offer received from Agent regarding ${playerName}!**\n👉 [View Updated Card](${masterMsg.url})`
                         }).catch(() => null);
                     } else {
-                        // Fallback: If master message fetch fails, dispatch a new message
+                        // Fallback: If master message was deleted/missing, post a new card
                         await originChannel.send({
-                            content: `🔔 ${gmPing}, **Counter offer received from Agent regarding ${playerName}!**`,
+                            content: `🔔 ${teamPing}, **Counter offer received from Agent regarding ${playerName}!**`,
                             embeds: [updatedAgentEmbed],
                             components: gmComponents
                         }).catch(err => console.error("❌ Failed to dispatch card to GM channel:", err));
@@ -1103,7 +1117,7 @@ async handleAgentAction(interaction) {
 
                 if (originChannel) {
                     await originChannel.send({
-                        content: `❌${gmPing}, **Contract Extension Rejected!**\nThe contract extension request for **${playerName}** was rejected by their agent (${interaction.user}).\n\n> **Reason for Rejection:**\n> *"${reason}"*`
+                        content: `❌${teamPing}, **Contract Extension Rejected!**\nThe contract extension request for **${playerName}** was rejected by their agent (${interaction.user}).\n\n> **Reason for Rejection:**\n> *"${reason}"*`
                     }).catch(() => null);
                 }
             }
@@ -1139,7 +1153,6 @@ async handleAgentAction(interaction) {
                 assignedAgentId: interaction.user.id,
                 gmChannelId: originChannelId,
                 masterMessageId,
-                gmId
             };
 
             await interaction.editReply({
@@ -1162,23 +1175,24 @@ async handleAgentAction(interaction) {
 
                 const gmComponents = buildGmActionRow("COUNTER", buttonParams, historyText);
 
-            const masterMsg = await originChannel.messages.fetch(masterMessageId).catch(() => null);
+                const masterMsg = await originChannel.messages.fetch(masterMessageId).catch(() => null);
 
                 if (masterMsg) {
-                    // Edit the single active card directly
+                    // 1. Update the Master Card directly in place
                     await masterMsg.edit({
+                        content: null,
                         embeds: [gmSummaryEmbed],
                         components: gmComponents
                     }).catch(err => console.error("❌ Failed to edit GM master embed:", err));
 
-                    // Send a lightweight ping notification with a direct jump link
+                    // 2. Send a simple text ping to alert the team (No extra embeds!)
                     await originChannel.send({
-                        content: `🔔 ${gmPing}, **New message received from Agent regarding ${playerName}!**\n👉 [View Updated Card](${masterMsg.url})`
+                        content: `🔔 ${teamPing}, **New message received from Agent regarding ${playerName}!**\n👉 [View Updated Card](${masterMsg.url})`
                     }).catch(() => null);
                 } else {
-                    // Fallback: Dispatch a new message if the master message wasn't found
+                    // Fallback: If master message was deleted/missing, post a new card
                     await originChannel.send({
-                        content: `🔔 ${gmPing}, **New message received from Agent regarding ${playerName}!**`,
+                        content: `🔔 ${teamPing}, **New message received from Agent regarding ${playerName}!**`,
                         embeds: [gmSummaryEmbed],
                         components: gmComponents
                     }).catch(err => console.error("❌ Failed to dispatch card to GM channel:", err));
@@ -1192,32 +1206,20 @@ async handleAgentAction(interaction) {
     async handleGmAction(interaction) {
         try {
             const parts = interaction.customId.split("_");
-            
             const action = parts[1];
-            const safePlayerName = parts[2];
-            const safeTeamName = parts[3];
-            const assignedAgentId = parts[4];
-            const agentChannelId = parts[5];
+            const agentChannelId = parts.pop();
+            const assignedAgentId = parts.pop();
+            const safeTeamName = parts.pop();
+            const safePlayerName = parts.pop();
 
             const playerName = safePlayerName.replace(/-/g, " ");
 
             
             const oldEmbed = interaction.message?.embeds[0];
-            if (!oldEmbed) return;
-
-            
-            const submittedByField = oldEmbed.fields.find(f => f.name && f.name.includes("Submitted By"));
-
-            
-            const contentMention = interaction.message.content.match(/\d+/)?.[0]; 
-            const originalManagerId = contentMention || (submittedByField ? submittedByField.value.replace(/[^0-9]/g, "") : null);
-
-            if (originalManagerId && interaction.user.id !== originalManagerId) {
-                return await interaction.reply({
-                    content: "❌ **Access Denied:** Only the GM who submitted this extension can negotiate this contract.",
-                    ephemeral: true
-                });
+            if (!oldEmbed) {
+                return await interaction.reply({content: "❌ Could not find the original offer embed." });
             }
+
 
             // --- GM ACTION A: ACCEPT COUNTER ---
             if (action === "accept") {
@@ -1347,6 +1349,7 @@ async handleAgentAction(interaction) {
             const agentChannel = agentLogChannelId
                 ? await interaction.guild.channels.fetch(agentLogChannelId).catch(() => null)
                 : null;
+            const masterMessageId = interaction.message?.id;
 
             // Parameters object for our centralized button builder
             const buttonParams = {
@@ -1354,7 +1357,8 @@ async handleAgentAction(interaction) {
                 safeTeamName,
                 assignedAgentId,
                 agentChannelId: agentLogChannelId || "undefined",
-                gmChannelId: interaction.channelId
+                gmChannelId: interaction.channelId,
+                masterMessageId: masterMessageId
             };
 
             
@@ -1438,14 +1442,13 @@ async handleAgentAction(interaction) {
                     { name: "📜 Negotiation History", value: updatedLedger, inline: false }
                 );
 
-                // 1. Update the GM Channel message
-                await interaction.editReply({
-                    content: "📤 **Counter offer sent to Agent!**",
+            await interaction.editReply({
+                    content: null, // Clears any text headers above the embed
                     embeds: [updatedGmEmbed],
                     components: buildGmActionRow("COUNTER", buttonParams, historyText)
                 });
 
-                // 2. Dispatch update to Agent Queue/Log Channel
+                // 2. Dispatch update to Agent Channel
                 if (agentChannel) {
                     await agentChannel.send({
                         content: `🔔 ${assignedAgentId && assignedAgentId !== "unassigned" ? `<@${assignedAgentId}>` : "Agent Queue"}, **GM sent a counter offer regarding ${playerName}!**`,

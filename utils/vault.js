@@ -478,7 +478,7 @@ module.exports = {
                         newRowData[yrsHeader]   = String(years);
                         newRowData[aavHeader]   = formatCurrency(salary);
                         newRowData[capHeader]   = formatCurrency(capHit);
-                        newRowData[notesHeader] = String(structure || "Processed via automated shortcut.");
+                        newRowData[notesHeader] = String(structure);
 
                         console.log(`📝 Appending row for ${playerName} on team: ${detectedTeamName}`, newRowData);
                         await mainSheet.addRow(newRowData);
