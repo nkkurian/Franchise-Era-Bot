@@ -1120,6 +1120,12 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 return await loginCmd.handleSecretButtonClick(interaction);
             }
         }
+        if (customId.startsWith("portal_sim_impact_")) {
+            const salaryCmd = client.commands.get("salary");
+            if (salaryCmd && typeof salaryCmd.handleSimulateImpact === "function") {
+                return await salaryCmd.handleSimulateImpact(interaction, supabase, currentConfig, getSheetData);
+            }
+        }
     } // <--- THIS ends the "isButton" check.
 
     const getOwnerIdMap = getTeamMap;

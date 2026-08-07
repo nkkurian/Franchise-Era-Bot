@@ -95,7 +95,7 @@ module.exports = {
                     
                     const pPos = bestMatchPlayer?.position || playerRow.position || "FA";
 
-                    // 🔍 DEBUG LOG: If this triggers, your name normalization didn't find a match at all
+                    // DEBUG LOG: If this triggers, your name normalization didn't find a match at all
                     if (!sleeperId) {
                         console.log(`❌ [DEBUG] No Sleeper cache match found for normalized name: "${normalizedTargetName}"`);
                     }
@@ -103,7 +103,7 @@ module.exports = {
                     // 2. Fetch Stats if we have an ID
                     const sleeperLeagueId = config?.sleeper_id;
                     const stats = sleeperId ? await getPlayerStats(sleeperId, sleeperLeagueId) : null;
-                    const displayYear = stats?.displayYear || "2025";
+                    const displayYear = stats?.displayYear;
                     let statsField = `No live stats available for ${displayYear}.`;
 
                     if (stats) {
@@ -158,9 +158,22 @@ module.exports = {
 
                         if (s.length > 0) statsField = s.join("\n");
                     }
-    
+
+                    // Identify GM's Team from Roles
+                    let userTeamName = null;
+                    if (interaction.member && config?.sleeper_team_roles) {
+                        const memberRoles = interaction.member.roles.cache.map(r => r.id);
+                        for (const [roleId, details] of Object.entries(config.sleeper_team_roles)) {
+                            if (memberRoles.includes(roleId) || (details?.roleId && memberRoles.includes(details.roleId))) {
+                                userTeamName = details.teamName;
+                                break;
+                            }
+                        }
+                    }
+                    //Check if player is already on GM's team
+                    const isAlreadyOnTeam = userTeamName && teamAffiliation.toLowerCase().trim() === userTeamName.toLowerCase().trim();
+                    
                 // 3. Build the Embed (Your Preferred Format)
-                    // 3. Build the Embed (Your Preferred Format)
                     const embed = new EmbedBuilder()
                     .setTitle(`🏈 ${pName} (${pPos})`)
                     .setColor(0x3498db)
@@ -228,26 +241,37 @@ module.exports = {
                     );
                 }
     
-                // Add history button if applicable
                     const components = [];
+                    const buttonRow = new ActionRowBuilder(); 
 
-                    // Check logs safely without hardcoded array indices
+                    // 1. Add "View Extension" button if history exists
                     const hasHistory = logs.some((l) => {
                         if (!l) return false;
-                        const logName = l.name || l.playerName || l._rawData?.[0]; // Fallback to property first
+                        const logName = l.name || l.playerName || l._rawData?.[0];
                         return logName?.toLowerCase() === pName.toLowerCase();
                     });
 
                     if (hasHistory) {
-                    components.push(
-                        new ActionRowBuilder().addComponents(
+                        buttonRow.addComponents(
                             new ButtonBuilder()
                                 .setCustomId(`view_ext_${pName}`)
                                 .setLabel("View Extension")
-                                .setStyle(ButtonStyle.Secondary),
-                        ),
+                                .setStyle(ButtonStyle.Secondary)
+                        );
+                    }
+
+                    // 2. Add "Simulate Cap Impact" button
+                    const safePlayerName = pName.replace(/\s+/g, "_");
+                    buttonRow.addComponents(
+                        new ButtonBuilder()
+                            .setCustomId(`portal_sim_impact_${safePlayerName}_${rawCapHit}`)
+                            .setLabel("📊 Simulate Cap Impact")
+                            .setStyle(ButtonStyle.Primary)
                     );
-                }
+
+                    if (buttonRow.components.length > 0) {
+                        components.push(buttonRow);
+                    }
     
                 const payload = {
                     content: null,
@@ -288,4 +312,108 @@ module.exports = {
                 });
             }
         },
+    async handleSimulateImpact(interaction, supabase, config, getSheetData) {
+            try {
+                await interaction.deferReply({ flags: [64] }); 
+                if (!config && supabase) {
+                    const { data } = await supabase
+                        .from("league_configs") 
+                        .select("*")
+                        .eq("guild_id", interaction.guild.id)
+                        .maybeSingle();
+                    config = data;
+                }
+
+                // Parse customId: "portal_sim_impact_Patrick_Mahomes_10000000"
+                const parts = interaction.customId.split("_");
+                const playerCapHit = parseFloat(parts.pop()) || 0;
+                const playerName = parts.slice(3).join(" ").replace(/_/g, " ");
+
+                // 1. Identify GM's Team from Roles
+                let userTeamName = null;
+                if (interaction.member && config?.sleeper_team_roles) {
+                    const memberRoles = interaction.member.roles.cache.map(r => r.id);
+                    for (const [roleId, details] of Object.entries(config.sleeper_team_roles)) {
+                        if (memberRoles.includes(roleId) || (details?.roleId && memberRoles.includes(details.roleId))) {
+                            userTeamName = details.teamName;
+                            break;
+                        }
+                    }
+                }
+
+                if (!userTeamName) {
+                    return await interaction.editReply("❌ Could not verify your team assignment based on your Discord roles.");
+                }
+
+                // 2. Fetch sheet data
+                const { players, teams } = await getSheetData(interaction.guild.id);
+
+                // Find player row to check current team affiliation
+                const targetPlayer = players?.find(p => p.name?.toLowerCase() === playerName.toLowerCase());
+                const playerTeam = targetPlayer?.team || targetPlayer?.franchise || "Free Agent";
+
+                // 3. CHECK: Is the player already on their team?
+                const isAlreadyOnTeam = playerTeam.toLowerCase().trim() === userTeamName.toLowerCase().trim();
+
+                if (isAlreadyOnTeam) {
+                    const rosterEmbed = new EmbedBuilder()
+                        .setTitle(`💼 Roster Status: ${playerName}`)
+                        .setColor(0x3498db)
+                        .setDescription(`🟢 **${playerName}** is already on your roster (**${userTeamName}**).`);
+
+                    return await interaction.editReply({ embeds: [rosterEmbed] });
+                }
+
+                // 4. Outside Player -> Perform Financial Impact Simulation
+                let currentCapSpaceRaw = "$0.00";
+
+                try {
+                    // A. Fetch Google Spreadsheet document context
+                    const { doc } = await getSheetData(interaction.guild.id);
+
+                    // B. Find the specific team tab (e.g. "Urumqi Uncs")
+                    const teamSheet = doc.sheetsByIndex.find((s) =>
+                        s.title.toLowerCase().includes(userTeamName.toLowerCase())
+                    );
+
+                    if (teamSheet) {
+                        // C. Pull the mapped cap cell (or fallback to F2)
+                        const capCellA1 = (config?.column_mapping?.team_cap_space_cell || "F2").trim().toUpperCase();
+
+                        // D. Load the cell and read its formatted value
+                        await teamSheet.loadCells(capCellA1);
+                        currentCapSpaceRaw = teamSheet.getCellByA1(capCellA1).formattedValue || "$0.00";
+                    }
+                } catch (err) {
+                    console.error("⚠️ Failed to load cap space cell in simulation:", err);
+                }
+
+                // E. Parse currency formatted string (e.g. "$8,895,947.00") into a clean number
+                const currentCapSpace = parseFloat(String(currentCapSpaceRaw).replace(/[$,]/g, "")) || 0;
+
+                const projectedCapSpace = currentCapSpace - playerCapHit;
+                const canAfford = projectedCapSpace >= 0;
+
+                const simEmbed = new EmbedBuilder()
+                    .setTitle(`📊 Cap Impact Simulation: ${playerName}`)
+                    .setColor(canAfford ? 0x2ecc71 : 0xe74c3c)
+                    .setDescription(`Financial simulation for adding **${playerName}** to **${userTeamName}**:`)
+                    .addFields(
+                        { name: "💰 Current Cap Space", value: `\`$${(currentCapSpace / 1000000).toFixed(2)}M\``, inline: true },
+                        { name: "💸 Acquisition Cap Hit", value: `\`-$${(playerCapHit / 1000000).toFixed(2)}M\``, inline: true },
+                        { 
+                            name: "📈 Projected Remaining Cap Space", 
+                            value: `${canAfford ? '🟢' : '🔴'} **$${(projectedCapSpace / 1000000).toFixed(2)}M**`, 
+                            inline: false 
+                        }
+                    )
+                    .setFooter({ text: canAfford ? "✅ Transaction is financially viable." : "⚠️ Warning: Pushes team over the cap!" });
+
+                return await interaction.editReply({ embeds: [simEmbed] });
+
+            } catch (err) {
+                console.error("❌ Error running cap impact simulation:", err);
+                return await interaction.editReply("💥 An error occurred while calculating cap impact.");
+            }
+        }
 };

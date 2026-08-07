@@ -188,8 +188,6 @@ module.exports = {
         .setName("login")
         .setDescription("Securely authenticate and launch your Front Office Command Portal."),
     
-
-    // 🟢 FIXED: Added 'currentConfig' in the 3rd slot so getSheetData maps to the 4th slot properly
     async execute(interaction, supabase, currentConfig, getSheetData) {
         await interaction.reply({ content: "⏳ Authenticated session initializing... Loading Front Office Portal...", ephemeral: false });
 
@@ -437,7 +435,7 @@ module.exports = {
             }
 
             if (isNaN(convertAmount) || convertAmount <= 0 || convertAmount >= currentSalary) {
-                return await interaction.editReply(`❌ Invalid amount. Must be a positive number less than their current salary of **${currentSalaryStr}**.`);
+                return await interaction.editReply(`❌ Invalid amount. ** ${convertAmount}** is not less than their current salary of **${currentSalaryStr}**.`);
             }
 
             // Restructure Math calculations
@@ -454,7 +452,7 @@ module.exports = {
                     { name: "📉 Current Cap Hit", value: `\`$${currentSalary.toLocaleString()}\``, inline: true },
                     { name: "📈 Projected New Cap Hit", value: `\`$${newCapHit.toLocaleString()}\``, inline: true },
                     { name: "💰 Immediate Cap Savings", value: `**+$${currentYearCapSavings.toLocaleString()}**`, inline: false },
-                    { name: "📋 Contract Outlook", value: `• **New Base Salary:** $${newBaseSalary.toLocaleString()}\n• **Added Yearly Proration:** +$${bonusProration.toLocaleString()}/yr` }
+                    { name: "📋 Contract Outlook", value: `• **New Base Salary:** $${newBaseSalary.toLocaleString()}\n• ** Yearly Dead Cap Proration:** +$${bonusProration.toLocaleString()}/yr` }
                 )
                 .setFooter({ text: "Click button to submit to the Commisioners" });
 
@@ -462,17 +460,64 @@ module.exports = {
                 new ButtonBuilder()
                     .setCustomId(`portal_confirm_restructure_${player.name.replace(/\s+/g, '_')}_${convertAmount}`)
                     .setLabel("💼 Submit to Commissioner Office")
-                    .setStyle(ButtonStyle.Success)
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                .setCustomId(`portal_restructure_retry_${player.name.replace(/\s+/g, '_')}`)
+                .setLabel("🔄 Adjust Numbers")
+                .setStyle(ButtonStyle.Secondary)
             );
 
             return await interaction.editReply({ 
                 embeds: [calcEmbed], 
-                components: [submitRow] // 🟢 Pass the button here
+                components: [submitRow] 
             });
 
         } catch (err) {
             console.error("❌ Restructure calculation error:", err);
             return await interaction.editReply("💥 An error occurred while computing the restructure math.");
+        }
+    },
+
+    async handleRestructureButton(interaction) {
+        try {
+            let defaultPlayerName = "";
+
+            // Check if this came from the "Adjust Numbers" button
+            if (interaction.customId.startsWith("portal_restructure_retry_")) {
+                const parts = interaction.customId.split("_");
+                defaultPlayerName = parts.slice(3).join(" ").replace(/_/g, " ");
+            }
+
+            const modal = new ModalBuilder()
+                // 🟢 FIXED: Match exact string from index.js router
+                .setCustomId("portal_restructure_modal") 
+                .setTitle(defaultPlayerName ? `🔄 Restructure: ${defaultPlayerName}` : "🧮 Contract Restructure");
+
+            const playerInput = new TextInputBuilder()
+                .setCustomId("restructure_player_name")
+                .setLabel("Player Name")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            if (defaultPlayerName) {
+                playerInput.setValue(defaultPlayerName);
+            }
+
+            const amountInput = new TextInputBuilder()
+                .setCustomId("restructure_amount")
+                .setLabel("Amount to Convert ($ or 'MAX')")
+                .setPlaceholder("e.g. 5M, 10000000, or MAX")
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+
+            modal.addComponents(
+                new ActionRowBuilder().addComponents(playerInput),
+                new ActionRowBuilder().addComponents(amountInput)
+            );
+
+            return await interaction.showModal(modal);
+        } catch (err) {
+            console.error("❌ Error opening restructure modal:", err);
         }
     },
 
@@ -498,7 +543,6 @@ module.exports = {
         const logChannel = await interaction.guild.channels.fetch(logChannelId).catch(() => null);
         if (!logChannel) return await interaction.editReply("🚨 **Channel Error:** Cannot access logging channel.");
 
-        // 🟢 FIXED: Calling the passed-in getSheetData argument directly
         const { players } = await getSheetData(guildId);
         const player = players.find(p => p && (p.name || p.playerName || p.rowRef?.get("Player Name"))?.toLowerCase() === playerName.toLowerCase());
 
@@ -522,8 +566,6 @@ module.exports = {
                     break;
                 }
             }
-
-            // 🟢 NEW & IMPROVED: Complete structural administrative blueprint embed
             const commishLogEmbed = new EmbedBuilder()
                 .setTitle(`💼 APPROVED TRANSACTION: Restructure Request`)
                 .setColor(0xe67e22)
@@ -532,23 +574,22 @@ module.exports = {
                     { name: "🏈 Player Name", value: `**${player.name || playerName}**`, inline: true },
                     { name: "⏳ Contract Length", value: `\`${yearsLeft} Years Remaining\``, inline: true },
                     { name: "💰 Total Converted Amount", value: `\`$${convertAmount.toLocaleString()}\``, inline: false },
-
-                    // Side-by-side financial blueprints
-                    { name: "📉 BASE SALARY ADJUSTMENT", value: `• **Current Base:** $${currentSalary.toLocaleString()}`, inline: true },
-                    { name: "📊 CAP HIT LOOKOUT", value: `• **Current Cap Hit:** $${currentSalary.toLocaleString()}\n• 🔥 **New Cap Hit:** $${newCapHit.toLocaleString()}`, inline: true },
-
-                    // Clear action instructions
-                    
-                    { name: "Cap Savings", value: `Clears **$${currentYearCapSavings.toLocaleString()}** in immediate cap space.` },
+                    { name: "📉 BASE SALARY ADJUSTMENT", 
+                        value: `• **Current Base:** $${currentSalary.toLocaleString()}\n•  **New Base:** $${newBaseSalary.toLocaleString()}`, 
+                        inline: true},
+                    {name: "📊 CAP HIT LOOKOUT", 
+                        value: `• **Current Cap Hit:** $${currentSalary.toLocaleString()}\n•  **New Cap Hit:** $${newCapHit.toLocaleString()}\n \n•  **Yearly Dead Cap:** $${bonusProration.toLocaleString()}/yr`, 
+                        inline: true },
+                    { name: "💵 Cap Savings", value: `Clears **$${currentYearCapSavings.toLocaleString()}** in immediate cap space.` },
                     { name: "👤 Requested By", value: `${interaction.user}` }
                 )
                 .setTimestamp()
-                .setFooter({ text: "Action Required • Update Master Spreadsheet Ledger" });
+                .setFooter({ text: "Action Required" });
 
             await logChannel.send({ embeds: [commishLogEmbed] });
 
             await interaction.editReply({ 
-                content: `✅ **Transaction Logged!** The ledger blueprint has been transmitted to the Commish office.`,
+                content: ` Your restructure request for **${player.name || playerName}** has been submitted.`,
                 components: [] 
             });
 
