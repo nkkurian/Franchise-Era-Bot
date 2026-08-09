@@ -482,7 +482,7 @@ module.exports = {
                 `❌ **Access Denied:** I couldn't connect to that Sheet ID.\n\n` +
                     `**Troubleshooting:**\n` +
                     `1. Double check the ID string is correct.\n` +
-                    `2. Ensure you shared the sheet with \`${process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL}\` as an **Editor**.`,
+                    `2. Ensure you shared the sheet with \`${process.env.GOOGLE_EMAIL}\` as an **Editor**.`,
             );
         }
     },
