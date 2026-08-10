@@ -436,56 +436,66 @@ module.exports = {
     },
 
     async handleSheetsSubmit(interaction, supabase) {
-        const sheetId = interaction.fields.getTextInputValue("in_sheet_id");
-        const pTab = interaction.fields.getTextInputValue("in_tab_players");
-        const lTab =
-            interaction.fields.getTextInputValue("in_tab_logs") || null;
+    const sheetId = interaction.fields.getTextInputValue("in_sheet_id")?.trim();
+    const pTab = interaction.fields.getTextInputValue("in_tab_players")?.trim();
+    const lTab = interaction.fields.getTextInputValue("in_tab_logs")?.trim() || null;
 
-        await interaction.deferReply();
+    await interaction.deferReply({ ephemeral: true });
 
-        try {
-            // 2. Setup Service Account Auth (METHOD 1)
-            // This replaces the old oauth2Client code
-            const serviceAccountAuth = new JWT({
-                email: process.env.GOOGLE_EMAIL,
-                key: process.env.GOOGLE_KEY.replace(/\\n/g, "\n"),
-                scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-            });
-
-            // 3. Connection Test
-            const doc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
-            await doc.loadInfo();
-
-            // Check for Player Tab
-            if (!doc.sheetsByTitle[pTab]) {
-                return await interaction.editReply({
-                    content: `❌ **Tab Mismatch Error:** I found the sheet, but there's no tab named **"${pTab}"**. (Note: Tab names are case-sensitive!)`,
-                });
-            }
-
-            // 4. Save to Supabase
-            const { error } = await supabase.from("league_configs").upsert({
-                guild_id: interaction.guild.id,
-                sheet_id: sheetId,
-                tab_players: pTab,
-                tab_logs: lTab,
-            });
-
-            if (error) throw error;
-
-            return await interaction.editReply(
-                "✅ **Verified & Saved!** Your Service Account successfully connected to the sheet.",
-            );
-        } catch (err) {
-            console.error("SHEET VERIFY ERROR:", err.message);
-            return await interaction.editReply(
-                `❌ **Access Denied:** I couldn't connect to that Sheet ID.\n\n` +
-                    `**Troubleshooting:**\n` +
-                    `1. Double check the ID string is correct.\n` +
-                    `2. Ensure you shared the sheet with \`${process.env.GOOGLE_EMAIL}\` as an **Editor**.`,
-            );
+    try {
+        // 1. Format Private Key correctly for Render
+        let rawKey = process.env.GOOGLE_KEY || "";
+        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
+            rawKey = rawKey.slice(1, -1);
         }
-    },
+        const formattedKey = rawKey.replace(/\\n/g, "\n");
+
+        // 2. Instantiate Sheet (v3 Syntax)
+        const doc = new GoogleSpreadsheet(sheetId);
+
+        // 3. Authenticate BEFORE calling API requests
+        await doc.useServiceAccountAuth({
+            client_email: process.env.GOOGLE_EMAIL,
+            private_key: formattedKey,
+        });
+
+        // 4. Test connection
+        await doc.loadInfo();
+
+        // Check for Player Tab
+        if (!doc.sheetsByTitle[pTab]) {
+            return await interaction.editReply({
+                content: `❌ **Tab Mismatch Error:** I found the sheet, but there's no tab named **"${pTab}"**. (Note: Tab names are case-sensitive!)`,
+            });
+        }
+
+        // 5. Save to Supabase
+        const { error } = await supabase.from("league_configs").upsert({
+            guild_id: interaction.guild.id,
+            sheet_id: sheetId,
+            tab_players: pTab,
+            tab_logs: lTab,
+        });
+
+        if (error) throw error;
+
+        return await interaction.editReply(
+            "✅ **Verified & Saved!** Your Service Account successfully connected to the sheet."
+        );
+    } catch (err) {
+        console.error("SHEET VERIFY ERROR:", err.message);
+        
+        // Fallback display if email env variable isn't resolving inside this scope
+        const serviceEmail = process.env.GOOGLE_EMAIL || "your Google Service Account email";
+
+        return await interaction.editReply(
+            `❌ **Access Denied:** I couldn't connect to that Sheet ID.\n\n` +
+            `**Troubleshooting:**\n` +
+            `1. Double check the ID string is correct.\n` +
+            `2. Ensure you shared the sheet with \`${serviceEmail}\` as an **Editor**.`
+        );
+    }
+},
 
     async sendSleeperMenu(interaction, supabase) {
         const { data: config } = await supabase
