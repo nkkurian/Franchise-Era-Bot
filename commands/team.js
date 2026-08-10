@@ -158,8 +158,8 @@ module.exports = {
                const mapping = config?.column_mapping || {};
 
                // Pull matching cell coordinates with correct keys matching your setup dashboard database structure
-               const capCellA1 = mapping?.team_cap_space_cell || "F2"; 
-               const extCellA1 = mapping?.team_extensions_cell || "J2";
+               const capCellA1 = mapping?.team_cap; 
+               const extCellA1 = mapping?.team_ext;
 
                // 2. Safely collect and load cells from the targeted sheet
                const cellsToLoad = [];
