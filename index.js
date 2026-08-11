@@ -112,6 +112,12 @@ app.use(express.json()); // Essential to read the data sent from Google
 
 app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
 
+const faRouter = require("./routes/fa");
+// Store getSheetData on Express app instance so routes can access it
+app.set("getSheetData", getSheetData); 
+// Mount the router
+app.use("/", faRouter);
+
 //Added this
 async function getPlayerStats(playerSleeperId, leagueSleeperId) {
     // If leagueSleeperId is missing, we use a default or skip custom scoring
@@ -1202,48 +1208,29 @@ if (interaction.customId === "setup_confirm_save_roles") {
 }); // Closes: client.on("interactionCreate")
 
 
-async function pollAllLeagues() {
-    console.log(
-        `[${new Date().toLocaleTimeString()}] 🔍 Starting global Sleeper poll...`,
-    );
 
-    // 🟢 NEW: Fetch the dynamic current NFL week state
+async function pollAllLeagues() {
+    console.log(`[${new Date().toLocaleTimeString()}] 🔍 Starting global Sleeper poll...`);
+
     let nflWeek = 1;
     try {
         const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl");
         if (stateRes.ok) {
             const nflState = await stateRes.json();
-            // Fallback to 1 if it's the off-season or preseason, otherwise use the active week
             nflWeek = nflState.season_type === "regular" ? nflState.week : 1;
         }
     } catch (err) {
-        console.error("⚠️ Failed to fetch dynamic NFL state, defaulting to Week 1:", err.message);
+        console.error("⚠️ Failed to fetch dynamic NFL state:", err.message);
     }
 
-    // 1. Get all leagues from Supabase that have auditing enabled
-    const { data: configs, error } = await supabase
-        .from("league_configs")
-        .select("*")
+    const { data: configs, error } = await supabase.from("league_configs").select("*");
 
-    if (error) {
-        console.error("🚨 Supabase Fetch Error:", error.message);
-        return;
-    }
-
-    if (!configs || configs.length === 0) {
-        console.log("ℹ️ No leagues currently have Audit Mode enabled.");
-        return;
-    }
-
-    console.log(`active: Processing ${configs.length} league(s).`);
+    if (error || !configs || configs.length === 0) return;
 
     for (const config of configs) {
         try {
             const guild = client.guilds.cache.get(config.guild_id);
-            if (!guild) {
-                console.warn(`⏩ Skipping League (Sleeper ID: ${config.sleeper_id}): Bot is not in Guild ${config.guild_id}`);
-                continue;
-            }
+            if (!guild || !config.sleeper_id) continue;
 
             if (!config.sleeper_id) {
                 console.warn(`⏩ Skipping Guild ${config.guild_id}: Missing sleeper_id in config.`);
@@ -1284,8 +1271,6 @@ async function pollAllLeagues() {
                 continue;
             }
 
-            const targetTxList = sortedTx.slice(-2);
-            console.log(`📋 Found ${sortedTx.length} completed txs. Processing the most recent ${targetTxList.length}...`);
 
             // Fetch the specific log channel for THIS league
             const logChannel = await client.channels
@@ -1300,8 +1285,17 @@ async function pollAllLeagues() {
                 continue;
             }
 
+            // On the very first run after boot, just mark existing transactions as processed without sending messages
+            if (isFirstRun) {
+                for (const tx of sortedTx) {
+                    processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
+                }
+                console.log(`🔒 Initialized ${sortedTx.length} existing transactions into cache for league ${config.sleeper_id}`);
+                continue; 
+            }
+
             // Process each of the target transactions
-            for (const tx of targetTxList) {
+            for (const tx of sortedTx) {
                 const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
 
                 // Skip if this transaction was already processed during this bot session
@@ -1326,6 +1320,7 @@ async function pollAllLeagues() {
             console.error(`❌ Error polling league ${config.sleeper_id}:`, err);
         }
     }
+    isFirstRun = false;
 }
 setInterval(pollAllLeagues, 60000); // Check all leagues every minute
 
