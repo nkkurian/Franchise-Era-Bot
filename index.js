@@ -780,6 +780,10 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 });
             }
         }
+        // Handle FA Modal Submission in vault
+        if (customId === "modal_fa_sheet_setup") {
+            return await vault.handleFASheetModalSubmission(interaction, supabase);
+        }
         if (interaction.customId === "modal_auto_salary_config") {
             return await setupManager.handleAutoSalarySubmit(interaction, supabase);
         }
@@ -856,8 +860,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
         if (interaction.customId === "adminLoginModal")
             return await vault.showAdminPanel(interaction, supabase);
         if (interaction.customId.startsWith("vlt_fin_")) {
-                const vaultModule = require("./utils/vault.js"); 
-                return await vaultModule.handleFinalModalSubmission(interaction, supabase, client, getSheetData);
+                return await vault.handleFinalModalSubmission(interaction, supabase, client, getSheetData);
             }
         if (interaction.customId === "portal_restructure_modal") {
             const loginCmd = client.commands.get("login");
@@ -1001,6 +1004,17 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 "extension",
                 interaction.customId.replace("vault_ext_", ""),
             );
+        if (customId === "vault_fa_config") {
+            return await vault.showFAConfig(interaction, supabase);
+        }
+        //  Toggle FA Enabled/Disabled button in vault
+        if (customId === "toggle_fa_status") {
+            return await vault.toggleFAStatus(interaction, supabase);
+        }
+        // Open Sheet Setup Modal button in vault 
+        if (customId === "open_fa_sheet_modal") {
+            return await vault.showFASheetModal(interaction);
+        }
         if (interaction.customId.startsWith("second_appeal_"))
             return await appeals.handleAppealButton(interaction, supabase);
         // 1. Enter the midway Roles Dashboard Menu

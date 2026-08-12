@@ -47,8 +47,6 @@ module.exports = {
                     .setStyle(ButtonStyle.Danger),
             );
 
-            // NOTE: This cannot be ephemeral because it's a standard message.
-            // It will be visible to everyone until the admin clicks it.
             const vaultMsg = await message.channel.send({
                 content: "🔒 **Secure Access Point Detected.**",
                 components: [row],
@@ -73,7 +71,7 @@ module.exports = {
         return await interaction.showModal(modal);
     },
     showAdminPanel: async (interaction, supabase) => {
-        await interaction.deferReply({ flags: [64] });
+        await interaction.deferReply();
 
         const { data: config } = await supabase
             .from("league_configs")
@@ -84,7 +82,7 @@ module.exports = {
         // 2. STOP if there is no password in the database
         if (!config?.vault_password) {
             return await interaction.reply({
-                content: "⚠️ **Vault Access Disabled:** No administrative password has been configured for this server yet.\n\n*Please head over to the **Discord Config > Admin Config** menu on your dashboard to set a secure password before using this command.*",
+                content: "⚠️ **Vault Access Disabled:** No administrative password has been configured for this server yet.\n\n*Please head over to the **setup** menu on your dashboard to set a password before using this command.*",
                 flags: [64]
             });
         }
@@ -108,6 +106,11 @@ module.exports = {
                     .setCustomId("vault_modify_search")
                     .setLabel("👤 Modify Player")
                     .setStyle(ButtonStyle.Primary),
+                new ButtonBuilder()
+                .setCustomId("vault_fa_config")
+                .setLabel("Free Agency Config")
+                .setStyle(ButtonStyle.Success)
+                .setEmoji("🏈"),
             );
             return await interaction.editReply({
                         embeds: [adminEmbed],
@@ -624,5 +627,170 @@ module.exports = {
                 return await vaultModule.showFinalActionModal(interaction, "sign", playerName);
             }
 
+        },
+    showFAConfig: async (interaction, supabase) => {
+        await interaction.deferReply();
+
+        const { data: config } = await supabase
+            .from("league_configs")
+            .select("fa_enabled, fa_sheet_id, fa_sheet_tab")
+            .eq("guild_id", interaction.guild.id)
+            .single();
+
+        const isEnabled = config?.fa_enabled ? "🟢 Enabled" : "🔴 Disabled";
+        const sheetId = config?.fa_sheet_id || "*Not Set*";
+        const sheetTab = config?.fa_sheet_tab || "*Not Set*";
+
+        const faEmbed = new EmbedBuilder()
+            .setTitle("🏈 Free Agency Configuration")
+            .setColor(config?.fa_enabled ? 0x2ecc71 : 0xe74c3c)
+            .setDescription("Manage Free Agency bidding settings for this server.")
+            .addFields(
+                { name: "Status", value: isEnabled, inline: true },
+                { name: "Sheet ID", value: `\`${sheetId}\``, inline: false },
+                { name: "Sheet Tab Name", value: `\`${sheetTab}\``, inline: false }
+            );
+
+        const configRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("toggle_fa_status")
+                .setLabel(config?.fa_enabled ? "Disable FA" : "Enable FA")
+                .setStyle(config?.fa_enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId("open_fa_sheet_modal")
+                .setLabel("Set Sheet & Tab")
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji("📝")
+        );
+
+        return await interaction.editReply({ embeds: [faEmbed], components: [configRow] });
+    },
+
+    toggleFAStatus: async (interaction, supabase) => {
+        // Fetch current status
+        const { data: config } = await supabase
+            .from("league_configs")
+            .select("fa_enabled, fa_sheet_id, fa_sheet_tab")
+            .eq("guild_id", interaction.guild.id)
+            .single();
+
+        const newStatus = !config?.fa_enabled;
+
+        // Update database
+        await supabase
+            .from("league_configs")
+            .update({ fa_enabled: newStatus })
+            .eq("guild_id", interaction.guild.id);
+
+        // Re-build updated embed
+        const isEnabledStr = newStatus ? "🟢 Enabled" : "🔴 Disabled";
+        const sheetId = config?.fa_sheet_id || "*Not Set*";
+        const sheetTab = config?.fa_sheet_tab || "*Not Set*";
+
+        const updatedEmbed = new EmbedBuilder()
+            .setTitle("🏈 Free Agency Configuration")
+            .setColor(newStatus ? 0x2ecc71 : 0xe74c3c)
+            .setDescription("Manage Free Agency bidding settings for this server.")
+            .addFields(
+                { name: "Status", value: isEnabledStr, inline: true },
+                { name: "Sheet ID", value: `\`${sheetId}\``, inline: false },
+                { name: "Sheet Tab Name", value: `\`${sheetTab}\``, inline: false }
+            );
+
+        const configRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("toggle_fa_status")
+                .setLabel(newStatus ? "Disable FA" : "Enable FA")
+                .setStyle(newStatus ? ButtonStyle.Danger : ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId("open_fa_sheet_modal")
+                .setLabel("Set Sheet & Tab")
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji("📝")
+        );
+
+        // Instantly update the existing Discord message in-place!
+        return await interaction.update({ embeds: [updatedEmbed], components: [configRow] });
+    },
+
+    showFASheetModal: async (interaction) => {
+        const modal = new ModalBuilder()
+            .setCustomId("modal_fa_sheet_setup")
+            .setTitle("Free Agency Sheet Config");
+
+        const sheetIdInput = new TextInputBuilder()
+            .setCustomId("input_fa_sheet_id")
+            .setLabel("Google Sheet ID")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("e.g. 1BxiMVs0XRm5nX0s...")
+            .setRequired(true);
+
+        const sheetTabInput = new TextInputBuilder()
+            .setCustomId("input_fa_sheet_tab")
+            .setLabel("Sheet Tab Name")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("e.g. FA Bids")
+            .setRequired(true);
+
+        modal.addComponents(
+            new ActionRowBuilder().addComponents(sheetIdInput),
+            new ActionRowBuilder().addComponents(sheetTabInput)
+        );
+
+        return await interaction.showModal(modal);
+    },
+
+    handleFASheetModalSubmission: async (interaction, supabase) => {
+        await interaction.deferUpdate(); // Acknowledge modal without posting a new message
+
+        const sheetId = interaction.fields.getTextInputValue("input_fa_sheet_id").trim();
+        const sheetTab = interaction.fields.getTextInputValue("input_fa_sheet_tab").trim();
+
+        // Update database
+        const { error } = await supabase
+            .from("league_configs")
+            .update({
+                fa_sheet_id: sheetId,
+                fa_sheet_tab: sheetTab
+            })
+            .eq("guild_id", interaction.guild.id);
+
+        if (error) {
+            return await interaction.followUp({ content: `❌ Error saving settings: ${error.message}`, flags: [64] });
         }
-}; // 🛠️ FIX: Closes module.exports
+
+        // Fetch refreshed config state
+        const { data: config } = await supabase
+            .from("league_configs")
+            .select("fa_enabled")
+            .eq("guild_id", interaction.guild.id)
+            .single();
+
+        const isEnabledStr = config?.fa_enabled ? "🟢 Enabled" : "🔴 Disabled";
+
+        const updatedEmbed = new EmbedBuilder()
+            .setTitle("🏈 Free Agency Configuration")
+            .setColor(config?.fa_enabled ? 0x2ecc71 : 0xe74c3c)
+            .setDescription("Manage Free Agency bidding settings for this server.")
+            .addFields(
+                { name: "Status", value: isEnabledStr, inline: true },
+                { name: "Sheet ID", value: `\`${sheetId}\``, inline: false },
+                { name: "Sheet Tab Name", value: `\`${sheetTab}\``, inline: false }
+            );
+
+        const configRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("toggle_fa_status")
+                .setLabel(config?.fa_enabled ? "Disable FA" : "Enable FA")
+                .setStyle(config?.fa_enabled ? ButtonStyle.Danger : ButtonStyle.Success),
+            new ButtonBuilder()
+                .setCustomId("open_fa_sheet_modal")
+                .setLabel("Set Sheet & Tab")
+                .setStyle(ButtonStyle.Primary)
+                .setEmoji("📝")
+        );
+
+        // Edit the original menu embed directly!
+        return await interaction.editReply({ embeds: [updatedEmbed], components: [configRow] });
+    },
+}; 
