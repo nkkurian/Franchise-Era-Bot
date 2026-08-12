@@ -46,9 +46,6 @@ const express = require("express");
 const app = express();
 // This is what UptimeRobot will "see"
 app.get("/", (req, res) => {
-    console.log(
-        `📡 Ping received from UptimeRobot at ${new Date().toLocaleTimeString()}`,
-    );
     res.status(200).send("Franchise Pro Bot: Standing By.");
 });
 
@@ -1210,7 +1207,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
 
 async function pollAllLeagues() {
-    console.log(`[${new Date().toLocaleTimeString()}] 🔍 Starting global Sleeper poll...`);
 
     let nflWeek = 1;
     try {
@@ -1237,7 +1233,6 @@ async function pollAllLeagues() {
                 continue;
             }
 
-            console.log(`📡 Fetching data for Sleeper League ${config.sleeper_id} (Week ${nflWeek})...`);
             // 2. Fetch data specific to THIS league
             // We need the sheet data to know who the players are
             const { players, doc } = await getSheetData(config.guild_id);
