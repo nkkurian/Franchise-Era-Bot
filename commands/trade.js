@@ -68,16 +68,23 @@ module.exports = {
                         if (!normalizedInput) return;
 
                         // Find the player using our clean, normalized lookup keys
+                        const getColValue = (row, colName) => {
+                            if (!row) return undefined;
+                            if (typeof row.rowRef?.get === "function") return row.rowRef.get(colName);
+                            if (row.rowRef && typeof row.rowRef === "object") return row.rowRef[colName];
+                            return row[colName];
+                        };
+
                         const r = players.find((row) => {
                             if (!row) return false;
-                            const checkName = row.name || row.playerName || row.rowRef?.get(mapping?.id_player_col || "Player Name");
+                            const checkName = row.name || row.playerName || getColValue(row, mapping?.id_player_col || "Player Name");
                             return typeof checkName === 'string' && normalizePlayerName(checkName).includes(normalizedInput);
                         });
 
                         if (r) {
-                            const pName = r.name || r.playerName || r.rowRef?.get(mapping?.id_player_col || "Player Name");
-                            const rawSalary = r.salary || r.aav || r.capHit || r.rowRef?.get(mapping?.salary_col || "Salary") || "0";
-                            const rawNotes = r.notes || r.structure || r.rowRef?.get(mapping?.notes_col || "Structure") || "";
+                            const pName = r.name || r.playerName || getColValue(r, mapping?.id_player_col || "Player Name");
+                            const rawSalary = r.salary || r.aav || r.capHit || getColValue(r, mapping?.salary_col || "Salary") || "0";
+                            const rawNotes = r.notes || r.structure || getColValue(r, mapping?.notes_col || "Structure") || "";
 
                             // Safe mathematical string parsing for M-shorthand notation entries
                             let hit = 0;
@@ -103,7 +110,7 @@ module.exports = {
                                 `• ${pName}: **$${hit.toLocaleString()}**${structureText}`,
                             );
                         } else {
-                            playerDetails.push(`• ${pn}: *Not Found*`);
+                            playerDetails.push(`• ${rawInputName}: *Not Found*`);
                         }
                     });
                 return {
