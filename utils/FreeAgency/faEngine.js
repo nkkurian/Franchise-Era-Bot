@@ -43,29 +43,48 @@ function formatSalaryForSheet(num) {
     return `${num}`;
 }
 
-async function showFAHub(interaction, supabase) {
-    await interaction.deferReply({ flags: [64] }); // Ephemeral reply
+//Figure out the team name based on the user's Discord roles
+function resolveTeamName(member, user, config) {
+    if (config?.sleeper_team_roles && member?.roles?.cache) {
+        const userRoleIds = member.roles.cache.map(r => r.id);
+        for (const [key, details] of Object.entries(config.sleeper_team_roles)) {
+            if (userRoleIds.includes(key) || userRoleIds.includes(details.roleId)) {
+                return details.teamName || details.roleName;
+            }
+        }
+    }
+    return user.username;
+}
 
-    // 1. Fetch FA settings from database
+// Helper to build the FA Hub Embed & Components dynamically
+async function buildFAHubPayload(interaction, supabase) {
     const { data: config } = await supabase
         .from("league_configs")
-        .select("fa_enabled, fa_sheet_id, fa_sheet_tab, max_bids_per_team")
+        .select("fa_enabled, fa_sheet_id, fa_sheet_tab, max_bids_per_team, sleeper_team_roles")
         .eq("guild_id", interaction.guild.id)
         .maybeSingle();
 
-    // 2. Check if FA is enabled by admins
     if (!config?.fa_enabled) {
         const disabledEmbed = new EmbedBuilder()
             .setTitle("🏈 Free Agency Hub — Closed")
             .setColor(0xe74c3c)
-            .setDescription("Free Agency is currently **disabled** by league management. Check back once bidding officially opens!");
-
-        return await interaction.editReply({ embeds: [disabledEmbed] });
+            .setDescription("Free Agency is currently **disabled** by league management.");
+        return { embeds: [disabledEmbed], components: [] };
     }
 
-    // 3. FA is Enabled — Show Redesigned Hub UI (Item #4)
-    const totalSubmittedBids = await fetchTotalBidsCount(config.fa_sheet_id, config.fa_sheet_tab);
-    const maxLeagueBids = config?.max_bids_per_team;
+    const teamName = resolveTeamName(interaction.member, interaction.user, config);
+    const maxBids = config?.max_bids_per_team || 8;
+
+    let teamBidsCount = 0;
+    let totalSubmittedBids = 0;
+
+    try {
+        const teamBids = await fetchTeamBids(config.fa_sheet_id, config.fa_sheet_tab, teamName);
+        teamBidsCount = teamBids ? teamBids.length : 0;
+        totalSubmittedBids = await fetchTotalBidsCount(config.fa_sheet_id, config.fa_sheet_tab);
+    } catch (err) {
+        console.error("[FA HUB ERROR] Failed to fetch bid counts:", err);
+    }
 
     const hubEmbed = new EmbedBuilder()
         .setTitle("🏈 Free Agency Workspace")
@@ -80,8 +99,8 @@ async function showFAHub(interaction, supabase) {
                        "• Use **Update / Remove Bid** to modify or withdraw active offers." 
             },
             { name: "Status", value: "🟢 **Bidding Open**", inline: true },
-            { name: "Active Sheet Tab", value: `\`${config.fa_sheet_tab}\``, inline: true },
-            { name: "Submitted Offers", value: `📊 **${totalSubmittedBids} / ${maxLeagueBids}**`, inline: true }
+            { name: "📊 Your Team Offers", value: `**${teamBidsCount} / ${maxBids}** active bids`, inline: true },
+            { name: "🌎 Total League Bids", value: `**${totalSubmittedBids}** submitted`, inline: true }
         )
         .setFooter({ text: "Franchise Free Agency Engine" });
 
@@ -91,7 +110,6 @@ async function showFAHub(interaction, supabase) {
             .setLabel("Submit New Bid")
             .setStyle(ButtonStyle.Success)
             .setEmoji("➕"),
-
         new ButtonBuilder()
             .setCustomId("fa_view_my_bids")
             .setLabel("View / Remove Bid")
@@ -99,13 +117,35 @@ async function showFAHub(interaction, supabase) {
             .setEmoji("⚙️")
     );
 
-    return await interaction.editReply({ embeds: [hubEmbed], components: [row] });
+    return { embeds: [hubEmbed], components: [row] };
 }
 
+async function showFAHub(interaction, supabase) {
+    await interaction.deferReply();
+    const payload = await buildFAHubPayload(interaction, supabase);
+    return await interaction.editReply(payload);
+}
 /**
  * Show the modal when GM clicks "Submit / Update Bid"
  */
-async function showBidModal(interaction) {
+async function showBidModal(interaction, supabase) {
+    const { data: config } = await supabase
+        .from("league_configs")
+        .select("fa_sheet_id, fa_sheet_tab, max_bids_per_team, sleeper_team_roles")
+        .eq("guild_id", interaction.guild.id)
+        .maybeSingle();
+
+    if (config?.fa_sheet_id && config?.fa_sheet_tab) {
+        const teamName = resolveTeamName(interaction.member, interaction.user, config);
+        const maxBids = config.max_bids_per_team || 8;
+        const currentTeamBids = await fetchTeamBids(config.fa_sheet_id, config.fa_sheet_tab, teamName);
+
+        if (currentTeamBids.length >= maxBids) {
+            return await interaction.reply({
+                content: `❌ **Max Bids Reached:** **${teamName}** already has **${currentTeamBids.length} / ${maxBids}** active bids. You must withdraw an existing bid before submitting an offer for a new player.`});
+        }
+    }
+
     const modal = new ModalBuilder()
         .setCustomId("modal_submit_fa_bid")
         .setTitle("Submit Free Agency Bid");
@@ -201,29 +241,25 @@ async function handleBidSubmission(interaction, supabase) {
         });
     }
 
-    let teamName = null;
 
-    if (config?.sleeper_team_roles) {
-        // Get array of all Role IDs assigned to this user in Discord
-        const userRoleIds = interaction.member?.roles?.cache?.map(r => r.id) || [];
-
-        for (const [key, details] of Object.entries(config.sleeper_team_roles)) {
-            // Check if user has the outer key OR explicit roleId as a role in Discord
-            if (userRoleIds.includes(key) || userRoleIds.includes(details.roleId)) {
-                teamName = details.teamName || details.roleName;
-                break;
-            }
-        }
-    }
-
-    if (!teamName) {
-        teamName = interaction.user.username;
-    }
+    const teamName = resolveTeamName(interaction.member, interaction.user, config);
     const sheetAAV = formatSalaryForSheet(parsedAAV);
     const sheetTotal = formatSalaryForSheet(totalContractValue);
 
-    console.log(`[FA BID READY] Team: "${teamName}" | Sheet ID: ${config.fa_sheet_id.substring(0, 8)}... | Tab: "${config.fa_sheet_tab}"`);
+    const maxBids = config.max_bids_per_team || 8;
+    const currentTeamBids = await fetchTeamBids(config.fa_sheet_id, config.fa_sheet_tab, teamName);
 
+    // Allow update if the player is ALREADY in their active bids
+    const existingBid = currentTeamBids.find(
+        b => b.playerName.toLowerCase() === rawPlayerName.toLowerCase()
+    );
+
+    if (!existingBid && currentTeamBids.length >= maxBids) {
+        return await interaction.editReply({
+            content: `❌ **Max Bids Reached:** **${teamName}** already has **${currentTeamBids.length} / ${maxBids}** active bids. You must withdraw an existing bid before submitting an offer for a new player.`
+        });
+    }
+    
     // 3. Sync Bid to Google Sheet
     try {
         console.log(`[FA SHEET SYNC] Writing bid for "${rawPlayerName}" to Google Sheets...`);
@@ -238,7 +274,6 @@ async function handleBidSubmission(interaction, supabase) {
                 notes: rawNotes
         });
 
-        const maxBids = config.max_bids_per_team;
         const currentCount = result.teamBidCount;
 
         console.log(`[FA SHEET SUCCESS] Action: ${result.action.toUpperCase()} | Row: ${result.row || 'Appended'}`);
@@ -275,6 +310,25 @@ async function handleBidSubmission(interaction, supabase) {
             }
         }
 
+        try {
+            const updatedPayload = await buildFAHubPayload(interaction, supabase);
+
+            // Fetch channel history to find and update the public Workspace embed
+            if (interaction.channel) {
+                const messages = await interaction.channel.messages.fetch({ limit: 15 });
+                const hubMessage = messages.find(m => 
+                    m.author.id === interaction.client.user.id && 
+                    m.embeds[0]?.title?.includes("Free Agency Workspace")
+                );
+
+                if (hubMessage) {
+                    await hubMessage.edit(updatedPayload);
+                }
+            }
+        } catch (refreshErr) {
+            console.error("[FA HUB UPDATE ERROR]:", refreshErr);
+        }
+
         await interaction.editReply({ embeds: [confirmationEmbed] });
 
     } catch (err) {
@@ -302,23 +356,8 @@ async function showMyBids(interaction, supabase) {
         return await interaction.editReply({ content: "❌ Free Agency sheet configuration missing." });
     }
 
-    let teamName = null;
-
     // 2. Resolve Team Name from Discord Roles
-    if (config?.sleeper_team_roles) {
-        const userRoleIds = interaction.member?.roles?.cache?.map(r => r.id) || [];
-        for (const [key, roleData] of Object.entries(config.sleeper_team_roles)) {
-            if (userRoleIds.includes(key) || userRoleIds.includes(roleData.roleId)) {
-                teamName = roleData.teamName || roleData.roleName;
-                break;
-            }
-        }
-    }
-
-    // Fallback if no team role matches
-    if (!teamName) {
-        teamName = interaction.user.username;
-    }
+    const teamName = resolveTeamName(interaction.member, interaction.user, config);
 
     // 3. Fetch Bids for the matched Team Name
     try {
@@ -384,16 +423,7 @@ async function handleWithdrawBid(interaction, supabase) {
     }
 
     // 2. Resolve Team Name from Roles
-    let teamName = interaction.user.username;
-    if (config?.sleeper_team_roles) {
-        const userRoleIds = interaction.member?.roles?.cache?.map(r => r.id) || [];
-        for (const [key, roleData] of Object.entries(config.sleeper_team_roles)) {
-            if (userRoleIds.includes(key) || userRoleIds.includes(roleData.roleId)) {
-                teamName = roleData.teamName || roleData.roleName;
-                break;
-            }
-        }
-    }
+    const teamName = resolveTeamName(interaction.member, interaction.user, config);
 
     // 3. Delete Row from Google Sheets
     const result = await removeBidFromSheet(config.fa_sheet_id, config.fa_sheet_tab, teamName, selectedPlayer);
@@ -402,6 +432,24 @@ async function handleWithdrawBid(interaction, supabase) {
         return await interaction.editReply({ 
             content: `❌ Could not find an active bid for **${selectedPlayer}** on the sheet.` 
         });
+    }
+
+    try {
+        const updatedPayload = await buildFAHubPayload(interaction, supabase);
+
+        if (interaction.channel) {
+            const messages = await interaction.channel.messages.fetch({ limit: 15 });
+            const hubMessage = messages.find(m => 
+                m.author.id === interaction.client.user.id && 
+                m.embeds[0]?.title?.includes("Free Agency Workspace")
+            );
+
+            if (hubMessage) {
+                await hubMessage.edit(updatedPayload);
+            }
+        }
+    } catch (refreshErr) {
+        console.error("[FA HUB UPDATE ERROR]:", refreshErr);
     }
 
     // A. Ephemeral Confirmation to the GM
