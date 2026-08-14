@@ -161,36 +161,46 @@ async function fetchTotalBidsCount(sheetId, sheetTab) {
 
 async function removeBidFromSheet(sheetId, sheetTab, teamName, playerName) {
     const sheets = getGoogleSheetsClient();
-    const range = `'${sheetTab}'!A:J`;
+    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId: sheetId });
+    const bidsSheet = spreadsheet.data.sheets.find(s => s.properties.title.toLowerCase() === sheetTab.toLowerCase());
+    if (!bidsSheet) throw new Error(`Sheet tab '${sheetTab}' not found`);
+    const numericSheetId = bidsSheet.properties.sheetId;
 
-    const response = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: range });
+    const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: sheetId,
+        range: `'${sheetTab}'!A:J`
+    });
     const rows = response.data.values || [];
+    // Search Col B (row[1]) for Team, Col C (row[2]) for Player:
+    const rowIndex = rows.findIndex(row => 
+        row[1]?.trim().toLowerCase() === teamName.trim().toLowerCase() &&
+        row[2]?.trim().toLowerCase() === playerName.trim().toLowerCase()
+    );
 
-    for (let i = 1; i < rows.length; i++) {
-        const rowTeam = rows[i][1];
-        const rowPlayer = rows[i][2];
-
-        if (rowPlayer?.trim().toLowerCase() === playerName.trim().toLowerCase() &&
-            rowTeam?.trim().toLowerCase() === teamName.trim().toLowerCase()) {
-
-            const rowIndex = i + 1;
-            const withdrawTimestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
-
-            // Option A: Hard Delete row if you prefer physically removing the line
-            await sheets.spreadsheets.values.clear({
-                spreadsheetId: sheetId,
-                range: `'${sheetTab}'!A${rowIndex}:J${rowIndex}`
-            });
-
-            // Return details so Discord can log the event
-            return {
-                success: true,
-                timestamp: withdrawTimestamp,
-                previousAAV: rows[i][4] || "N/A"
-            };
-        }
+    if (rowIndex === -1) {
+        console.log(`Bid for ${playerName} by ${teamName} not found.`);
+        return { success: false };
     }
-    return { success: false };
+
+    await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: sheetId,
+        requestBody: {
+            requests: [
+                {
+                    deleteDimension: {
+                        range: {
+                            sheetId: numericSheetId, // Uses correct numeric tab ID
+                            dimension: 'ROWS',
+                            startIndex: rowIndex,
+                            endIndex: rowIndex + 1
+                        }
+                    }
+                }
+            ]
+        }
+    });
+
+    return { success: true };
 }
 
 module.exports = {

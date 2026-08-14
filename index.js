@@ -1154,7 +1154,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
             }
         }
         if (customId === "fa_open_bid_modal") {
-            return await faEngine.showBidModal(interaction);
+            return await faEngine.showBidModal(interaction, supabase);
         }
 
         // Show active bids / manage menu when GM clicks "Update / Remove Bid"
