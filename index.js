@@ -29,6 +29,7 @@ const salaryCommand = require('./commands/salary.js');
 const appeals = require("./utils/appeals.js");
 const setupManager = require("./utils/setupManager.js");
 const { runScheduledLibrarySync } = require('./utils/sleeperLibrary.js');
+const faEngine = require("./utils/FreeAgency/faEngine.js");
 // Added this
 const {
     syncSleeperLibrary,
@@ -783,6 +784,10 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 });
             }
         }
+        // Handle FA Modal Submission in vault
+        if (customId === "modal_fa_sheet_setup") {
+            return await vault.handleFASheetModalSubmission(interaction, supabase);
+        }
         if (interaction.customId === "modal_auto_salary_config") {
             return await setupManager.handleAutoSalarySubmit(interaction, supabase);
         }
@@ -859,8 +864,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
         if (interaction.customId === "adminLoginModal")
             return await vault.showAdminPanel(interaction, supabase);
         if (interaction.customId.startsWith("vlt_fin_")) {
-                const vaultModule = require("./utils/vault.js"); 
-                return await vaultModule.handleFinalModalSubmission(interaction, supabase, client, getSheetData);
+                return await vault.handleFinalModalSubmission(interaction, supabase, client, getSheetData);
             }
         if (interaction.customId === "portal_restructure_modal") {
             const loginCmd = client.commands.get("login");
@@ -890,7 +894,13 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 return;
             }
         }
-    }
+        if (customId === "modal_submit_fa_bid") {
+            return await faEngine.handleBidSubmission(interaction, supabase);
+        }
+        if (customId === "modal_submit_fa_bid") {
+            return await faEngine.handleBidSubmission(interaction, supabase);
+        }
+    } //End of isModalSubmit
     if (interaction.isButton()) {
         const { customId } = interaction;
 
@@ -1004,6 +1014,17 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 "extension",
                 interaction.customId.replace("vault_ext_", ""),
             );
+        if (customId === "vault_fa_config") {
+            return await vault.showFAConfig(interaction, supabase);
+        }
+        //  Toggle FA Enabled/Disabled button in vault
+        if (customId === "toggle_fa_status") {
+            return await vault.toggleFAStatus(interaction, supabase);
+        }
+        // Open Sheet Setup Modal button in vault 
+        if (customId === "open_fa_sheet_modal") {
+            return await vault.showFASheetModal(interaction);
+        }
         if (interaction.customId.startsWith("second_appeal_"))
             return await appeals.handleAppealButton(interaction, supabase);
         // 1. Enter the midway Roles Dashboard Menu
@@ -1118,7 +1139,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
             }
         }
         if (customId.startsWith("portal_fa_")) {
-            return await handleFreeAgencyHub(interaction);
+            return await handleFreeAgencyHub(interaction, supabase);
         }
         if (customId.startsWith("portal_secret_btn_")) {
             const loginCmd = client.commands.get("login");
@@ -1132,6 +1153,14 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 return await salaryCmd.handleSimulateImpact(interaction, supabase, currentConfig, getSheetData);
             }
         }
+        if (customId === "fa_open_bid_modal") {
+            return await faEngine.showBidModal(interaction);
+        }
+
+        // Show active bids / manage menu when GM clicks "Update / Remove Bid"
+        if (customId === "fa_view_my_bids") {
+            return await faEngine.showMyBids(interaction, supabase);
+        }
     } // <--- THIS ends the "isButton" check.
 
     const getOwnerIdMap = getTeamMap;
@@ -1140,6 +1169,12 @@ if (interaction.customId === "setup_confirm_save_roles") {
         const loginCmd = client.commands.get("login");
         if (loginCmd && typeof loginCmd.handleSecretMenuChoice === "function") {
             return await loginCmd.handleSecretMenuChoice(interaction);
+        }
+    }
+
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === "fa_withdraw_select") {
+            return await faEngine.handleWithdrawBid(interaction, supabase);
         }
     }
 

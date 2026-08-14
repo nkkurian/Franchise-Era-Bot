@@ -11,6 +11,7 @@ const {
     TextInputStyle
 } = require("discord.js");
 const { supabase } = require("../utils/supabaseClient");
+const faEngine = require("../utils/FreeAgency/faEngine.js");
 
 // Determines who made the last actual offer/counter in the history
 function getLastOfferSender(historyText) {
@@ -148,26 +149,8 @@ function buildAgentActionRow(params, historyText = "") {
     return [row];
 }
 
-// Helper function for temp free agency hub
-async function handleFreeAgencyHub(interaction) {
-    const devEmbed = new EmbedBuilder()
-        .setTitle("🏈 Free Agency Hub — Under Development")
-        .setDescription(
-            "The **Free Agency Hub** is currently under construction for the upcoming off-season!\n\n" +
-            "**Planned Features:**\n" +
-            "• 🏷️ Submit blind bids on open Free Agents\n" +
-            "• 📊 Real-time cap space tracking for pending offers\n" +
-            "• ⏱️ Live auction & contract length counters\n\n" +
-            "*Check back soon or please ping NK for an update!*"
-        )
-        .setColor(0xF1C40F)
-        .setFooter({ text: "Franchise Front Office • Module Locked" })
-        .setTimestamp();
-
-    return await interaction.reply({
-        embeds: [devEmbed],
-        ephemeral: true
-    });
+async function handleFreeAgencyHub(interaction, supabase) {
+    return await faEngine.showFAHub(interaction, supabase);
 }
 
 // Helper to look up Team Role ID from config based on team name
