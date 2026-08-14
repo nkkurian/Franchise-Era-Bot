@@ -1,7 +1,7 @@
 // routes/fa.js
 const express = require("express");
 const router = express.Router();
-const { processFreeAgencyBid } = require("../utils/faEngine");
+const { processFreeAgencyBid } = require("../utils/FreeAgency/faEngine.js");
 
 // GET: Serve Hybrid Glassmorphic Mobile-First Free Agency Form
 router.get("/fa", (req, res) => {

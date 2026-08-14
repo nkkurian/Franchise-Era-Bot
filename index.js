@@ -29,6 +29,7 @@ const salaryCommand = require('./commands/salary.js');
 const appeals = require("./utils/appeals.js");
 const setupManager = require("./utils/setupManager.js");
 const { runScheduledLibrarySync } = require('./utils/sleeperLibrary.js');
+const faEngine = require("./utils/FreeAgency/faEngine.js");
 // Added this
 const {
     syncSleeperLibrary,
@@ -890,7 +891,13 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 return;
             }
         }
-    }
+        if (customId === "modal_submit_fa_bid") {
+            return await faEngine.handleBidSubmission(interaction, supabase);
+        }
+        if (customId === "modal_submit_fa_bid") {
+            return await faEngine.handleBidSubmission(interaction, supabase);
+        }
+    } //End of isModalSubmit
     if (interaction.isButton()) {
         const { customId } = interaction;
 
@@ -1129,7 +1136,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
             }
         }
         if (customId.startsWith("portal_fa_")) {
-            return await handleFreeAgencyHub(interaction);
+            return await handleFreeAgencyHub(interaction, supabase);
         }
         if (customId.startsWith("portal_secret_btn_")) {
             const loginCmd = client.commands.get("login");
@@ -1143,6 +1150,14 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 return await salaryCmd.handleSimulateImpact(interaction, supabase, currentConfig, getSheetData);
             }
         }
+        if (customId === "fa_open_bid_modal") {
+            return await faEngine.showBidModal(interaction);
+        }
+
+        // Show active bids / manage menu when GM clicks "Update / Remove Bid"
+        if (customId === "fa_view_my_bids") {
+            return await faEngine.showMyBids(interaction, supabase);
+        }
     } // <--- THIS ends the "isButton" check.
 
     const getOwnerIdMap = getTeamMap;
@@ -1151,6 +1166,12 @@ if (interaction.customId === "setup_confirm_save_roles") {
         const loginCmd = client.commands.get("login");
         if (loginCmd && typeof loginCmd.handleSecretMenuChoice === "function") {
             return await loginCmd.handleSecretMenuChoice(interaction);
+        }
+    }
+
+    if (interaction.isStringSelectMenu()) {
+        if (interaction.customId === "fa_withdraw_select") {
+            return await faEngine.handleWithdrawBid(interaction, supabase);
         }
     }
 
