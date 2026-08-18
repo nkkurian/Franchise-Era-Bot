@@ -39,7 +39,7 @@ const setupRouter = require("./utils/setupRouter");
 const { google } = require("googleapis");
 const { supabase } = require("./utils/supabaseClient");
 const fs = require("node:fs");
-const path = require("node:path");
+const path = require('path');
 const port = process.env.PORT || 10000;
 
 // Keep-alive server for Render
