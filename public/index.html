@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Front Office — Free Agency Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen font-sans">
+
+    <!-- Navigation Header -->
+    <nav class="border-b border-slate-800 bg-slate-950 px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center space-x-3">
+            <span class="text-2xl">🏈</span>
+            <h1 class="text-xl font-bold tracking-wide">Front Office Portal</h1>
+        </div>
+        <div id="user-profile" class="text-sm text-slate-400">
+            <!-- Discord user details or login button load here -->
+            <button onclick="loginWithDiscord()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg transition">
+                Login with Discord
+            </button>
+        </div>
+    </nav>
+
+    <!-- Main Content Container -->
+    <main class="max-w-6xl mx-auto p-6 space-y-6">
+
+        <!-- Stats Bar -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
+                <p class="text-slate-400 text-sm font-medium">Bidding Status</p>
+                <p class="text-2xl font-bold text-emerald-400 mt-1">🟢 Open</p>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
+                <p class="text-slate-400 text-sm font-medium">Your Active Bids</p>
+                <p id="team-bids-count" class="text-2xl font-bold mt-1">-- / 8</p>
+            </div>
+            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
+                <p class="text-slate-400 text-sm font-medium">Total League Bids</p>
+                <p id="total-bids-count" class="text-2xl font-bold mt-1">--</p>
+            </div>
+        </div>
+
+        <!-- Live Bids Table -->
+        <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg">
+            <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
+                <h2 class="text-lg font-semibold">📋 Live League Bid Board</h2>
+                <button onclick="fetchBids()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded transition">
+                    🔄 Refresh
+                </button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-900/50 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
+                            <th class="py-3 px-6">Player</th>
+                            <th class="py-3 px-6">Team</th>
+                            <th class="py-3 px-6">AAV</th>
+                            <th class="py-3 px-6">Years</th>
+                            <th class="py-3 px-6">Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bids-table-body" class="divide-y divide-slate-700/50 text-sm">
+                        <tr>
+                            <td colspan="5" class="py-6 text-center text-slate-500">Loading live bids...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        async function fetchBids() {
+            try {
+                const res = await fetch('/api/fa/bids');
+                const data = await res.json();
+                const tbody = document.getElementById('bids-table-body');
+
+                if (!data.bids || data.bids.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-500">No active bids yet.</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = data.bids.map(b => `
+                    <tr class="hover:bg-slate-700/30 transition">
+                        <td class="py-4 px-6 font-semibold">${b.playerName}</td>
+                        <td class="py-4 px-6 text-slate-300">${b.teamName}</td>
+                        <td class="py-4 px-6 text-emerald-400">$${b.aav}</td>
+                        <td class="py-4 px-6">${b.years} Yr(s)</td>
+                        <td class="py-4 px-6 font-medium text-slate-200">$${b.totalValue}</td>
+                    </tr>
+                `).join('');
+            } catch (err) {
+                console.error("Failed to load bids:", err);
+            }
+        }
+
+        function loginWithDiscord() {
+            window.location.href = '/api/auth/discord';
+        }
+
+        // Auto fetch on load
+        fetchBids();
+    </script>
+</body>
+</html>
