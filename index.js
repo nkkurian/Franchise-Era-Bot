@@ -10,6 +10,7 @@ const {
     ButtonStyle,
     ComponentType,
     ModalBuilder,
+    Options,
     TextInputBuilder,
     Collection,
     TextInputStyle,
@@ -65,9 +66,19 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
-        GatewayIntentBits.GuildMessageReactions, // <--- CRITICAL for reactions
+        GatewayIntentBits.MessageContent, 
+        GatewayIntentBits.GuildMessageReactions,
     ],
+    sweepers: {
+        ...Options.DefaultSweeperSettings,
+        messages: {
+            interval: 300, // Runs every 5 minutes
+            lifetime: 60,   // Removes messages older than 1 minute from RAM
+        },
+    },
+    makeCache: Options.cacheWithLimits({
+        MessageManager: 25, // Only store the last 25 messages per channel
+    }),
 });
 
 client.commands = new Collection();
