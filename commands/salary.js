@@ -63,34 +63,10 @@ module.exports = {
                         .replace(/\b(jr|sr|iii|ii|iv|v|vth)\b/gi, '')
                         .replace(/[^a-z0-9]/gi, '')
                         .trim();
-
-                    let sleeperId = null;
-                    let bestMatchPlayer = null;
-
-                    if (global.sleeperCache && global.sleeperCache.size > 0) {
-                        for (const [id, cachedPlayer] of global.sleeperCache.entries()) {
-                            if (!cachedPlayer) continue;
-
-                            const rawName = cachedPlayer.name || "";
-                            const rawSearchKey = cachedPlayer.searchKey || cachedPlayer.search_full_name || "";
-
-                            // Remove ALL non-alphanumeric characters (including spaces) for comparisons
-                            const cleanCachedName = rawName.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
-                            const cleanCachedKey = rawSearchKey.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
-
-                            // Compare against aliases or partial first/last combinations
-                            const isMatch = 
-                                cleanCachedKey === normalizedTargetName || 
-                                cleanCachedName === normalizedTargetName ||
-                                cleanCachedName.includes(normalizedTargetName);
-
-                            if (isMatch) {
-                                sleeperId = id;
-                                bestMatchPlayer = cachedPlayer; 
-                                break;
-                            }
-                        }
-                    }
+                    
+                    // Instant O(1) key fetch using search_key from Sleeperlibrary
+                    const bestMatchPlayer = global.sleeperCache?.get(normalizedTargetName) || null;
+                    const sleeperId = bestMatchPlayer ? (bestMatchPlayer.id || bestMatchPlayer.sleeper_id) : null;
                     
                     const pPos = bestMatchPlayer?.position || playerRow.position || "FA";
 
