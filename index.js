@@ -457,6 +457,16 @@ function createPlayerEmbed(pRow) {
 client.on("interactionCreate", async (interaction) => {
     if (interaction.user.bot) return;
 
+    const EXECUTION_TIMEOUT = 8000; 
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+            reject(new Error("GLOBAL_COMMAND_TIMEOUT: Action timed out contacting database or external API."));
+        }, EXECUTION_TIMEOUT);
+    });
+
+    // 🆕 2. Encapsulate your EXISTING interaction logic in an async runner
+    const handleInteraction = async () => {
+
     // If it's a chat slash command, we check for "!vault" context or equivalent setups
     if (
         interaction.isChatInputCommand() &&
@@ -1238,11 +1248,32 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 getOwnerIdMap   // 👈 Passed 6th
             );
             console.log(`✅ [INTERACTION] Completed /${interaction.commandName}`);
-        } catch (error) {
-            console.error(`❌ Error executing /${interaction.commandName}:`, error);
+    } // 🆕 Closing handleInteraction wrapper
+
+    // 🆕 3. Promise.race enforces the timeout and catches errors globally
+    try {
+        await Promise.race([handleInteraction(), timeoutPromise]);
+    } catch (error) {
+        console.error(`❌ [INTERACTION TIMEOUT/ERROR]`, error.message);
+
+        const errorMsg = {
+            content: `⚠️ **Action Failed or Timed Out:** ${error.message.includes("GLOBAL_COMMAND_TIMEOUT") ? "The request took too long while reaching Google Sheets or Supabase." : "An internal execution error occurred."}`,
+            flags: [64]
+        };
+
+        try {
+            if (interaction.deferred || interaction.replied) {
+                await interaction.editReply(errorMsg);
+            } else if (interaction.isRepliable()) {
+                await interaction.reply(errorMsg);
+            }
+        } catch (dispatchErr) {
+            console.error("❌ Failed to inform user of command timeout:", dispatchErr.message);
         }
-    } // Closes: if (interaction.isChatInputCommand())
-}); // Closes: client.on("interactionCreate")
+    }
+    }
+    }
+});
 
 
 
