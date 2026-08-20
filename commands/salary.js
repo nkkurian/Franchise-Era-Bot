@@ -20,6 +20,7 @@ module.exports = {
 
     async execute(interaction, supabase, config, getSheetData, getPlayerStats) {
         await interaction.deferReply();
+        try {
         const input = interaction.options.getString("player").toLowerCase();
 
         // Removed idMap since our background cache renders it obsolete!
