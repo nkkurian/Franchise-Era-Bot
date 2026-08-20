@@ -119,7 +119,6 @@ async function runScheduledLibrarySync(supabaseClient) {
                         global.sleeperCache.set(p.search_key, playerData);
                     }
                 });
-            }
 
                 if (chunk.length < pageSize) {
                     keepFetching = false;
