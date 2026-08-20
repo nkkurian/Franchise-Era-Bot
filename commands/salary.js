@@ -304,12 +304,16 @@ module.exports = {
                     time: 30000,
                 });
                 collector.on("collect", async (i) => {
-                    const idx = parseInt(i.customId.split("_")[2]);
-                    await sendSalaryResponse(i, matches[idx], true);
-                    collector.stop();
-                });
-            }
-        },
+            const idx = parseInt(i.customId.split("_")[2]);
+            await sendSalaryResponse(i, matches[idx], true);
+            collector.stop();
+            });
+        }
+    } catch (err) {
+        console.error("❌ Error running /salary command:", err);
+        await interaction.editReply("💥 An error occurred while fetching salary details.").catch(() => {});
+    }
+    },
     async handleSimulateImpact(interaction, supabase, config, getSheetData) {
             try {
                 await interaction.deferReply({ flags: [64] }); 
