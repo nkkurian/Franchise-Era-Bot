@@ -19,12 +19,17 @@ module.exports = {
         ),
 
     async execute(interaction, supabase, config, getSheetData, getPlayerStats) {
+        console.log("➡️ [1] Salary command triggered by:", interaction.user.tag);
         await interaction.deferReply();
+        console.log("➡️ [2] Reply deferred successfully");
         try {
         const input = interaction.options.getString("player").toLowerCase();
+        console.log("➡️ [3] Searching for input:", input);
+            console.log("➡️ [4] Calling getSheetData for Guild ID:", interaction.guild.id);
 
         // Removed idMap since our background cache renders it obsolete!
         const { players = [], logs = [] } = (await getSheetData(interaction.guild.id)) || {};
+            console.log(`➡️ [5] Data received. Players count: ${players?.length}, Logs count: ${logs?.length}`);
 
         const matches = players.filter(
            (r) => r && typeof r.name === 'string' && r.name.trim().toLowerCase().includes(input.trim())
