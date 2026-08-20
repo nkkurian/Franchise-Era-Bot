@@ -19,9 +19,7 @@ module.exports = {
         ),
 
     async execute(interaction, supabase, config, getSheetData, getPlayerStats) {
-        if (!interaction.deferred && !interaction.replied) {
-            await interaction.deferReply({ ephemeral: interaction.isStringSelectMenu() });
-        }
+        await interaction.deferReply();
         const input = interaction.options.getString("player").toLowerCase();
 
         // Removed idMap since our background cache renders it obsolete!
