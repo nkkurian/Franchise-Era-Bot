@@ -45,6 +45,7 @@ module.exports = {
                     playerRow,
                     isUpdate = false,
                 ) => {
+                    console.log("➡️ [6] Entered sendSalaryResponse for:", playerRow.name);
                     const pName = playerRow.name;
                     const teamAffiliation = playerRow.team || "FA";
 
@@ -70,8 +71,10 @@ module.exports = {
                         .trim();
                     
                     // Instant O(1) key fetch using search_key from Sleeperlibrary
+                    console.log("➡️ [7] Looking up Sleeper Cache for normalized name:", normalizedTargetName);
                     const bestMatchPlayer = global.sleeperCache?.get(normalizedTargetName) || null;
                     const sleeperId = bestMatchPlayer ? (bestMatchPlayer.id || bestMatchPlayer.sleeper_id) : null;
+                    console.log("➡️ [8] Fetching stats for Sleeper ID:", sleeperId);
                     
                     const pPos = bestMatchPlayer?.position || playerRow.position || "FA";
 
@@ -83,6 +86,7 @@ module.exports = {
                     // 2. Fetch Stats if we have an ID
                     const sleeperLeagueId = config?.sleeper_id;
                     const stats = sleeperId ? await getPlayerStats(sleeperId, sleeperLeagueId) : null;
+                    console.log("➡️ [9] Stats returned:", stats ? "Yes" : "No");
                     const displayYear = stats?.displayYear;
                     let statsField = `No live stats available for ${displayYear}.`;
 
@@ -258,6 +262,7 @@ module.exports = {
                     embeds: [embed],
                     components: components,
                 };
+                    console.log("➡️ [10] Sending editReply/update...");
                 return isUpdate
                     ? await targetInteraction.update(payload)
                     : await targetInteraction.editReply(payload);
