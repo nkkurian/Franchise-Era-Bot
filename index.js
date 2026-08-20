@@ -1248,9 +1248,13 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 getOwnerIdMap   // 👈 Passed 6th
             );
             console.log(`✅ [INTERACTION] Completed /${interaction.commandName}`);
-    } // 🆕 Closing handleInteraction wrapper
+        } catch (cmdErr) {
+            console.error(`Error executing /${interaction.commandName}:`, cmdErr);
+            throw cmdErr; // Re-throw so the global outer catch handler can report it to Discord
+        }
+    } // Closing handleInteraction wrapper
 
-    // 🆕 3. Promise.race enforces the timeout and catches errors globally
+    // Global timeout/error handling
     try {
         await Promise.race([handleInteraction(), timeoutPromise]);
     } catch (error) {
