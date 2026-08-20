@@ -1248,21 +1248,26 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 getOwnerIdMap   // 👈 Passed 6th
             );
             console.log(`✅ [INTERACTION] Completed /${interaction.commandName}`);
-        } catch (cmdErr) {
-            console.error(`Error executing /${interaction.commandName}:`, cmdErr);
-            throw cmdErr; // Re-throw so the global outer catch handler can report it to Discord
-        }
-    } // Closing handleInteraction wrapper
+            } catch (cmdErr) {
+                console.error(`Error executing /${interaction.commandName}:`, cmdErr);
+                throw cmdErr; // Passes error to outer timeout runner
+            }
+        } // Closes: if (interaction.isChatInputCommand())
+    }; // Closes: const handleInteraction = async () =>
 
-    // Global timeout/error handling
+    // --- TIMEOUT & GLOBAL ERROR RUNNER ---
     try {
         await Promise.race([handleInteraction(), timeoutPromise]);
     } catch (error) {
         console.error(`❌ [INTERACTION TIMEOUT/ERROR]`, error.message);
 
         const errorMsg = {
-            content: `⚠️ **Action Failed or Timed Out:** ${error.message.includes("GLOBAL_COMMAND_TIMEOUT") ? "The request took too long while reaching Google Sheets or Supabase." : "An internal execution error occurred."}`,
-            flags: [64]
+            content: `⚠️ **Action Failed or Timed Out:** ${
+                error.message.includes("GLOBAL_COMMAND_TIMEOUT")
+                    ? "The request took too long while reaching Google Sheets or Supabase."
+                    : "An internal execution error occurred."
+            }`,
+            flags: [64],
         };
 
         try {
@@ -1274,8 +1279,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
         } catch (dispatchErr) {
             console.error("❌ Failed to inform user of command timeout:", dispatchErr.message);
         }
-    }
-    }
     }
 });
 
