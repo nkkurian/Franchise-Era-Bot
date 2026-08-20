@@ -24,7 +24,7 @@ module.exports = {
         const input = interaction.options.getString("player").toLowerCase();
 
         // Removed idMap since our background cache renders it obsolete!
-        const { players, logs } = await getSheetData(interaction.guild.id);
+        const { players = [], logs = [] } = (await getSheetData(interaction.guild.id)) || {};
 
         const matches = players.filter(
            (r) => r && typeof r.name === 'string' && r.name.trim().toLowerCase().includes(input.trim())
@@ -220,7 +220,7 @@ module.exports = {
                     const buttonRow = new ActionRowBuilder(); 
 
                     // 1. Add "View Extension" button if history exists
-                    const hasHistory = logs.some((l) => {
+                    const hasHistory = Array.isArray(logs) && logs.some((l) => {
                         if (!l) return false;
                         const logName = l.name || l.playerName || l._rawData?.[0];
                         return logName?.toLowerCase() === pName.toLowerCase();
