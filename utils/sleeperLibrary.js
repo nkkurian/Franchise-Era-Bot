@@ -100,7 +100,8 @@ async function runScheduledLibrarySync(supabaseClient) {
 
             if (chunk && chunk.length > 0) {
                 chunk.forEach((p) => {
-                    global.sleeperCache.set(p.sleeper_id, {
+                    const playerData = {
+                        id: p.sleeper_id,
                         name: p.full_name,
                         searchKey: p.search_key,
                         position: p.position,
@@ -108,8 +109,17 @@ async function runScheduledLibrarySync(supabaseClient) {
                         age: p.age,
                         status: p.status,
                         injury_status: p.injury_status,
-                    });
+                    };
+            
+                    // 1. Map by Sleeper ID
+                    global.sleeperCache.set(p.sleeper_id, playerData);
+            
+                    // 2. Map by Search Key for O(1) Instant Name Lookups
+                    if (p.search_key) {
+                        global.sleeperCache.set(p.search_key, playerData);
+                    }
                 });
+            }
 
                 if (chunk.length < pageSize) {
                     keepFetching = false;
