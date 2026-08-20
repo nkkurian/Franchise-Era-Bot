@@ -1225,6 +1225,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
+        console.log(`📡 [INTERACTION] Incoming command: /${interaction.commandName} in Guild: ${interaction.guild?.id}`);
 
         try {
             // This order makes it perfectly compatible with your files
@@ -1236,6 +1237,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 getPlayerStats, // 👈 Passed 5th! Now salary.js matches perfectly
                 getOwnerIdMap   // 👈 Passed 6th
             );
+            console.log(`✅ [INTERACTION] Completed /${interaction.commandName}`);
         } catch (error) {
             console.error(`❌ Error executing /${interaction.commandName}:`, error);
         }
