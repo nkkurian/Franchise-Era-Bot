@@ -1283,7 +1283,11 @@ async function pollAllLeagues() {
 
     let nflWeek = 1;
     try {
-        const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl");
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000); // 5s limit
+        const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl", { signal: controller.signal });
+        clearTimeout(timeout);
+
         if (stateRes.ok) {
             const nflState = await stateRes.json();
             nflWeek = nflState.season_type === "regular" ? nflState.week : 1;
@@ -1293,68 +1297,38 @@ async function pollAllLeagues() {
     }
 
     const { data: configs, error } = await supabase.from("league_configs").select("*");
-
     if (error || !configs || configs.length === 0) return;
 
     for (const config of configs) {
         try {
-            const guild = client.guilds.cache.get(config.guild_id);
-            if (!guild || !config.sleeper_id) continue;
+            if (!config.sleeper_id) continue;
 
-            if (!config.sleeper_id) {
-                console.warn(`⏩ Skipping Guild ${config.guild_id}: Missing sleeper_id in config.`);
-                continue;
-            }
+            const guild = client.guilds.cache.get(config.guild_id);
+            if (!guild) continue;
 
             console.log(`📡 Fetching data for Sleeper League ${config.sleeper_id} (Week ${nflWeek})...`);
-            // 2. Fetch data specific to THIS league
-            // We need the sheet data to know who the players are
-            const { players, doc } = await getSheetData(config.guild_id);
-            const teamMap = await getTeamMap(config.sleeper_id);
 
-            // Fetch transactions for the calculated NFL week
+            // Fetch transactions FIRST (Fast Sleeper API call with timeout)
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 5000);
             const res = await fetch(
-                `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${nflWeek}`
+                `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${nflWeek}`,
+                { signal: controller.signal }
             );
+            clearTimeout(timeout);
 
-            if (!res.ok) {
-                console.warn(`⚠️ Sleeper API unreachable for league: ${config.sleeper_id}`);
-                continue;
-            }
+            if (!res.ok) continue;
 
             const allTx = await res.json();
+            if (!Array.isArray(allTx) || allTx.length === 0) continue;
 
-            if (!Array.isArray(allTx) || allTx.length === 0) {
-                console.log(`ℹ️ No transactions found for league ${config.sleeper_id} in Week ${nflWeek}`);
-                continue;
-            }
-
-            // 4. Sort transactions by time so we process oldest to newest
-            // Filter completed transactions and sort oldest -> newest
             const sortedTx = allTx
                 .filter((tx) => tx.status === "complete")
                 .sort((a, b) => a.status_updated - b.status_updated);
 
-            if (sortedTx.length === 0) {
-                console.log(`ℹ️ No completed transactions found for league ${config.sleeper_id}`);
-                continue;
-            }
+            if (sortedTx.length === 0) continue;
 
-
-            // Fetch the specific log channel for THIS league
-            const logChannel = await client.channels
-                .fetch(config.log_channel_id)
-                .catch((err) => {
-                    console.error(`❌ Channel Fetch Error for ID ${config.log_channel_id}:`, err.message);
-                    return null;
-                });
-
-            if (!logChannel) {
-                console.error(`❌ Channel Error: Log channel ${config.log_channel_id} not accessible by bot.`);
-                continue;
-            }
-
-            // On the very first run after boot, just mark existing transactions as processed without sending messages
+            // Handle First Run Initialization
             if (isFirstRun) {
                 for (const tx of sortedTx) {
                     processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
@@ -1363,35 +1337,32 @@ async function pollAllLeagues() {
                 continue; 
             }
 
-            // Process each of the target transactions
-            for (const tx of sortedTx) {
+            // Check if there are NEW unprocessed transactions BEFORE fetching heavy Sheet data
+            const newTxList = sortedTx.filter(tx => !processedTxIds.has(`${config.sleeper_id}_${tx.transaction_id}`));
+            if (newTxList.length === 0) continue; // Skip Google Sheets fetch completely!
+
+            // --- HEAVY FETCHES ONLY RUN WHEN A NEW TRANSACTION IS FOUND ---
+            console.log(`⚡ New transaction detected! Fetching Sheet Data & Team Map...`);
+            const { players, doc } = await getSheetData(config.guild_id);
+            const teamMap = await getTeamMap(config.sleeper_id);
+
+            const logChannel = await client.channels.fetch(config.log_channel_id).catch(() => null);
+            if (!logChannel) continue;
+
+            for (const tx of newTxList) {
                 const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
-
-                // Skip if this transaction was already processed during this bot session
-                if (processedTxIds.has(txKey)) continue;
-
                 console.log(`📤 Sending Transaction ${tx.transaction_id} to #${logChannel.name}...`);
 
-                await processAndSend(
-                    tx,
-                    logChannel,
-                    players,
-                    teamMap,
-                    config,
-                    doc
-                );
-
-                // Track in-memory so it isn't resent on subsequent polling cycles
+                await processAndSend(tx, logChannel, players, teamMap, config, doc);
                 processedTxIds.add(txKey);
             }
 
         } catch (err) {
-            console.error(`❌ Error polling league ${config.sleeper_id}:`, err);
+            console.error(`❌ Error polling league ${config.sleeper_id}:`, err.message);
         }
     }
     isFirstRun = false;
 }
-setInterval(pollAllLeagues, 60000); // Check all leagues every minute
 
 
 //Added this
