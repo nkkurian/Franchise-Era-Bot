@@ -241,53 +241,53 @@ let isFirstRun = true; // NEW: Controls the one-time historical post
 // Added this
 let leagueCache = {};
 
+const docCache = new Map();
+
 async function getSheetData(guildId) {
     if (!guildId) return { players: [], logs: [], idMap: [], doc: null };
 
-    // 1. Get the league's specific configuration from Supabase
+    // 1. Fetch config from Supabase
     const { data: config, error } = await supabase
         .from("league_configs")
         .select("*")
         .eq("guild_id", guildId)
         .single();
 
-    // Safety check: if server isn't registered
     if (error || !config) {
-        console.error(
-            "❌ Database Lookup Error:",
-            error?.message || "Server not registered.",
-        );
+        console.error("❌ Database Lookup Error:", error?.message || "Server not registered.");
         return { players: [], logs: [], idMap: [], doc: null };
     }
 
     const sheetId = config.sheet_id;
     const now = Date.now();
 
-    // 2. Check Cache First
-    if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 30000 && leagueCache[sheetId].data?.doc) {
+    // 2. INCREASE CACHE TTL: 5 Minutes (300,000ms) instead of 30 seconds (30,000ms)
+    if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 300000 && leagueCache[sheetId].data?.doc) {
         return leagueCache[sheetId].data;
     }
 
     try {
-        // --- AUTH SETUP FOR V3.3.0 ---
-        let rawKey = process.env.GOOGLE_KEY || "";
-        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
-            rawKey = rawKey.slice(1, -1);
+        let dynamicDoc = docCache.get(sheetId);
+
+        // Authenticate ONLY IF we haven't created a doc instance for this sheet yet
+        if (!dynamicDoc) {
+            let rawKey = process.env.GOOGLE_KEY || "";
+            if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
+                rawKey = rawKey.slice(1, -1);
+            }
+            const formattedKey = rawKey.replace(/\\n/g, "\n");
+
+            dynamicDoc = new GoogleSpreadsheet(sheetId);
+            await dynamicDoc.useServiceAccountAuth({
+                client_email: process.env.GOOGLE_EMAIL,
+                private_key: formattedKey,
+            });
+            
+            docCache.set(sheetId, dynamicDoc);
         }
-        const formattedKey = rawKey.replace(/\\n/g, "\n");
 
-        // Step A: Instantiate with ONLY sheetId
-        const dynamicDoc = new GoogleSpreadsheet(sheetId);
-
-        // Step B: Authenticate using Service Account credentials (v3 Syntax)
-        await dynamicDoc.useServiceAccountAuth({
-            client_email: process.env.GOOGLE_EMAIL,
-            private_key: formattedKey,
-        });
-
-        // Step C: Load sheet info
+        // Load metadata
         await dynamicDoc.loadInfo();
-        // ------------------------------
 
         const pTab = config.tab_players || "PlayerList";
         const lTab = config.tab_logs || "Transaction Log";
@@ -297,35 +297,34 @@ async function getSheetData(guildId) {
         const logSheet = dynamicDoc.sheetsByTitle[lTab];
         const idSheet = dynamicDoc.sheetsByTitle[iTab];
 
-        // 4. Critical Tab Check
         if (!playerSheet) {
-            console.error(
-                `❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`,
-            );
+            console.error(`❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`);
             return { players: [], logs: [], idMap: [], doc: null };
         }
 
-        // 5. Fetch Rows
+        // 3. Add timeout wrappers around Google API row requests so sockets cannot hang indefinitely
+        const fetchWithTimeout = (promise, ms = 5000) => 
+            Promise.race([
+                promise, 
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Google Rows Fetch Timeout")), ms))
+            ]).catch(err => {
+                console.warn(`⚠️ Google fetch skipped: ${err.message}`);
+                return [];
+            });
+
         const [pRows, tRows, idRows] = await Promise.all([
-            playerSheet.getRows(),
-            logSheet ? logSheet.getRows() : [],
-            idSheet ? idSheet.getRows() : [],
+            fetchWithTimeout(playerSheet.getRows()),
+            logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
+            idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
         ]);
 
         const dataMapper = require("./utils/dataMapper.js");
 
         const processedPlayers = pRows
             .map((row) => {
-                const parsed = dataMapper.parsePlayerRow(
-                    row,
-                    config?.column_mapping,
-                );
+                const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
                 if (!parsed) return null;
-
-                return {
-                    ...parsed,
-                    rowRef: row,
-                };
+                return { ...parsed, rowRef: row };
             })
             .filter(Boolean);
 
@@ -336,11 +335,19 @@ async function getSheetData(guildId) {
             doc: dynamicDoc,
         };
 
-        // 6. Save to cache
+        // 4. Update cache
         leagueCache[sheetId] = { lastFetch: now, data: freshData };
         return freshData;
+
     } catch (err) {
         console.error("❌ Sheet Fetch Error:", err.message);
+        
+        // Fallback: If network drops, return existing stale cache instead of failing empty
+        if (leagueCache[sheetId]?.data) {
+            console.log("⚠️ Returning stale cache fallback");
+            return leagueCache[sheetId].data;
+        }
+
         return { players: [], logs: [], idMap: [], doc: null };
     }
 }
