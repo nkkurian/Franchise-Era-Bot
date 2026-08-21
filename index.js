@@ -451,7 +451,7 @@ function createPlayerEmbed(pRow) {
 client.on("interactionCreate", async (interaction) => {
     if (interaction.user.bot) return;
 
-    const EXECUTION_TIMEOUT = 50000; 
+    const EXECUTION_TIMEOUT = 15000; 
     const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
             reject(new Error("GLOBAL_COMMAND_TIMEOUT: Action timed out contacting database or external API."));
@@ -1253,7 +1253,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
     try {
         await Promise.race([handleInteraction(), timeoutPromise]);
     } catch (error) {
-        console.error(`❌ [INTERACTION TIMEOUT/ERROR]`, error.message);
+        console.error(`❌ [INTERACTION TIMEOUT/ERROR]`, error.stack);
 
         const errorMsg = {
             content: `⚠️ **Action Failed or Timed Out:** ${
