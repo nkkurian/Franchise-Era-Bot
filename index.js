@@ -121,22 +121,24 @@ app.use("/", faRouter);
 
 //Added this
 async function getPlayerStats(playerSleeperId, leagueSleeperId) {
-    try {
-        // Create an AbortController with a hard 3-second signal
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+    if (!playerSleeperId) return null;
 
+    // Create a hard 2.5s signal to instantly kill hanging socket requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+    try {
         const axiosConfig = {
-            signal: controller.signal,
-            timeout: 3000,
+            signal: controller.signal, // Forcefully terminates the TCP socket when aborted
+            timeout: 2500,
         };
 
-        // Fetch NFL State
+        // 1. Fetch current NFL season state
         const stateRes = await axios.get("https://api.sleeper.app/v1/state/nfl", axiosConfig);
         const currentYear = parseInt(stateRes.data.season);
         const lastYear = currentYear - 1;
 
-        // Fetch Stats for both years
+        // 2. Fetch stats for current and last year concurrently
         const promises = [
             axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`, axiosConfig).catch(() => null),
             axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`, axiosConfig).catch(() => null),
@@ -149,7 +151,7 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
         }
 
         const [resCurrent, resLast, resLeague] = await Promise.all(promises);
-        clearTimeout(timeoutId); // Clear the abort timer once completed
+        clearTimeout(timeoutId); // Clean up timer if requests finish cleanly
 
         const statsCurrent = resCurrent?.data ? resCurrent.data[playerSleeperId] : null;
         const statsLast = resLast?.data ? resLast.data[playerSleeperId] : null;
