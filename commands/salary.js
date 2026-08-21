@@ -286,9 +286,10 @@ module.exports = {
                     content: "Multiple found, please select:",
                     components: [selectionRow],
                 });
-                const collector = response.createMessageComponentCollector({
-                    componentType: ComponentType.Button,
-                    time: 30000,
+                collector.on("end", async (collected, reason) => {
+                    if (reason === "time" && collected.size === 0) {
+                        await interaction.editReply({ content: "⏱️ Selection timed out.", components: [] }).catch(() => {});
+                    }
                 });
                 collector.on("collect", async (i) => {
             const idx = parseInt(i.customId.split("_")[2]);
@@ -370,7 +371,12 @@ module.exports = {
                         const capCellA1 = (config?.column_mapping?.team_cap_space_cell || "F2").trim().toUpperCase();
 
                         // D. Load the cell and read its formatted value
-                        await teamSheet.loadCells(capCellA1);
+                        const loadCellPromise = teamSheet.loadCells(capCellA1);
+                        const timeoutPromise = new Promise((_, reject) => 
+                            setTimeout(() => reject(new Error("Google Sheets loadCells timed out")), 2500)
+                        );
+                        
+                        await Promise.race([loadCellPromise, timeoutPromise]);
                         currentCapSpaceRaw = teamSheet.getCellByA1(capCellA1).formattedValue || "$0.00";
                     }
                 } catch (err) {
