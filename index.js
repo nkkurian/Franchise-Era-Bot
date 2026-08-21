@@ -120,28 +120,36 @@ app.set("getSheetData", getSheetData);
 app.use("/", faRouter);
 
 //Added this
-    async function getPlayerStats(playerSleeperId, leagueSleeperId) {
-    if (!playerSleeperId) return null;
-
+async function getPlayerStats(playerSleeperId, leagueSleeperId) {
     try {
-        // 🆕 Added 3-second timeout to prevent hanging
-        const stateRes = await axios.get("https://api.sleeper.app/v1/state/nfl", { timeout: 3000 });
+        // Create an AbortController with a hard 3-second signal
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+
+        const axiosConfig = {
+            signal: controller.signal,
+            timeout: 3000,
+        };
+
+        // Fetch NFL State
+        const stateRes = await axios.get("https://api.sleeper.app/v1/state/nfl", axiosConfig);
         const currentYear = parseInt(stateRes.data.season);
         const lastYear = currentYear - 1;
 
-        // 1. Fetch Stats for both years with strict 3-second timeouts
+        // Fetch Stats for both years
         const promises = [
-            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`, { timeout: 3000 }).catch(() => null),
-            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`, { timeout: 3000 }).catch(() => null),
+            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`, axiosConfig).catch(() => null),
+            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`, axiosConfig).catch(() => null),
         ];
 
         if (leagueSleeperId) {
             promises.push(
-                axios.get(`https://api.sleeper.app/v1/league/${leagueSleeperId}`, { timeout: 3000 }).catch(() => null)
+                axios.get(`https://api.sleeper.app/v1/league/${leagueSleeperId}`, axiosConfig).catch(() => null)
             );
         }
 
         const [resCurrent, resLast, resLeague] = await Promise.all(promises);
+        clearTimeout(timeoutId); // Clear the abort timer once completed
 
         const statsCurrent = resCurrent?.data ? resCurrent.data[playerSleeperId] : null;
         const statsLast = resLast?.data ? resLast.data[playerSleeperId] : null;
