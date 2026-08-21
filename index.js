@@ -451,56 +451,37 @@ function createPlayerEmbed(pRow) {
 client.on("interactionCreate", async (interaction) => {
     if (interaction.user.bot) return;
 
-    const EXECUTION_TIMEOUT = 15000; 
-    const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-            reject(new Error("GLOBAL_COMMAND_TIMEOUT: Action timed out contacting database or external API."));
-        }, EXECUTION_TIMEOUT);
-    });
+    let timeoutId;
 
-    // 🆕 2. Encapsulate your EXISTING interaction logic in an async runner
     const handleInteraction = async () => {
+        // 1. Fetch config safely
+        let currentConfig = null;
+        try {
+            const { data } = await supabase
+                .from("league_configs")
+                .select("*")
+                .eq("guild_id", interaction.guild.id)
+                .single();
+            currentConfig = data;
+        } catch (dbErr) {
+            console.error("Error fetching config on command launch:", dbErr);
+        }
 
-    // If it's a chat slash command, we check for "!vault" context or equivalent setups
-    if (
-        interaction.isChatInputCommand() &&
-        interaction.commandName === "vault"
-    ) {
-        // Your specific config gateway can go here if needed!
-    }
+        // 2. Authorization Checks
+        const adminRoleId = currentConfig?.admin_role_id;
+        const hasRole = adminRoleId && interaction.member?.roles?.cache?.has(adminRoleId);
+        const isNativeAdmin = interaction.member?.permissions?.has("Administrator");
 
-    // 🆕 UPDATED CONFIGURATION CHECK (Safe for Interaction Contexts):
-    currentConfig = null;
-    try {
-        const { data } = await supabase
-            .from("league_configs")
-            .select("*")
-            .eq("guild_id", interaction.guild.id)
-            .single();
-        currentConfig = data;
-    } catch (dbErr) {
-        console.error("Error fetching config on command launch:", dbErr);
-    }
-
-    const adminRoleId = currentConfig?.admin_role_id;
-    // 🛠️ Fixed: message.member -> interaction.member
-    const hasRole =
-        adminRoleId && interaction.member.roles.cache.has(adminRoleId);
-    const isNativeAdmin = interaction.member.permissions.has("Administrator");
-
-    // If this specific component or command requires authorization check:
-    if (
-        interaction.customId === "trigger_admin_modal" &&
-        !hasRole &&
-        !isNativeAdmin
-    ) {
-        return interaction.reply({
-            content:
-                "❌ **Access Denied.** Vault adjustments are restricted to league administrators.",
-            flags: [64], // Ephemeral response so only they see it
-        });
-    }
-    //Added this
+        if (
+            interaction.customId === "trigger_admin_modal" &&
+            !hasRole &&
+            !isNativeAdmin
+        ) {
+            return interaction.reply({
+                content: "❌ **Access Denied.** Vault adjustments are restricted to league administrators.",
+                flags: [64],
+            });
+        }
     if (
         interaction.isChannelSelectMenu() &&
         interaction.customId === "setup_channel_select"
@@ -1249,30 +1230,22 @@ if (interaction.customId === "setup_confirm_save_roles") {
         } // Closes: if (interaction.isChatInputCommand())
     }; // Closes: const handleInteraction = async () =>
 
-    // --- TIMEOUT & GLOBAL ERROR RUNNER ---
     try {
+        const EXECUTION_TIMEOUT = 15000;
+        const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+                reject(new Error("GLOBAL_COMMAND_TIMEOUT: Action timed out contacting database or external API."));
+            }, EXECUTION_TIMEOUT);
+        });
+
+        // Race your command handler against the timeout
         await Promise.race([handleInteraction(), timeoutPromise]);
-    } catch (error) {
-        console.error(`❌ [INTERACTION TIMEOUT/ERROR]`, error.stack);
-
-        const errorMsg = {
-            content: `⚠️ **Action Failed or Timed Out:** ${
-                error.message.includes("GLOBAL_COMMAND_TIMEOUT")
-                    ? "The request took too long while reaching Google Sheets or Supabase."
-                    : "An internal execution error occurred."
-            }`,
-            flags: [64],
-        };
-
-        try {
-            if (interaction.deferred || interaction.replied) {
-                await interaction.editReply(errorMsg);
-            } else if (interaction.isRepliable()) {
-                await interaction.reply(errorMsg);
-            }
-        } catch (dispatchErr) {
-            console.error("❌ Failed to inform user of command timeout:", dispatchErr.message);
-        }
+    } catch (err) {
+        // Only log actual errors (this will ignore timed-out completed runs now!)
+        console.error("❌ [INTERACTION TIMEOUT/ERROR]", err.message);
+    } finally {
+        // 🔒 CRITICAL: Clear the timer so it NEVER fires after the command completes!
+        if (timeoutId) clearTimeout(timeoutId);
     }
 });
 
