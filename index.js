@@ -263,6 +263,7 @@ async function getSheetData(guildId) {
 
     // 2. INCREASE CACHE TTL: 5 Minutes (300,000ms) instead of 30 seconds (30,000ms)
     if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 300000 && leagueCache[sheetId].data?.doc) {
+        const ageSeconds = Math.round((now - leagueCache[sheetId].lastFetch) / 1000); // 👈 Define it here!
         console.log(`⚡ [CACHE HIT] Loaded ${leagueCache[sheetId].data.players.length} players from memory (Cache Age: ${ageSeconds}s)`);
         return leagueCache[sheetId].data;
     }
