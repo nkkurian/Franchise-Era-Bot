@@ -121,32 +121,31 @@ app.use("/", faRouter);
 
 //Added this
 async function getPlayerStats(playerSleeperId, leagueSleeperId) {
-    // If leagueSleeperId is missing, we use a default or skip custom scoring
     if (!playerSleeperId) return null;
 
     try {
-        const stateRes = await axios.get("https://api.sleeper.app/v1/state/nfl");
+        // 🆕 Added 3-second timeout to prevent hanging
+        const stateRes = await axios.get("https://api.sleeper.app/v1/state/nfl", { timeout: 3000 });
         const currentYear = parseInt(stateRes.data.season);
         const lastYear = currentYear - 1;
 
-        // 1. Fetch Stats for both years
+        // 1. Fetch Stats for both years with strict 3-second timeouts
         const promises = [
-            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`),
-            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`),
+            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`, { timeout: 3000 }).catch(() => null),
+            axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`, { timeout: 3000 }).catch(() => null),
         ];
 
         if (leagueSleeperId) {
             promises.push(
-                axios.get(`https://api.sleeper.app/v1/league/${leagueSleeperId}`)
+                axios.get(`https://api.sleeper.app/v1/league/${leagueSleeperId}`, { timeout: 3000 }).catch(() => null)
             );
         }
 
         const [resCurrent, resLast, resLeague] = await Promise.all(promises);
 
-        const statsCurrent = resCurrent.data[playerSleeperId];
-        const statsLast = resLast.data[playerSleeperId];
+        const statsCurrent = resCurrent?.data ? resCurrent.data[playerSleeperId] : null;
+        const statsLast = resLast?.data ? resLast.data[playerSleeperId] : null;
 
-        // 2. Define validator BEFORE calling it
         const hasRealData = (s) => {
             if (!s) return false;
             return (
@@ -161,7 +160,6 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
             );
         };
 
-        // 3. Check stats and select the active dataset
         const hasRealDataCurrent = hasRealData(statsCurrent);
         const hasRealDataLast = hasRealData(statsLast);
 
@@ -170,13 +168,11 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
 
         if (!activeStats) return null;
 
-        // 3. INTERNAL CALCULATION: Apply Custom Scoring if league info exists
         let customTotal = 0;
-        if (resLeague && resLeague.data.scoring_settings) {
+        if (resLeague?.data?.scoring_settings) {
             const scoringSettings = resLeague.data.scoring_settings;
 
             for (const [statName, pointValue] of Object.entries(scoringSettings)) {
-                // Look for exact key, or idp_ key, or fallback variations
                 const val = 
                     activeStats[statName] ?? 
                     activeStats[`idp_${statName}`] ?? 
@@ -188,11 +184,9 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
                 }
             }
         } else {
-            // Fallback to standard IDP / PPR points if no league settings available
             customTotal = activeStats.pts_ppr ?? activeStats.pts_std ?? activeStats.pts_half_ppr ?? activeStats.pts_idp ?? 0;
         }
 
-        // 4. Return the object
         return {
             ...activeStats,
             leagueScore: parseFloat(customTotal).toFixed(2),
@@ -200,7 +194,7 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
         };
     } catch (err) {
         console.error("❌ Seamless Stats Error:", err.message);
-        return null;
+        return null; // Gracefully fall back so the command finishes immediately
     }
 }
 
