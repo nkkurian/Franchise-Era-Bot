@@ -120,7 +120,7 @@ app.set("getSheetData", getSheetData);
 app.use("/", faRouter);
 
 //Added this
-async function getPlayerStats(playerSleeperId, leagueSleeperId) {
+    async function getPlayerStats(playerSleeperId, leagueSleeperId) {
     if (!playerSleeperId) return null;
 
     try {
@@ -451,7 +451,7 @@ function createPlayerEmbed(pRow) {
 client.on("interactionCreate", async (interaction) => {
     if (interaction.user.bot) return;
 
-    const EXECUTION_TIMEOUT = 8000; 
+    const EXECUTION_TIMEOUT = 50000; 
     const timeoutPromise = new Promise((_, reject) => {
         setTimeout(() => {
             reject(new Error("GLOBAL_COMMAND_TIMEOUT: Action timed out contacting database or external API."));
