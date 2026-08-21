@@ -1242,7 +1242,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
         await Promise.race([handleInteraction(), timeoutPromise]);
     } catch (err) {
         // Only log actual errors (this will ignore timed-out completed runs now!)
-        console.error("❌ [INTERACTION TIMEOUT/ERROR]", err.message);
+        console.error("❌ [INTERACTION TIMEOUT/ERROR]", err.stack);
     } finally {
         // 🔒 CRITICAL: Clear the timer so it NEVER fires after the command completes!
         if (timeoutId) clearTimeout(timeoutId);
