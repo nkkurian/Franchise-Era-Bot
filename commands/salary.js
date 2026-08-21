@@ -286,6 +286,10 @@ module.exports = {
                     content: "Multiple found, please select:",
                     components: [selectionRow],
                 });
+                const collector = response.createMessageComponentCollector({
+                    componentType: ComponentType.Button,
+                    time: 30000,
+                });
                 collector.on("end", async (collected, reason) => {
                     if (reason === "time" && collected.size === 0) {
                         await interaction.editReply({ content: "⏱️ Selection timed out.", components: [] }).catch(() => {});
