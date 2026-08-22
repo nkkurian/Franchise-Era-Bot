@@ -72,9 +72,11 @@ const serviceAccountAuth = new JWT({
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers, 
+        GatewayIntentBits.GuildPresences, 
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
-        GatewayIntentBits.GuildMessageReactions, // <--- CRITICAL for reactions
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
     ],
 });
 
