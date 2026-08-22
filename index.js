@@ -38,26 +38,21 @@ const fs = require("node:fs");
 const path = require('path');
 const port = process.env.PORT || 10000;
 
-// Keep-alive server for Render
 const express = require("express");
+const path = require("path");
+const fs = require("fs");
+const { Client, GatewayIntentBits, Collection } = require("discord.js");
+const { JWT } = require("google-auth-library");
+const { GoogleSpreadsheet } = require("google-spreadsheet");
+
 const app = express();
-// This is what UptimeRobot will "see"
-app.get("/", (req, res) => {
-    console.log(
-        `📡 Ping received from UptimeRobot at ${new Date().toLocaleTimeString()}`,
-    );
-    res.status(200).send("Franchise Pro Bot: Standing By.");
-});
+const port = process.env.PORT || 10000;
 
-// IMPORTANT: Must bind to 0.0.0.0 for Render
-app.listen(port, () => {
-    console.log(`🚀 Keep-alive server listening on port ${port}`);
-});
-
+// 1. Google Authentication Setup
 const rawKey = process.env.GOOGLE_KEY || "";
 const formattedKey = rawKey
-    .replace(/^["']|["']$/g, '') 
-    .replace(/\\n/g, '\n');
+    .replace(/^["']|["']$/g, "")
+    .replace(/\\n/g, "\n");
 
 const serviceAccountAuth = new JWT({
     email: process.env.GOOGLE_EMAIL,
@@ -65,61 +60,37 @@ const serviceAccountAuth = new JWT({
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
+// 2. Initialize Discord Client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
-        GatewayIntentBits.GuildMessageReactions, // <--- CRITICAL for reactions
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions,
     ],
 });
 
 client.commands = new Collection();
-client.getSheetData = getSheetData;
 
-if (!process.env.DISCORD_TOKEN) {
-    console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
-} else {
-    console.log(`📡 Token found. Character length: ${process.env.DISCORD_TOKEN.length}`);
-}
-
-client.on('error', (err) => console.error("❌ Discord client error:", err.message));
-client.on('warn', (msg) => console.warn("⚠️ Discord warning:", msg));
-client.on('shardError', (err) => console.error("❌ Discord shard error:", err.message));
-
-console.log("🔌 Attempting to connect to Discord...");
-client.login(process.env.DISCORD_TOKEN)
-    .then(() => console.log("🔓 Token accepted. Establishing gateway connection..."))
-    .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
-
+// Load Commands
 const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs
-    .readdirSync(commandsPath)
-    .filter((file) => file.endsWith(".js"));
-
-for (const file of commandFiles) {
-    const filePath = path.join(commandsPath, file);
-    const command = require(filePath);
-    // Set a new item in the Collection with the key as the command name and the value as the exported module
-    if ("data" in command && "execute" in command) {
-        client.commands.set(command.data.name, command);
-    } else {
-        console.log(
-            `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`,
-        );
+if (fs.existsSync(commandsPath)) {
+    const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
+    for (const file of commandFiles) {
+        const filePath = path.join(commandsPath, file);
+        const command = require(filePath);
+        if ("data" in command && "execute" in command) {
+            client.commands.set(command.data.name, command);
+        } else {
+            console.log(`[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`);
+        }
     }
 }
 
-app.use(express.json()); // Essential to read the data sent from Google
-
-app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
-
-const faRouter = require("./routes/fa");
-// Store getSheetData on Express app instance so routes can access it
+// 3. Core Business Logic (getSheetData)
 async function getSheetData(guildId) {
     if (!guildId) return { players: [], logs: [], idMap: [], doc: null };
 
-    // 1. Fetch config from Supabase
     const { data: config, error } = await supabase
         .from("league_configs")
         .select("*")
@@ -134,118 +105,126 @@ async function getSheetData(guildId) {
     const sheetId = config.sheet_id;
     const now = Date.now();
 
-    // 2. INCREASE CACHE TTL: 5 Minutes (300,000ms) instead of 30 seconds (30,000ms)
     if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 300000 && leagueCache[sheetId].data?.doc) {
-        const ageSeconds = Math.round((now - leagueCache[sheetId].lastFetch) / 1000); // 👈 Define it here!
+        const ageSeconds = Math.round((now - leagueCache[sheetId].lastFetch) / 1000);
         console.log(`⚡ [CACHE HIT] Loaded ${leagueCache[sheetId].data.players.length} players from memory (Cache Age: ${ageSeconds}s)`);
         return leagueCache[sheetId].data;
     }
 
     try {
-    console.log(`🌐 [CACHE MISS] Fetching fresh sheet data from Google API...`);
-    console.time("⏱️ Total getSheetData");
+        console.log(`🌐 [CACHE MISS] Fetching fresh sheet data from Google API...`);
+        let dynamicDoc = docCache.get(sheetId);
 
-    let dynamicDoc = docCache.get(sheetId);
-
-    if (!dynamicDoc) {
-        console.log(`🔐 Authenticating Google Sheet instance for Sheet ID: ${sheetId}...`);
-        let rawKey = process.env.GOOGLE_KEY || "";
-        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
-            rawKey = rawKey.slice(1, -1);
+        if (!dynamicDoc) {
+            console.log(`🔐 Authenticating Google Sheet instance for Sheet ID: ${sheetId}...`);
+            dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
+            docCache.set(sheetId, dynamicDoc);
+            console.log(`✅ Google Auth initialized and cached for sheet.`);
         }
-        const formattedKey = rawKey.replace(/\\n/g, "\n");
 
-        dynamicDoc = new GoogleSpreadsheet(sheetId);
-        await dynamicDoc.useServiceAccountAuth({
-            client_email: process.env.GOOGLE_EMAIL,
-            private_key: formattedKey,
-        });
-        
-        docCache.set(sheetId, dynamicDoc);
-        console.log(`✅ Google Auth initialized and cached for sheet.`);
-    }
+        await dynamicDoc.loadInfo();
 
-    console.time("⏱️ 1. loadInfo");
-    await dynamicDoc.loadInfo();
-    console.timeEnd("⏱️ 1. loadInfo");
+        const pTab = config.tab_players || "PlayerList";
+        const lTab = config.tab_logs || "Transaction Log";
+        const iTab = config.tab_ids || "Sleeper_Players";
 
-    const pTab = config.tab_players || "PlayerList";
-    const lTab = config.tab_logs || "Transaction Log";
-    const iTab = config.tab_ids || "Sleeper_Players";
+        const playerSheet = dynamicDoc.sheetsByTitle[pTab];
+        const logSheet = dynamicDoc.sheetsByTitle[lTab];
+        const idSheet = dynamicDoc.sheetsByTitle[iTab];
 
-    console.log(`📋 Target Tabs -> Players: "${pTab}" | Logs: "${lTab}" | IDs: "${iTab}"`);
+        if (!playerSheet) {
+            console.error(`❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`);
+            return { players: [], logs: [], idMap: [], doc: null };
+        }
 
-    const playerSheet = dynamicDoc.sheetsByTitle[pTab];
-    const logSheet = dynamicDoc.sheetsByTitle[lTab];
-    const idSheet = dynamicDoc.sheetsByTitle[iTab];
+        const fetchWithTimeout = (promise, ms = 5000) =>
+            Promise.race([
+                promise,
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Google Rows Fetch Timeout")), ms)),
+            ]).catch((err) => {
+                console.warn(`⚠️ Google fetch skipped: ${err.message}`);
+                return [];
+            });
 
-    if (!playerSheet) {
-        console.error(`❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`);
+        const [pRows, tRows, idRows] = await Promise.all([
+            fetchWithTimeout(playerSheet.getRows()),
+            logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
+            idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
+        ]);
+
+        const dataMapper = require("./utils/dataMapper.js");
+
+        const processedPlayers = pRows
+            .map((row) => {
+                const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
+                if (!parsed) return null;
+                return {
+                    name: parsed.name,
+                    team: parsed.team,
+                    salary: parsed.salary,
+                    capHit: parsed.capHit,
+                    years: parsed.years,
+                    deadCap: parsed.deadCap,
+                    structure: parsed.structure,
+                    position: parsed.position,
+                    sleeperId: parsed.sleeperId,
+                };
+            })
+            .filter(Boolean);
+
+        const freshData = {
+            players: processedPlayers,
+            logs: tRows,
+            idMap: idRows,
+            doc: dynamicDoc,
+        };
+
+        leagueCache[sheetId] = { lastFetch: now, data: freshData };
+        return freshData;
+    } catch (err) {
+        console.error("❌ Sheet Fetch Error:", err.message);
+        if (leagueCache[sheetId]?.data) {
+            return leagueCache[sheetId].data;
+        }
         return { players: [], logs: [], idMap: [], doc: null };
     }
-
-    const fetchWithTimeout = (promise, ms = 5000) => 
-        Promise.race([
-            promise, 
-            new Promise((_, reject) => setTimeout(() => reject(new Error("Google Rows Fetch Timeout")), ms))
-        ]).catch(err => {
-            console.warn(`⚠️ Google fetch skipped: ${err.message}`);
-            return [];
-        });
-
-    console.time("⏱️ 2. getRows (All Sheets)");
-    const [pRows, tRows, idRows] = await Promise.all([
-        fetchWithTimeout(playerSheet.getRows()),
-        logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
-        idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
-    ]);
-    console.timeEnd("⏱️ 2. getRows (All Sheets)");
-
-    console.log(`📥 Rows Fetched -> Players: ${pRows.length} | Logs: ${tRows.length} | IDs: ${idRows.length}`);
-
-    const dataMapper = require("./utils/dataMapper.js");
-
-    console.time("⏱️ 3. Mapping Players Array");
-    const processedPlayers = pRows
-        .map((row) => {
-            const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
-            if (!parsed) return null;
-            return {
-                name: parsed.name,
-                team: parsed.team,
-                salary: parsed.salary,
-                capHit: parsed.capHit,
-                years: parsed.years,
-                deadCap: parsed.deadCap,
-                structure: parsed.structure,
-                position: parsed.position,
-                sleeperId: parsed.sleeperId
-            };
-        })
-        .filter(Boolean);
-    console.timeEnd("⏱️ 3. Mapping Players Array");
-
-    const freshData = {
-        players: processedPlayers,
-        logs: tRows,
-        idMap: idRows,
-        doc: dynamicDoc,
-    };
-
-    leagueCache[sheetId] = { lastFetch: now, data: freshData };
-    console.timeEnd("⏱️ Total getSheetData");
-    console.log(`✅ [CACHE LOADED] Freshly cached ${processedPlayers.length} players for sheet ${sheetId}`);
-
-    return freshData;
-
-} catch (err) {
-    console.error("❌ Sheet Fetch Error:", err.message);
-    if (leagueCache[sheetId]?.data) {
-        console.log("⚠️ Returning stale cache fallback");
-        return leagueCache[sheetId].data;
-    }
-    return { players: [], logs: [], idMap: [], doc: null };
 }
+
+// Bind function to client instance
+client.getSheetData = getSheetData;
+
+// 4. Express Middleware & Routes Setup
+app.use(express.json());
+app.set("getSheetData", getSheetData);
+
+// Basic health check
+app.get("/", (req, res) => {
+    res.status(200).send("Franchise Pro Bot: Standing By.");
+});
+
+// Import and mount custom router modules
+const routes = require("./routes");
+const faRouter = require("./routes/fa");
+
+app.use("/", routes(client, getSheetData));
+app.use("/", faRouter);
+
+// 5. Start HTTP Server and Discord Client
+app.listen(port, "0.0.0.0", () => {
+    console.log(`🚀 Keep-alive server listening on port ${port}`);
+});
+
+client.on("error", (err) => console.error("❌ Discord client error:", err.message));
+client.on("warn", (msg) => console.warn("⚠️ Discord warning:", msg));
+client.on("shardError", (err) => console.error("❌ Discord shard error:", err.message));
+
+if (!process.env.DISCORD_TOKEN) {
+    console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
+} else {
+    console.log("🔌 Attempting to connect to Discord...");
+    client.login(process.env.DISCORD_TOKEN)
+        .then(() => console.log("🔓 Token accepted. Gateway connection established."))
+        .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
 }
 
 app.set("getSheetData", getSheetData); 
