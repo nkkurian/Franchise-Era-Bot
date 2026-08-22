@@ -263,7 +263,7 @@ module.exports = {
                         components: components,
                     };
                     console.log("➡️ [10] Sending editReply/update...");
-                if (isUpdate) {
+                    if (isUpdate && !targetInteraction.deferred && !targetInteraction.replied) {
                         return await targetInteraction.update(payload);
                     } else {
                         return await targetInteraction.editReply(payload);
