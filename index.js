@@ -277,29 +277,29 @@ async function getSheetData(guildId) {
     }
 
     try {
-        console.log(`🌐 [CACHE MISS] Fetching fresh sheet data from Google API...`);
-        let dynamicDoc = docCache.get(sheetId);
+    console.log(`🌐 [CACHE MISS] Fetching fresh sheet data from Google API...`);
+    let dynamicDoc = docCache.get(sheetId);
 
-        // Authenticate ONLY IF we haven't created a doc instance for this sheet yet
-        if (!dynamicDoc) {
-            let rawKey = process.env.GOOGLE_KEY || "";
-            if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
-                rawKey = rawKey.slice(1, -1);
-            }
-            const formattedKey = rawKey.replace(/\\n/g, "\n");
-
-            const dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
-            await dynamicDoc.loadInfo();
-            
-            docCache.set(sheetId, dynamicDoc);
+    // Authenticate ONLY IF we haven't created a doc instance for this sheet yet
+    if (!dynamicDoc) {
+        let rawKey = process.env.GOOGLE_KEY || "";
+        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
+            rawKey = rawKey.slice(1, -1);
         }
+        const formattedKey = rawKey.replace(/\\n/g, "\n");
 
-        // Load metadata
+        // ✅ FIXED: Reassign outer dynamicDoc instead of declaring a new local constant
+        dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
         await dynamicDoc.loadInfo();
+        
+        docCache.set(sheetId, dynamicDoc);
+    }
 
-        const pTab = config.tab_players || "PlayerList";
-        const lTab = config.tab_logs || "Transaction Log";
-        const iTab = config.tab_ids || "Sleeper_Players";
+    // Removed second duplicate `await dynamicDoc.loadInfo()` call from here
+
+    const pTab = config.tab_players || "PlayerList";
+    const lTab = config.tab_logs || "Transaction Log";
+    const iTab = config.tab_ids || "Sleeper_Players";
 
         const playerSheet = dynamicDoc.sheetsByTitle[pTab];
         const logSheet = dynamicDoc.sheetsByTitle[lTab];
