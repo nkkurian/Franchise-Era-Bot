@@ -204,24 +204,13 @@ module.exports = {
                     };
 
                    console.log("➡️ [10] Sending editReply/update...");
-
-                    const sendPromise = (isUpdate && !targetInteraction.deferred && !targetInteraction.replied)
-                        ? targetInteraction.update(payload)
-                        : targetInteraction.editReply(payload);
-                    
-                    const hardTimeout = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error("Discord API socket timeout")), 2500)
-                    );
-                    
-                    try {
-                        await Promise.race([sendPromise, hardTimeout]);
-                        console.log("➡️ [11] Payload successfully delivered to Discord.");
-                    } catch (apiErr) {
-                        console.error("⚠️ [DISCORD API DELIVER WARNING]:", apiErr.message);
-                        // Fallback attempt via followUp if editReply socket dropped
-                        await targetInteraction.followUp(payload).catch(() => {});
+if (isUpdate && targetInteraction.isButton?.()) {
+                        await targetInteraction.update(payload);
+                    } else {
+                        await targetInteraction.editReply(payload);
                     }
-                    
+
+                    console.log("✅ [11] Payload delivery confirmed by Discord API!");
                     return;
 
                 } catch (innerErr) {
