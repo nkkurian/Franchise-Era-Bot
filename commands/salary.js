@@ -315,57 +315,45 @@ if (isUpdate && targetInteraction.isButton?.()) {
                 let currentCapSpaceRaw = "$0.00";
 
                 try {
-                    // A. Fetch Google Spreadsheet document context
-                    const { doc } = await getSheetData(interaction.guild.id);
+                const { doc } = await getSheetData(interaction.guild.id);
 
-                    // B. Find the specific team tab (e.g. "Urumqi Uncs")
-                    const teamSheet = doc.sheetsByIndex.find((s) =>
-                        s.title.toLowerCase().includes(userTeamName.toLowerCase())
-                    );
+                const teamSheet = doc.sheetsByIndex.find((s) =>
+                    s.title.toLowerCase().includes(userTeamName.toLowerCase())
+                );
 
-                    if (teamSheet) {
-                        // C. Pull the mapped cap cell (or fallback to F2)
-                        const capCellA1 = (config?.column_mapping?.team_cap_space_cell || "F2").trim().toUpperCase();
-
-                        // D. Load the cell and read its formatted value
-                        const loadCellPromise = teamSheet.loadCells(capCellA1);
-                        const timeoutPromise = new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error("Google Sheets loadCells timed out")), 2500)
-                        );
-                        
-                        await Promise.race([loadCellPromise, timeoutPromise]);
-                        currentCapSpaceRaw = teamSheet.getCellByA1(capCellA1).formattedValue || "$0.00";
-                    }
-                } catch (err) {
-                    console.error("⚠️ Failed to load cap space cell in simulation:", err);
+                if (teamSheet) {
+                    const capCellA1 = (config?.column_mapping?.team_cap_space_cell || "F2").trim().toUpperCase();
+                    await teamSheet.loadCells(capCellA1);
+                    currentCapSpaceRaw = teamSheet.getCellByA1(capCellA1).formattedValue || "$0.00";
                 }
-
-                // E. Parse currency formatted string (e.g. "$8,895,947.00") into a clean number
-                const currentCapSpace = parseFloat(String(currentCapSpaceRaw).replace(/[$,]/g, "")) || 0;
-
-                const projectedCapSpace = currentCapSpace - playerCapHit;
-                const canAfford = projectedCapSpace >= 0;
-
-                const simEmbed = new EmbedBuilder()
-                    .setTitle(`📊 Cap Impact Simulation: ${playerName}`)
-                    .setColor(canAfford ? 0x2ecc71 : 0xe74c3c)
-                    .setDescription(`Financial simulation for adding **${playerName}** to **${userTeamName}**:`)
-                    .addFields(
-                        { name: "💰 Current Cap Space", value: `\`$${(currentCapSpace / 1000000).toFixed(2)}M\``, inline: true },
-                        { name: "💸 Acquisition Cap Hit", value: `\`-$${(playerCapHit / 1000000).toFixed(2)}M\``, inline: true },
-                        { 
-                            name: "📈 Projected Remaining Cap Space", 
-                            value: `${canAfford ? '🟢' : '🔴'} **$${(projectedCapSpace / 1000000).toFixed(2)}M**`, 
-                            inline: false 
-                        }
-                    )
-                    .setFooter({ text: canAfford ? "✅ Transaction is financially viable." : "⚠️ Warning: Pushes team over the cap!" });
-
-                return await interaction.editReply({ embeds: [simEmbed] });
-
             } catch (err) {
-                console.error("❌ Error running cap impact simulation:", err);
-                return await interaction.editReply("💥 An error occurred while calculating cap impact.");
+                console.error("⚠️ Failed to load cap space cell in simulation:", err);
             }
+
+            const currentCapSpace = parseFloat(String(currentCapSpaceRaw).replace(/[$,]/g, "")) || 0;
+            const projectedCapSpace = currentCapSpace - playerCapHit;
+            const canAfford = projectedCapSpace >= 0;
+
+            const simEmbed = new EmbedBuilder()
+                .setTitle(`📊 Cap Impact Simulation: ${playerName}`)
+                .setColor(canAfford ? 0x2ecc71 : 0xe74c3c)
+                .setDescription(`Financial simulation for adding **${playerName}** to **${userTeamName}**:`)
+                .addFields(
+                    { name: "💰 Current Cap Space", value: `\`$${(currentCapSpace / 1000000).toFixed(2)}M\``, inline: true },
+                    { name: "💸 Acquisition Cap Hit", value: `\`-$${(playerCapHit / 1000000).toFixed(2)}M\``, inline: true },
+                    { 
+                        name: "📈 Projected Remaining Cap Space", 
+                        value: `${canAfford ? '🟢' : '🔴'} **$${(projectedCapSpace / 1000000).toFixed(2)}M**`, 
+                        inline: false 
+                    }
+                )
+                .setFooter({ text: canAfford ? "✅ Transaction is financially viable." : "⚠️ Warning: Pushes team over the cap!" });
+
+            return await interaction.editReply({ embeds: [simEmbed] });
+
+        } catch (err) {
+            console.error("❌ Error running cap impact simulation:", err);
+            return await interaction.editReply("💥 An error occurred while calculating cap impact.");
         }
+    }
 };
