@@ -54,7 +54,7 @@ app.get("/", (req, res) => {
 });
 
 // IMPORTANT: Must bind to 0.0.0.0 for Render
-app.listen(port, () => {
+app.listen(port, "0.0.0.0", () => {
     console.log(`🚀 Keep-alive server listening on port ${port}`);
 });
 
@@ -115,11 +115,8 @@ async function getSheetData(guildId) {
             }
             const formattedKey = rawKey.replace(/\\n/g, "\n");
 
-            dynamicDoc = new GoogleSpreadsheet(sheetId);
-            await dynamicDoc.useServiceAccountAuth({
-                client_email: process.env.GOOGLE_EMAIL,
-                private_key: formattedKey,
-            });
+            dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
+            docCache.set(sheetId, dynamicDoc);    
             
             docCache.set(sheetId, dynamicDoc);
         }
