@@ -469,11 +469,12 @@ function createPlayerEmbed(pRow) {
         );
 }
 
-// --- INTERACTION HANDLER ---
 client.on("interactionCreate", async (interaction) => {
     if (interaction.user.bot) return;
+    let timeoutId;
 
-    // Fetch config safely at the top level
+    const handleInteraction = async () => {
+
     let currentConfig = null;
     if (interaction.guild) {
         try {
@@ -548,7 +549,6 @@ client.on("interactionCreate", async (interaction) => {
 
             if (error) throw error;
 
-            // Routes directly to the Admin Config menu view to show changes instantly
             return await setupManager.sendAdminConfigMenu(interaction, supabase);
 
         } catch (dbError) {
@@ -560,7 +560,6 @@ client.on("interactionCreate", async (interaction) => {
         }
     }
 
-    // 📢 HANDLE APPEALS CHANNEL DROPDOWN SUBMISSION (Placed safely before the setup router filter)
     if (
         interaction.isChannelSelectMenu() &&
         interaction.customId === "setup_appeals_channel"
@@ -593,7 +592,6 @@ client.on("interactionCreate", async (interaction) => {
         }
     }
 
-    // 📢 HANDLE TRADE CHANNEL DROPDOWN SUBMISSION
     if (
         interaction.isChannelSelectMenu() &&
         interaction.customId === "setup_trade_channel"
@@ -629,7 +627,6 @@ client.on("interactionCreate", async (interaction) => {
         }
     }
 
-    // 🛠️ UNIVERSAL SETUP ROUTER FILTER (UPDATED)
     const isSetupComponent =
         interaction.customId &&
         interaction.customId.startsWith("setup_") &&
@@ -650,7 +647,7 @@ client.on("interactionCreate", async (interaction) => {
             "setup_select_audit_ping_role",
             "setup_vault_pass_modal",
         ].includes(interaction.customId) &&
-    !interaction.customId.startsWith("setup_sync_team_roles") && // 🛠️ FIX: Dynamic pagination bypass (catches setup_sync_team_roles_page_X)
+    !interaction.customId.startsWith("setup_sync_team_roles") && 
     !interaction.customId.startsWith("nav_") &&
     !interaction.customId.includes("roles_page_");
 
@@ -658,7 +655,6 @@ if (isSetupComponent) {
     return await setupRouter.handleMenus(interaction, supabase);
 }
 
-// 🎭 ROUTE ROLE SYNCHRONIZATION BUTTONS TO setupManager
 if (interaction.customId && interaction.customId.startsWith("setup_sync_team_roles")) {
     return await setupManager.syncSleeperTeamRoles(interaction, supabase);
 }
@@ -668,7 +664,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
 }
 
 
-    // 🔔 HANDLE TRADE ROLE DROPDOWN SUBMISSION - PLACED BEFORE THE UNIVERSAL FILTER
     if (
         interaction.isRoleSelectMenu() &&
         interaction.customId === "setup_trade_role"
@@ -709,7 +704,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 const selectedRoleId = interaction.values[0];
 
                 try {
-                    // 2. Commit the change to the new Supabase column
                     const { error } = await supabase
                         .from("league_configs")
                         .update({ audit_ping_role_id: selectedRoleId })
@@ -719,8 +713,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
                     console.log(`[SetupRouter] Successfully updated Salary Alert Ping Role to: ${selectedRoleId}`);
 
-                    // 3. Re-render the menu. 
-                    // (Since this code is inside the setup router, call the function directly from your menu module)
+                   
                     return await setupManager.sendAdminConfigMenu(interaction, supabase);
 
                 } catch (dbError) {
@@ -732,7 +725,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 }
             }
 
-    // 💾 SAVE ADMIN ROLE CONFIGURATION TO SUPABASE (MOVED OUTSIDE MODAL BLOCKS)
     if (
         interaction.isRoleSelectMenu() &&
         interaction.customId === "setup_select_admin_role"
@@ -760,7 +752,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
         });
     }
 
-    // 📩 MODAL SUBMISSIONS GO HERE
     if (interaction.isModalSubmit()) {
         const { customId } = interaction;
 
@@ -771,7 +762,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 const { error } = await supabase.from("league_configs").upsert(
                     {
                         guild_id: interaction.guild.id,
-                        vault_password: newPassword, // Saves the dynamic text token straight to database
+                        vault_password: newPassword,
                     },
                     { onConflict: "guild_id" },
                 );
@@ -790,7 +781,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 });
             }
         }
-        // Handle FA Modal Submission in vault
         if (customId === "modal_fa_sheet_setup") {
             return await vault.handleFASheetModalSubmission(interaction, supabase);
         }
@@ -836,11 +826,9 @@ if (interaction.customId === "setup_confirm_save_roles") {
             }
         }
 
-        // 📄 HANDLE GOOGLE SHEETS SETUP SUBMISSION
         if (interaction.customId === "modal_setup_sheets") {
             return await setupManager.handleSheetsSubmit(interaction, supabase);
         }
-        // 👤 HANDLE PLAYER COLUMN MAPPING SUBMISSION
         if (interaction.customId === "modal_map_players") {
             return await setupManager.handleMappingSubmit(
                 interaction,
@@ -848,7 +836,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 "players",
             );
         }
-        // 🏢 HANDLE TEAM CELL MAPPING SUBMISSION
         if (interaction.customId === "modal_map_teams") {
             return await setupManager.handleMappingSubmit(
                 interaction,
@@ -856,7 +843,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 "teams",
             );
         }
-        // 🏆 HANDLE SLEEPER SETTINGS SUBMISSION
         if (interaction.customId === "modal_setup_sleeper") {
             return await setupManager.handleSleeperSubmit(
                 interaction,
@@ -908,7 +894,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
         const { customId } = interaction;
 
 
-        // Navigation Layout Engine Router
         if (customId === "nav_main")
             return await setupManager.sendDashboard(interaction, supabase, true);
         if (customId === "nav_sheets")
@@ -935,7 +920,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 supabase,
             );
 
-        // Layout Core Modal Mapping Configurations
         if (customId === "setup_map_cols_btn")
             return await setupManager.sendColumnMappingMenu(
                 interaction,
@@ -1020,45 +1004,38 @@ if (interaction.customId === "setup_confirm_save_roles") {
         if (customId === "vault_fa_config") {
             return await vault.showFAConfig(interaction, supabase);
         }
-        //  Toggle FA Enabled/Disabled button in vault
         if (customId === "toggle_fa_status") {
             return await vault.toggleFAStatus(interaction, supabase);
         }
-        // Open Sheet Setup Modal button in vault 
         if (customId === "open_fa_sheet_modal") {
             return await vault.showFASheetModal(interaction);
         }
         if (interaction.customId.startsWith("second_appeal_"))
             return await appeals.handleAppealButton(interaction, supabase);
-        // 1. Enter the midway Roles Dashboard Menu
         if (interaction.customId === "nav_roles_dashboard") {
             await setupManager.sendRolesDashboard(interaction, supabase);
         }
 
-        // 2. Open Manual Mapping Select Menu View
         if (interaction.customId.startsWith("nav_manual_roles")) {
             await setupManager.sendManualRoleMappingMenu(interaction, supabase);
         }
-        // Isolate manual audit safely on its own level
         if (interaction.customId === "run_manual_audit") {
             await interaction.deferUpdate();
             const vaultUtils = require("./utils/vault.js");
             return await vaultUtils.runManualAudit(interaction, supabase, client, getSheetData);
         }
 
-        // Convert the dangling else if into a standard, isolated if statement
         if (interaction.customId.startsWith("view_ext_")) {
         const playerName = interaction.customId.replace("view_ext_", "");
             const { logs } = await getSheetData(interaction.guild.id);
             const history = logs.filter((l) => l._rawData[0]?.toLowerCase() === playerName.toLowerCase());
 
-            // 🟢 Check if the parent message was private/ephemeral (Flag 64)
             const isSecret = interaction.message?.flags?.has(64);
 
             if (history.length === 0) {
                 return await interaction.reply({ 
                     content: `❌ No history found for ${playerName}`, 
-                    flags: [64] // Keep errors private
+                    flags: [64] 
                 });
             }
 
@@ -1084,7 +1061,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 flags: isSecret ? [64] : []
             });
         }
-        // Route transaction buttons safely
         if (customId.startsWith("tx_waiver_") || customId.startsWith("tx_edit_")) {
             const vaultUtils = require("./utils/vault.js");
             return await vaultUtils.handleTransactionButton(interaction, supabase, client, getSheetData);
@@ -1160,7 +1136,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
             return await faEngine.showBidModal(interaction, supabase);
         }
 
-        // Show active bids / manage menu when GM clicks "Update / Remove Bid"
         if (customId === "fa_view_my_bids") {
             return await faEngine.showMyBids(interaction, supabase);
         }
@@ -1180,7 +1155,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
         }
     }
 
-    // 🟢 UPDATED: Routes the dynamic modal submit to login.js
     if (interaction.isModalSubmit() && interaction.customId.startsWith("portal_secret_modal_")) {
         const loginCmd = client.commands.get("login");
         if (loginCmd && typeof loginCmd.handleSecretModalSubmit === "function") {
@@ -1189,24 +1163,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
     }
 
     // --- SLASH COMMANDS START HERE ---
-    // Added this
-    // --- SLASH COMMANDS START HERE ---
     if (interaction.isChatInputCommand()) {
-
-        // 1. FETCH CONFIG FIRST (Moved to the very top so it's defined everywhere)
-        let currentConfig = null;
-        try {
-            const { data } = await supabase
-                .from("league_configs")
-                .select("*")
-                .eq("guild_id", interaction.guild.id)
-                .single();
-            currentConfig = data;
-        } catch (dbErr) {
-            console.error("Error fetching config on command launch:", dbErr);
-        }
-
-        // 2. Intercept dashboard commands early with the secure check
         if (interaction.commandName === "setup") {
             const adminRoleId = currentConfig?.admin_role_id;
             const hasRole =
@@ -1230,20 +1187,18 @@ if (interaction.customId === "setup_confirm_save_roles") {
         console.log(`📡 [INTERACTION] Incoming command: /${interaction.commandName} in Guild: ${interaction.guild?.id}`);
 
         try {
-            // This order makes it perfectly compatible with your files
             await command.execute(
                 interaction,
                 supabase,
                 currentConfig,
                 getSheetData,
-                getPlayerStats, // 👈 Passed 5th! Now salary.js matches perfectly
-                getOwnerIdMap   // 👈 Passed 6th
+                getPlayerStats, 
+                getOwnerIdMap  
             );
             console.log(`✅ [INTERACTION] Completed /${interaction.commandName}`);
             } catch (cmdErr) {
                 console.error(`Error executing /${interaction.commandName}:`, cmdErr);
             
-                // 🛠️ CRITICAL FIX: Inform Discord so the interaction never hangs on "thinking..."
                 if (interaction.deferred || interaction.replied) {
                     await interaction.editReply({
                         content: `❌ **Execution Error:** ${cmdErr.message || "An unexpected error occurred."}`
@@ -1251,7 +1206,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 }
         }
         } // Closes: if (interaction.isChatInputCommand())
-    }); // Closes: const handleInteraction = async () =>
+    }; // Closes: const handleInteraction = async () =>
 
     try {
         const EXECUTION_TIMEOUT = 150000;
@@ -1267,7 +1222,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
         // Only log actual errors (this will ignore timed-out completed runs now!)
         console.error("❌ [INTERACTION TIMEOUT/ERROR]", err.stack);
     } finally {
-        // 🔒 CRITICAL: Clear the timer so it NEVER fires after the command completes!
         if (timeoutId) clearTimeout(timeoutId);
     }
 });
