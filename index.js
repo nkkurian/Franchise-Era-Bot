@@ -55,8 +55,13 @@ app.get("/", (req, res) => {
 });
 
 // Bind explicitly to 0.0.0.0 and PORT
-app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🚀 Keep-alive server listening on port ${PORT}`);
+app.listen(port, "0.0.0.0", () => {
+    console.log(`🚀 Keep-alive server listening on port ${port}`);
+    
+    console.log("🔌 Attempting to connect to Discord...");
+    client.login(process.env.DISCORD_TOKEN)
+        .then(() => console.log("🔓 Token accepted. Establishing gateway connection..."))
+        .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
 });
 
 const rawKey = process.env.GOOGLE_KEY || "";
@@ -94,10 +99,6 @@ client.on('error', (err) => console.error("❌ Discord client error:", err.messa
 client.on('warn', (msg) => console.warn("⚠️ Discord warning:", msg));
 client.on('shardError', (err) => console.error("❌ Discord shard error:", err.message));
 
-console.log("🔌 Attempting to connect to Discord...");
-client.login(process.env.DISCORD_TOKEN).catch((err) => {
-    console.error("❌ DISCORD LOGIN FAILED:", err.message);
-});
 
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
