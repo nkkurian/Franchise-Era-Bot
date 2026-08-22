@@ -29,7 +29,9 @@ module.exports = {
             
             console.log(`➡️ [5] Sheet Data Received | Players: ${players?.length ?? 0}, Logs: ${logs?.length ?? 0}`);
             if (players.length > 0) {
-                console.log("📊 [SHEET SAMPLE PLAYER]:", JSON.stringify(players[0], null, 2));
+                const samplePlayer = { ...players[0] };
+                delete samplePlayer.rowRef;
+                console.log("📊 [SHEET SAMPLE PLAYER]:", JSON.stringify(samplePlayer, null, 2));
             } else {
                 console.warn("⚠️ [SHEET DATA WARNING]: `players` array is empty or undefined!");
             }
