@@ -142,113 +142,109 @@ async function getSheetData(guildId) {
     }
 
     try {
-        console.log(`🌐 [CACHE MISS] Fetching fresh sheet data from Google API...`);
-        let dynamicDoc = docCache.get(sheetId);
+    console.log(`🌐 [CACHE MISS] Fetching fresh sheet data from Google API...`);
+    console.time("⏱️ Total getSheetData");
 
-        // Authenticate ONLY IF we haven't created a doc instance for this sheet yet
-        if (!dynamicDoc) {
-            let rawKey = process.env.GOOGLE_KEY || "";
-            if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
-                rawKey = rawKey.slice(1, -1);
-            }
-            const formattedKey = rawKey.replace(/\\n/g, "\n");
+    let dynamicDoc = docCache.get(sheetId);
 
-            dynamicDoc = new GoogleSpreadsheet(sheetId);
-            await dynamicDoc.useServiceAccountAuth({
-                client_email: process.env.GOOGLE_EMAIL,
-                private_key: formattedKey,
-            });
-            
-            docCache.set(sheetId, dynamicDoc);
+    if (!dynamicDoc) {
+        console.log(`🔐 Authenticating Google Sheet instance for Sheet ID: ${sheetId}...`);
+        let rawKey = process.env.GOOGLE_KEY || "";
+        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
+            rawKey = rawKey.slice(1, -1);
         }
-        console.time("⏱️ Total getSheetData");
+        const formattedKey = rawKey.replace(/\\n/g, "\n");
 
-        console.time("⏱️ 1. loadInfo");
-
-        // Load metadata
-        if (!dynamicDoc.title) {
-        await dynamicDoc.loadInfo();
+        dynamicDoc = new GoogleSpreadsheet(sheetId);
+        await dynamicDoc.useServiceAccountAuth({
+            client_email: process.env.GOOGLE_EMAIL,
+            private_key: formattedKey,
+        });
+        
+        docCache.set(sheetId, dynamicDoc);
+        console.log(`✅ Google Auth initialized and cached for sheet.`);
     }
 
-        console.time("⏱️ 2. getRows");
+    console.time("⏱️ 1. loadInfo");
+    await dynamicDoc.loadInfo();
+    console.timeEnd("⏱️ 1. loadInfo");
 
-        const pTab = config.tab_players || "PlayerList";
-        const lTab = config.tab_logs || "Transaction Log";
-        const iTab = config.tab_ids || "Sleeper_Players";
+    const pTab = config.tab_players || "PlayerList";
+    const lTab = config.tab_logs || "Transaction Log";
+    const iTab = config.tab_ids || "Sleeper_Players";
 
-        const playerSheet = dynamicDoc.sheetsByTitle[pTab];
-        const logSheet = dynamicDoc.sheetsByTitle[lTab];
-        const idSheet = dynamicDoc.sheetsByTitle[iTab];
+    console.log(`📋 Target Tabs -> Players: "${pTab}" | Logs: "${lTab}" | IDs: "${iTab}"`);
 
-        if (!playerSheet) {
-            console.error(`❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`);
-            return { players: [], logs: [], idMap: [], doc: null };
-        }
+    const playerSheet = dynamicDoc.sheetsByTitle[pTab];
+    const logSheet = dynamicDoc.sheetsByTitle[lTab];
+    const idSheet = dynamicDoc.sheetsByTitle[iTab];
 
-        // 3. Add timeout wrappers around Google API row requests so sockets cannot hang indefinitely
-        const fetchWithTimeout = (promise, ms = 5000) => 
-            Promise.race([
-                promise, 
-                new Promise((_, reject) => setTimeout(() => reject(new Error("Google Rows Fetch Timeout")), ms))
-            ]).catch(err => {
-                console.warn(`⚠️ Google fetch skipped: ${err.message}`);
-                return [];
-            });
-
-        const [pRows, tRows, idRows] = await Promise.all([
-            fetchWithTimeout(playerSheet.getRows()),
-            logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
-            idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
-        ]);
-        console.timeEnd("⏱️ 2. getRows");
-
-        console.timeEnd("⏱️ Total getSheetData");
-
-        const dataMapper = require("./utils/dataMapper.js");
-
-        const processedPlayers = pRows
-    .map((row) => {
-        const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
-        if (!parsed) return null;
-        
-        return {
-            name: parsed.name,
-            team: parsed.team,
-            salary: parsed.salary,
-            capHit: parsed.capHit,
-            years: parsed.years,
-            deadCap: parsed.deadCap,
-            structure: parsed.structure,
-            position: parsed.position,
-            sleeperId: parsed.sleeperId
-        };
-    })
-    .filter(Boolean);
-
-        const freshData = {
-            players: processedPlayers,
-            logs: tRows,
-            idMap: idRows,
-            doc: dynamicDoc,
-        };
-
-        // 4. Update cache
-        leagueCache[sheetId] = { lastFetch: now, data: freshData };
-        console.log(`✅ [CACHE LOADED] Freshly cached ${processedPlayers.length} players for sheet ${sheetId}`);
-
-        return freshData;
-
-    } catch (err) {
-        console.error("❌ Sheet Fetch Error:", err.message);
-        
-        // Fallback: If network drops, return existing stale cache instead of failing empty
-        if (leagueCache[sheetId]?.data) {
-            console.log("⚠️ Returning stale cache fallback");
-            return leagueCache[sheetId].data;
-        }
-
+    if (!playerSheet) {
+        console.error(`❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`);
         return { players: [], logs: [], idMap: [], doc: null };
     }
+
+    const fetchWithTimeout = (promise, ms = 5000) => 
+        Promise.race([
+            promise, 
+            new Promise((_, reject) => setTimeout(() => reject(new Error("Google Rows Fetch Timeout")), ms))
+        ]).catch(err => {
+            console.warn(`⚠️ Google fetch skipped: ${err.message}`);
+            return [];
+        });
+
+    console.time("⏱️ 2. getRows (All Sheets)");
+    const [pRows, tRows, idRows] = await Promise.all([
+        fetchWithTimeout(playerSheet.getRows()),
+        logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
+        idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
+    ]);
+    console.timeEnd("⏱️ 2. getRows (All Sheets)");
+
+    console.log(`📥 Rows Fetched -> Players: ${pRows.length} | Logs: ${tRows.length} | IDs: ${idRows.length}`);
+
+    const dataMapper = require("./utils/dataMapper.js");
+
+    console.time("⏱️ 3. Mapping Players Array");
+    const processedPlayers = pRows
+        .map((row) => {
+            const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
+            if (!parsed) return null;
+            return {
+                name: parsed.name,
+                team: parsed.team,
+                salary: parsed.salary,
+                capHit: parsed.capHit,
+                years: parsed.years,
+                deadCap: parsed.deadCap,
+                structure: parsed.structure,
+                position: parsed.position,
+                sleeperId: parsed.sleeperId
+            };
+        })
+        .filter(Boolean);
+    console.timeEnd("⏱️ 3. Mapping Players Array");
+
+    const freshData = {
+        players: processedPlayers,
+        logs: tRows,
+        idMap: idRows,
+        doc: dynamicDoc,
+    };
+
+    leagueCache[sheetId] = { lastFetch: now, data: freshData };
+    console.timeEnd("⏱️ Total getSheetData");
+    console.log(`✅ [CACHE LOADED] Freshly cached ${processedPlayers.length} players for sheet ${sheetId}`);
+
+    return freshData;
+
+} catch (err) {
+    console.error("❌ Sheet Fetch Error:", err.message);
+    if (leagueCache[sheetId]?.data) {
+        console.log("⚠️ Returning stale cache fallback");
+        return leagueCache[sheetId].data;
+    }
+    return { players: [], logs: [], idMap: [], doc: null };
 }
 
 app.set("getSheetData", getSheetData); 
