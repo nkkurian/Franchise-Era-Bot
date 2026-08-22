@@ -72,9 +72,8 @@ const formattedKey = rawKey
 const serviceAccountAuth = new JWT({
     email: process.env.GOOGLE_EMAIL,
     key: formattedKey,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
-
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -291,9 +290,10 @@ async function getSheetData(guildId) {
 
             dynamicDoc = new GoogleSpreadsheet(sheetId);
             await dynamicDoc.useServiceAccountAuth({
-                client_email: process.env.GOOGLE_EMAIL,
-                private_key: formattedKey,
-            });
+            client_email: process.env.GOOGLE_EMAIL,
+            private_key: formattedKey,
+        });
+        await dynamicDoc.loadInfo();
             
             docCache.set(sheetId, dynamicDoc);
         }
