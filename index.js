@@ -45,17 +45,18 @@ const port = process.env.PORT || 10000;
 // Keep-alive server for Render
 const express = require("express");
 const app = express();
-// This is what UptimeRobot will "see"
+
+// Use Render's environment PORT or default to 10000 (NOT 1000)
+const PORT = process.env.PORT || 10000;
+
 app.get("/", (req, res) => {
-    console.log(
-        `📡 Ping received from UptimeRobot at ${new Date().toLocaleTimeString()}`,
-    );
+    console.log(`📡 Ping received from UptimeRobot at ${new Date().toLocaleTimeString()}`);
     res.status(200).send("Franchise Pro Bot: Standing By.");
 });
 
-// IMPORTANT: Must bind to 0.0.0.0 for Render
-app.listen(port, () => {
-    console.log(`🚀 Keep-alive server listening on port ${port}`);
+// Bind explicitly to 0.0.0.0 and PORT
+app.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Keep-alive server listening on port ${PORT}`);
 });
 
 const rawKey = process.env.GOOGLE_KEY || "";
@@ -73,6 +74,8 @@ const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
         GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
         GatewayIntentBits.GuildMessageReactions, // <--- CRITICAL for reactions
     ],
@@ -92,9 +95,9 @@ client.on('warn', (msg) => console.warn("⚠️ Discord warning:", msg));
 client.on('shardError', (err) => console.error("❌ Discord shard error:", err.message));
 
 console.log("🔌 Attempting to connect to Discord...");
-client.login(process.env.DISCORD_TOKEN)
-    .then(() => console.log("🔓 Token accepted. Establishing gateway connection..."))
-    .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
+client.login(process.env.DISCORD_TOKEN).catch((err) => {
+    console.error("❌ DISCORD LOGIN FAILED:", err.message);
+});
 
 const commandsPath = path.join(__dirname, "commands");
 const commandFiles = fs
