@@ -1166,7 +1166,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
         }
     } // <--- THIS ends the "isButton" check.
 
-    const getOwnerIdMap = getTeamMap;
 
     if (interaction.isStringSelectMenu() && interaction.customId === "portal_secret_menu_choice") {
         const loginCmd = client.commands.get("login");
