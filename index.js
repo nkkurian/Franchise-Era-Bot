@@ -357,50 +357,32 @@ const docCache = new Map();
 
 client.once("ready", async () => {
     console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
-    const rest = new REST({ version: "10" }).setToken(
-        process.env.DISCORD_TOKEN,
-    );
-
+    const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
     global.sleeperCache = new Map();
-    console.log(`🤖 Logged in as ${client.user.tag}!`);
-    // Pass the active client connection into our listening engine loop
 
     try {
-        // 1. Register Slash Commands
         await rest.put(Routes.applicationCommands(client.user.id), {
             body: Array.from(client.commands.values()).map(c => c.data.toJSON())
         });
         console.log("✅ Slash Commands Synced");
 
-        // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
+        // Start Sleeper polling loop
+        setInterval(async () => {
+            await pollAllLeagues();
+        }, 60000);
+
         setTimeout(async () => {
-                    await sendStartupTestMessage();
-
-                    await runScheduledLibrarySync(supabase);
-
-
-                    if (client.ws.status !== 0) {
-                        console.warn(
-                            "⚠️ Discord connection cold. Status:",
-                            client.ws.status,
-                        );
-                    }
-                }, 3000);
+            try {
+                await sendStartupTestMessage();
+                await runScheduledLibrarySync(supabase);
             } catch (err) {
-                console.error("Startup Error:", err);
+                console.error("❌ Deferred Startup Error:", err.message);
             }
-        });
-
-setInterval(async () => {
-    try {
-        const response = await fetch(`http://127.0.0.1:${port}/`);
-        // Only log if it FAILS to keep logs clean
-        if (!response.ok)
-            console.warn("⚠️ Local Heartbeat check returned non-200");
+        }, 3000);
     } catch (err) {
-        console.error("⚠️ Heartbeat Failed:", err.message);
+        console.error("Startup Error:", err);
     }
-}, 120000);
+});
 
 
 // Cleaned up Test Message Function
