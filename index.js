@@ -58,9 +58,13 @@ app.listen(port, () => {
     console.log(`🚀 Keep-alive server listening on port ${port}`);
 });
 
+const formattedKey = process.env.GOOGLE_KEY 
+    ? process.env.GOOGLE_KEY.replace(/^["']|["']$/g, '').replace(/\\n/g, "\n") 
+    : "";
+
 const serviceAccountAuth = new JWT({
     email: process.env.GOOGLE_EMAIL,
-    key: process.env.GOOGLE_KEY.replace(/\\n/g, "\n"),
+    key: formattedKey,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
