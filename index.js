@@ -1438,14 +1438,12 @@ if (processedTxIds.size > 1000) {
     processedTxIds.clear(); // Clear old IDs so memory stays low
 }
 
-// Catch unhandled promise rejections (The most common silent killer)
-process.on("unhandledRejection", (reason, promise) => {
-    console.error("⚠️ Unhandled Rejection at:", promise, "reason:", reason);
+client.on("shardError", (error) => {
+    console.error("❌ A WebSocket connection error occurred:", error);
 });
 
-// Catch uncaught exceptions
-process.on("uncaughtException", (err) => {
-    console.error("🚫 Uncaught Exception:", err);
+client.on("error", (error) => {
+    console.error("❌ Client Error:", error);
 });
 
 console.log("🔌 Attempting to connect to Discord...");
