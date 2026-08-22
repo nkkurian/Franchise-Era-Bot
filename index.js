@@ -1247,7 +1247,15 @@ if (interaction.customId === "setup_confirm_save_roles") {
             console.log(`✅ [INTERACTION] Completed /${interaction.commandName}`);
             } catch (cmdErr) {
                 console.error(`Error executing /${interaction.commandName}:`, cmdErr);
-                throw cmdErr; // Passes error to outer timeout runner
+            
+                // 🛠️ CRITICAL FIX: Inform Discord so the interaction never hangs on "thinking..."
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.editReply({
+                        content: `❌ **Execution Error:** ${cmdErr.message || "An unexpected error occurred."}`
+                    }).catch(() => {});
+                }
+            
+                throw cmdErr; 
             }
         } // Closes: if (interaction.isChatInputCommand())
     }; // Closes: const handleInteraction = async () =>
