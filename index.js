@@ -1208,8 +1208,10 @@ if (interaction.customId === "setup_confirm_save_roles") {
         } // Closes: if (interaction.isChatInputCommand())
     }; // Closes: const handleInteraction = async () =>
 
+    let timeoutId = null;
+
     try {
-        const EXECUTION_TIMEOUT = 150000;
+        const EXECUTION_TIMEOUT = 10000; // Updated to 10s to match your global safety limit
         const timeoutPromise = new Promise((_, reject) => {
             timeoutId = setTimeout(() => {
                 reject(new Error("GLOBAL_COMMAND_TIMEOUT: Action timed out contacting database or external API."));
@@ -1219,13 +1221,16 @@ if (interaction.customId === "setup_confirm_save_roles") {
         // Race your command handler against the timeout
         await Promise.race([handleInteraction(), timeoutPromise]);
     } catch (err) {
-        // Only log actual errors (this will ignore timed-out completed runs now!)
+        // Only log error if command actually failed or timed out before completing
         console.error("❌ [INTERACTION TIMEOUT/ERROR]", err.stack);
     } finally {
-        if (timeoutId) clearTimeout(timeoutId);
+        // 🟢 PROPERLY CLEAR TIMER UPON SUCCESSFUL COMPLETION
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+        }
     }
 });
-
 
 
 async function pollAllLeagues() {
