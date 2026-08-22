@@ -45,6 +45,7 @@ module.exports = {
                     playerRow,
                     isUpdate = false,
                 ) => {
+                    try {
                     console.log("➡️ [6] Entered sendSalaryResponse for:", playerRow.name);
                     const pName = playerRow.name;
                     const teamAffiliation = playerRow.team || "FA";
@@ -257,15 +258,25 @@ module.exports = {
                         components.push(buttonRow);
                     }
     
-                const payload = {
-                    content: null,
-                    embeds: [embed],
-                    components: components,
-                };
+                    const payload = {
+                        embeds: [embed],
+                        components: components,
+                    };
                     console.log("➡️ [10] Sending editReply/update...");
-                return isUpdate
-                    ? await targetInteraction.update(payload)
-                    : await targetInteraction.editReply(payload);
+                if (isUpdate) {
+                        return await targetInteraction.update(payload);
+                    } else {
+                        return await targetInteraction.editReply(payload);
+                    }
+                } catch (innerErr) {
+                    console.error("❌ Error inside sendSalaryResponse:", innerErr);
+                    const errorMsg = "💥 Failed to build salary response payload.";
+                    if (targetInteraction.deferred || targetInteraction.replied) {
+                        await targetInteraction.editReply({ content: errorMsg, components: [] }).catch(() => {});
+                    } else {
+                        await targetInteraction.reply({ content: errorMsg, flags: 64 }).catch(() => {});
+                    }
+                }
             };
     
             // Handle single or multiple matches
