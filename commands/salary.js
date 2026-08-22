@@ -25,20 +25,23 @@ module.exports = {
         try {
         const input = interaction.options.getString("player").toLowerCase();
         console.log("➡️ [3] Searching for input:", input);
-            console.log("➡️ [4] Calling getSheetData for Guild ID:", interaction.guild.id);
-
-        // Removed idMap since our background cache renders it obsolete!
         const { players = [], logs = [] } = (await getSheetData(interaction.guild.id)) || {};
-            console.log(`➡️ [5] Data received. Players count: ${players?.length}, Logs count: ${logs?.length}`);
+            
+            console.log(`➡️ [5] Sheet Data Received | Players: ${players?.length ?? 0}, Logs: ${logs?.length ?? 0}`);
+            if (players.length > 0) {
+                console.log("📊 [SHEET SAMPLE PLAYER]:", JSON.stringify(players[0], null, 2));
+            } else {
+                console.warn("⚠️ [SHEET DATA WARNING]: `players` array is empty or undefined!");
+            }
 
-        const matches = players.filter(
-           (r) => r && typeof r.name === 'string' && r.name.trim().toLowerCase().includes(input.trim())
-        );
-
-        if (matches.length === 0)
-            return await interaction.editReply(
-                `❌ Player **${input}** not found.`,
+            const matches = players.filter(
+               (r) => r && typeof r.name === 'string' && r.name.trim().toLowerCase().includes(input.trim())
             );
+
+            if (matches.length === 0)
+                return await interaction.editReply(
+                    `❌ Player **${input}** not found.`,
+                );
     
             const sendSalaryResponse = async (
                 targetInteraction,
@@ -198,17 +201,26 @@ module.exports = {
                         components: components
                     };
 
-                    console.log("➡️ [10] Sending editReply/update...");
+                   console.log("➡️ [10] Sending editReply/update...");
 
-                    // 🟢 FIX: Await API response directly and DO NOT hang execution block
-                    if (isUpdate && !targetInteraction.deferred && !targetInteraction.replied) {
-                        await targetInteraction.update(payload).catch((err) => console.error("❌ Update failed:", err));
-                    } else {
-                        await targetInteraction.editReply(payload).catch((err) => console.error("❌ EditReply failed:", err));
+                    const sendPromise = (isUpdate && !targetInteraction.deferred && !targetInteraction.replied)
+                        ? targetInteraction.update(payload)
+                        : targetInteraction.editReply(payload);
+                    
+                    const hardTimeout = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error("Discord API socket timeout")), 2500)
+                    );
+                    
+                    try {
+                        await Promise.race([sendPromise, hardTimeout]);
+                        console.log("➡️ [11] Payload successfully delivered to Discord.");
+                    } catch (apiErr) {
+                        console.error("⚠️ [DISCORD API DELIVER WARNING]:", apiErr.message);
+                        // Fallback attempt via followUp if editReply socket dropped
+                        await targetInteraction.followUp(payload).catch(() => {});
                     }
-
-                    console.log("➡️ [11] Payload successfully delivered to Discord.");
-                    return; // 🟢 Force immediate function completion to unblock handleInteraction()
+                    
+                    return;
 
                 } catch (innerErr) {
                     console.error("❌ Error inside sendSalaryResponse:", innerErr);
