@@ -161,9 +161,16 @@ async function getSheetData(guildId) {
             
             docCache.set(sheetId, dynamicDoc);
         }
+        console.time("⏱️ Total getSheetData");
+
+        console.time("⏱️ 1. loadInfo");
 
         // Load metadata
+        if (!dynamicDoc.title) {
         await dynamicDoc.loadInfo();
+    }
+
+        console.time("⏱️ 2. getRows");
 
         const pTab = config.tab_players || "PlayerList";
         const lTab = config.tab_logs || "Transaction Log";
@@ -193,16 +200,30 @@ async function getSheetData(guildId) {
             logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
             idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
         ]);
+        console.timeEnd("⏱️ 2. getRows");
+
+        console.timeEnd("⏱️ Total getSheetData");
 
         const dataMapper = require("./utils/dataMapper.js");
 
         const processedPlayers = pRows
-            .map((row) => {
-                const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
-                if (!parsed) return null;
-                return { ...parsed, rowRef: row };
-            })
-            .filter(Boolean);
+    .map((row) => {
+        const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
+        if (!parsed) return null;
+        
+        return {
+            name: parsed.name,
+            team: parsed.team,
+            salary: parsed.salary,
+            capHit: parsed.capHit,
+            years: parsed.years,
+            deadCap: parsed.deadCap,
+            structure: parsed.structure,
+            position: parsed.position,
+            sleeperId: parsed.sleeperId
+        };
+    })
+    .filter(Boolean);
 
         const freshData = {
             players: processedPlayers,
