@@ -40,28 +40,25 @@ module.exports = {
                 `❌ Player **${input}** not found.`,
             );
     
-                const sendSalaryResponse = async (
-                    targetInteraction,
-                    playerRow,
-                    isUpdate = false,
-                ) => {
-                    try {
+            const sendSalaryResponse = async (
+                targetInteraction,
+                playerRow,
+                isUpdate = false
+            ) => {
+                try {
                     console.log("➡️ [6] Entered sendSalaryResponse for:", playerRow.name);
                     const pName = playerRow.name;
                     const teamAffiliation = playerRow.team || "FA";
 
-                    // 🔄 Pull dynamic league header configuration keys from Supabase
                     const salaryKey = config?.column_mapping?.salary || "Salary";
                     const capHitKey = config?.column_mapping?.cap_hit || "Cap Hit";
                     const yearsKey = config?.column_mapping?.years || "Years Left";
-                    // Extract values safely using the dynamic mapping keys, with old cache keys as fallbacks
+
                     const rawSalary = playerRow[salaryKey] || playerRow.aav || 0;
                     const rawCapHit = playerRow[capHitKey] || playerRow.capHit || 0;
                     const yearsLeft = playerRow[yearsKey] || playerRow.yearsLeft || "0";
-
                     const playerNotes = playerRow.notes || "";
 
-                    // Format currency strings cleanly
                     const yearlySalary = `$${(rawSalary / 1000000).toFixed(2)}M`;
                     const capHit = `$${(rawCapHit / 1000000).toFixed(2)}M`;
 
@@ -70,19 +67,10 @@ module.exports = {
                         .replace(/\b(jr|sr|iii|ii|iv|v|vth)\b/gi, '')
                         .replace(/[^a-z0-9]/gi, '')
                         .trim();
-                    
-                    // Instant O(1) key fetch using search_key from Sleeperlibrary
-                    console.log("➡️ [7] Looking up Sleeper Cache for normalized name:", normalizedTargetName);
+
                     const bestMatchPlayer = global.sleeperCache?.get(normalizedTargetName) || null;
                     const sleeperId = bestMatchPlayer ? (bestMatchPlayer.id || bestMatchPlayer.sleeper_id) : null;
-                    console.log("➡️ [8] Fetching stats for Sleeper ID:", sleeperId);
-                    
                     const pPos = bestMatchPlayer?.position || playerRow.position || "FA";
-
-                    // DEBUG LOG: If this triggers, your name normalization didn't find a match at all
-                    if (!sleeperId) {
-                        console.log(`❌ [DEBUG] No Sleeper cache match found for normalized name: "${normalizedTargetName}"`);
-                    }
 
                     // 2. Fetch Stats if we have an ID
                     // // const sleeperLeagueId = config?.sleeper_id;
@@ -144,54 +132,16 @@ module.exports = {
                     //     if (s.length > 0) statsField = s.join("\n");
                     // }
 
-                    // Identify GM's Team from Roles
-                    let userTeamName = null;
-                    if (interaction.member && config?.sleeper_team_roles) {
-                        const memberRoles = interaction.member.roles.cache.map(r => r.id);
-                        for (const [roleId, details] of Object.entries(config.sleeper_team_roles)) {
-                            if (memberRoles.includes(roleId) || (details?.roleId && memberRoles.includes(details.roleId))) {
-                                userTeamName = details.teamName;
-                                break;
-                            }
-                        }
-                    }
-                    //Check if player is already on GM's team
-                    const isAlreadyOnTeam = userTeamName && teamAffiliation.toLowerCase().trim() === userTeamName.toLowerCase().trim();
-                    
-                // 3. Build the Embed (Your Preferred Format)
-                    const embed = new EmbedBuilder()
-                    .setTitle(`🏈 ${pName} (${pPos})`)
-                    .setColor(0x3498db)
-                    .addFields(
-                        {
-                            name: "📋 Team",
-                            value: teamAffiliation,
-                            inline: true,
-                        },
-                        {
-                            name: "💰 Yearly Salary",
-                            value: yearlySalary,
-                            inline: true,
-                        },
-                        {
-                            name: "💸 Cap Hit",
-                            value: capHit,
-                            inline: true, 
-                        },
-                        {
-                            name: "⏳ Years Left",
-                            value: String(yearsLeft),
-                            inline: true,
-                        },
+            const embed = new EmbedBuilder()
+                        .setTitle(`🏈 ${pName} (${pPos})`)
+                        .setColor(0x3498db)
+                        .addFields(
+                            { name: "📋 Team", value: String(teamAffiliation), inline: true },
+                            { name: "💰 Yearly Salary", value: String(yearlySalary), inline: true },
+                            { name: "💸 Cap Hit", value: String(capHit), inline: true },
+                            { name: "⏳ Years Left", value: String(yearsLeft), inline: true }
+                        );
 
-                        // --- LINE 3 (Performance Metrics - Drops Down Below) ---
-                        // {
-                        //     name: `📈 ${displayYear} Performance`,
-                        //     value: statsField,
-                        //     inline: false, 
-                        // },
-                    );
-                    // --- LINE 4 (Optional Player Spreadsheet Notes Block) ---
                     if (playerNotes && String(playerNotes).trim() !== "") {
                         embed.addFields({
                             name: "📝 Player Notes",
@@ -199,37 +149,23 @@ module.exports = {
                             inline: false
                         });
                     }
-    
-                // 🎯 NEW: Dynamic Structure Field
-                // Only adds the field if there is something OTHER than "Standard" or empty
-                const structureColumnName = config?.column_mapping?.structure || "Structure";
-                const structureVal = playerRow.rowRef && typeof playerRow.rowRef.get === 'function' 
-                    ? playerRow.rowRef.get(structureColumnName) 
-                    : null;
-    
-                if (
-                    structureVal &&
-                    structureVal.toLowerCase() !== "standard" &&
-                    structureVal.trim() !== ""
-                ) {
-                    embed.addFields({
-                        name: "📜 Structure",
-                        value: structureVal,
-                        inline: false,
-                    });
-                }
-    
-                // 4. Add Headshot
-                // if (sleeperId) {
-                //     embed.setThumbnail(
-                //         `https://sleepercdn.com/content/nfl/players/${sleeperId}.jpg`,
-                //     );
-                // }
-    
+
+                    const structureColumnName = config?.column_mapping?.structure || "Structure";
+                    const structureVal = playerRow.rowRef && typeof playerRow.rowRef.get === 'function' 
+                        ? playerRow.rowRef.get(structureColumnName) 
+                        : null;
+
+                    if (structureVal && structureVal.toLowerCase() !== "standard" && structureVal.trim() !== "") {
+                        embed.addFields({
+                            name: "📜 Structure",
+                            value: String(structureVal),
+                            inline: false,
+                        });
+                    }
+
                     const components = [];
                     const buttonRow = new ActionRowBuilder(); 
 
-                    // 1. Add "View Extension" button if history exists
                     const hasHistory = Array.isArray(logs) && logs.some((l) => {
                         if (!l) return false;
                         const logName = l.name || l.playerName || l._rawData?.[0];
@@ -245,7 +181,6 @@ module.exports = {
                         );
                     }
 
-                    // 2. Add "Simulate Cap Impact" button
                     const safePlayerName = pName.replace(/\s+/g, "_");
                     buttonRow.addComponents(
                         new ButtonBuilder()
@@ -257,24 +192,28 @@ module.exports = {
                     if (buttonRow.components.length > 0) {
                         components.push(buttonRow);
                     }
-    
+
                     const payload = {
                         embeds: [embed],
-                        components: components,
+                        components: components
                     };
+
                     console.log("➡️ [10] Sending editReply/update...");
+
+                    // 🟢 FIX: Await API response directly and DO NOT hang execution block
                     if (isUpdate && !targetInteraction.deferred && !targetInteraction.replied) {
-                        return await targetInteraction.update(payload);
+                        await targetInteraction.update(payload).catch((err) => console.error("❌ Update failed:", err));
                     } else {
-                        return await targetInteraction.editReply(payload);
+                        await targetInteraction.editReply(payload).catch((err) => console.error("❌ EditReply failed:", err));
                     }
+
+                    console.log("➡️ [11] Payload successfully delivered to Discord.");
+                    return; // 🟢 Force immediate function completion to unblock handleInteraction()
+
                 } catch (innerErr) {
                     console.error("❌ Error inside sendSalaryResponse:", innerErr);
-                    const errorMsg = "💥 Failed to build salary response payload.";
                     if (targetInteraction.deferred || targetInteraction.replied) {
-                        await targetInteraction.editReply({ content: errorMsg, components: [] }).catch(() => {});
-                    } else {
-                        await targetInteraction.reply({ content: errorMsg, flags: 64 }).catch(() => {});
+                        await targetInteraction.editReply({ content: "💥 Failed to build salary response payload.", components: [] }).catch(() => {});
                     }
                 }
             };
