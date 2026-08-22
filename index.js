@@ -473,11 +473,9 @@ function createPlayerEmbed(pRow) {
 client.on("interactionCreate", async (interaction) => {
     if (interaction.user.bot) return;
 
-    let timeoutId;
-
-    const handleInteraction = async () => {
-        // 1. Fetch config safely
-        let currentConfig = null;
+    // Fetch config safely at the top level
+    let currentConfig = null;
+    if (interaction.guild) {
         try {
             const { data } = await supabase
                 .from("league_configs")
@@ -486,10 +484,11 @@ client.on("interactionCreate", async (interaction) => {
                 .single();
             currentConfig = data;
         } catch (dbErr) {
-            console.error("Error fetching config on command launch:", dbErr);
+            console.error("Error fetching config on interaction:", dbErr);
         }
+    }
 
-        // 2. Authorization Checks
+    const getOwnerIdMap = typeof getTeamMap !== "undefined" ? getTeamMap : null;
         const adminRoleId = currentConfig?.admin_role_id;
         const hasRole = adminRoleId && interaction.member?.roles?.cache?.has(adminRoleId);
         const isNativeAdmin = interaction.member?.permissions?.has("Administrator");
@@ -904,9 +903,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
         if (customId === "modal_submit_fa_bid") {
             return await faEngine.handleBidSubmission(interaction, supabase);
         }
-        if (customId === "modal_submit_fa_bid") {
-            return await faEngine.handleBidSubmission(interaction, supabase);
-        }
     } //End of isModalSubmit
     if (interaction.isButton()) {
         const { customId } = interaction;
@@ -1254,11 +1250,9 @@ if (interaction.customId === "setup_confirm_save_roles") {
                         content: `❌ **Execution Error:** ${cmdErr.message || "An unexpected error occurred."}`
                     }).catch(() => {});
                 }
-            
-                throw cmdErr; 
-            }
+        }
         } // Closes: if (interaction.isChatInputCommand())
-    }; // Closes: const handleInteraction = async () =>
+    }); // Closes: const handleInteraction = async () =>
 
     try {
         const EXECUTION_TIMEOUT = 150000;
