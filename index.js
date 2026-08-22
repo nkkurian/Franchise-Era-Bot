@@ -1,3 +1,11 @@
+const express = require("express");
+const path = require("path");
+const fs = require("node:fs");
+const axios = require("axios");
+const cron = require("node-cron");
+const { google } = require("googleapis");
+const { JWT } = require("google-auth-library");
+const { GoogleSpreadsheet } = require("google-spreadsheet");
 const {
     Client,
     GatewayIntentBits,
@@ -15,12 +23,10 @@ const {
     TextInputStyle,
     RoleSelectMenuBuilder,
 } = require("discord.js");
-const { GoogleSpreadsheet } = require("google-spreadsheet");
-const { JWT } = require("google-auth-library");
-const axios = require("axios");
+
+// Utilities & Local Modules
+const { supabase } = require("./utils/supabaseClient");
 const { runWeeklyAudit } = require("./utils/capCompliance.js");
-const cron = require("node-cron");
-const routes = require("./routes");
 const { processAndSend } = require("./utils/transactionAuditor.js");
 const vault = require("./utils/vault.js");
 const helpCommand = require("./commands/help.js");
@@ -29,26 +35,32 @@ const salaryCommand = require('./commands/salary.js');
 const appeals = require("./utils/appeals.js");
 const setupManager = require("./utils/setupManager.js");
 const faEngine = require("./utils/FreeAgency/faEngine.js");
-// Added this
-const {runScheduledLibrarySync, syncSleeperLibrary,normalizePlayerName} = require("./utils/sleeperLibrary");
 const setupRouter = require("./utils/setupRouter");
-const { google } = require("googleapis");
-const { supabase } = require("./utils/supabaseClient");
-const fs = require("node:fs");
-const path = require('path');
-const port = process.env.PORT || 10000;
+const { runScheduledLibrarySync, syncSleeperLibrary, normalizePlayerName } = require("./utils/sleeperLibrary");
+const dataMapper = require("./utils/dataMapper.js");
 
-const express = require("express");
-const path = require("path");
-const fs = require("fs");
-const { Client, GatewayIntentBits, Collection } = require("discord.js");
-const { JWT } = require("google-auth-library");
-const { GoogleSpreadsheet } = require("google-spreadsheet");
-
+// ==========================================
+// 2. EXPRESS & GLOBAL CACHE INITIALIZATION
+// ==========================================
 const app = express();
 const port = process.env.PORT || 10000;
 
-// 1. Google Authentication Setup
+// Global state variables
+let leagueCache = {};
+const docCache = new Map();
+let cachedPlayers = [];
+let cachedLogs = [];
+let cachedIds = [];
+let lastFetchTime = 0;
+const CACHE_LIFESPAN = 30000;
+const BACKFILL_MS = 2 * 60 * 60 * 1000;
+const BOT_START_TIME = Date.now() - BACKFILL_MS;
+let processedTxIds = new Set();
+let isFirstRun = true;
+
+// ==========================================
+// 3. AUTHENTICATION & CLIENT INITIALIZATION
+// ==========================================
 const rawKey = process.env.GOOGLE_KEY || "";
 const formattedKey = rawKey
     .replace(/^["']|["']$/g, "")
@@ -60,7 +72,6 @@ const serviceAccountAuth = new JWT({
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
 });
 
-// 2. Initialize Discord Client
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -72,7 +83,7 @@ const client = new Client({
 
 client.commands = new Collection();
 
-// Load Commands
+// Command Handler Loader
 const commandsPath = path.join(__dirname, "commands");
 if (fs.existsSync(commandsPath)) {
     const commandFiles = fs.readdirSync(commandsPath).filter((file) => file.endsWith(".js"));
@@ -87,7 +98,23 @@ if (fs.existsSync(commandsPath)) {
     }
 }
 
-// 3. Core Business Logic (getSheetData)
+// ==========================================
+// 4. UTILITY & HELPER FUNCTIONS
+// ==========================================
+async function getLeagueConfig(guildId) {
+    const { data, error } = await supabase
+        .from("league_configs")
+        .select("*")
+        .eq("guild_id", guildId)
+        .single();
+
+    if (error) {
+        console.error(`Error fetching config for guild ${guildId}:`, error.message);
+        return null;
+    }
+    return data;
+}
+
 async function getSheetData(guildId) {
     if (!guildId) return { players: [], logs: [], idMap: [], doc: null };
 
@@ -152,8 +179,6 @@ async function getSheetData(guildId) {
             idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
         ]);
 
-        const dataMapper = require("./utils/dataMapper.js");
-
         const processedPlayers = pRows
             .map((row) => {
                 const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
@@ -190,67 +215,22 @@ async function getSheetData(guildId) {
     }
 }
 
-// Bind function to client instance
-client.getSheetData = getSheetData;
-
-// 4. Express Middleware & Routes Setup
-app.use(express.json());
-app.set("getSheetData", getSheetData);
-
-// Basic health check
-app.get("/", (req, res) => {
-    res.status(200).send("Franchise Pro Bot: Standing By.");
-});
-
-// Import and mount custom router modules
-const routes = require("./routes");
-const faRouter = require("./routes/fa");
-
-app.use("/", routes(client, getSheetData));
-app.use("/", faRouter);
-
-// 5. Start HTTP Server and Discord Client
-app.listen(port, "0.0.0.0", () => {
-    console.log(`🚀 Keep-alive server listening on port ${port}`);
-});
-
-client.on("error", (err) => console.error("❌ Discord client error:", err.message));
-client.on("warn", (msg) => console.warn("⚠️ Discord warning:", msg));
-client.on("shardError", (err) => console.error("❌ Discord shard error:", err.message));
-
-if (!process.env.DISCORD_TOKEN) {
-    console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
-} else {
-    console.log("🔌 Attempting to connect to Discord...");
-    client.login(process.env.DISCORD_TOKEN)
-        .then(() => console.log("🔓 Token accepted. Gateway connection established."))
-        .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
-}
-
-app.set("getSheetData", getSheetData); 
-// Mount the router
-app.use("/", faRouter);
-
-//Added this
 async function getPlayerStats(playerSleeperId, leagueSleeperId) {
     if (!playerSleeperId) return null;
 
-    // Create a hard 2.5s signal to instantly kill hanging socket requests
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 2500);
 
     try {
         const axiosConfig = {
-            signal: controller.signal, // Forcefully terminates the TCP socket when aborted
+            signal: controller.signal,
             timeout: 2500,
         };
 
-        // 1. Fetch current NFL season state
         const stateRes = await axios.get("https://api.sleeper.app/v1/state/nfl", axiosConfig);
         const currentYear = parseInt(stateRes.data.season);
         const lastYear = currentYear - 1;
 
-        // 2. Fetch stats for current and last year concurrently
         const promises = [
             axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${currentYear}`, axiosConfig).catch(() => null),
             axios.get(`https://api.sleeper.app/v1/stats/nfl/regular/${lastYear}`, axiosConfig).catch(() => null),
@@ -263,7 +243,7 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
         }
 
         const [resCurrent, resLast, resLeague] = await Promise.all(promises);
-        clearTimeout(timeoutId); // Clean up timer if requests finish cleanly
+        clearTimeout(timeoutId);
 
         const statsCurrent = resCurrent?.data ? resCurrent.data[playerSleeperId] : null;
         const statsLast = resLast?.data ? resLast.data[playerSleeperId] : null;
@@ -316,117 +296,7 @@ async function getPlayerStats(playerSleeperId, leagueSleeperId) {
         };
     } catch (err) {
         console.error("❌ Seamless Stats Error:", err.message);
-        return null; // Gracefully fall back so the command finishes immediately
-    }
-}
-
-// Added this --- NEW: SUPABASE CONFIG FETCHER ---
-async function getLeagueConfig(guildId) {
-    const { data, error } = await supabase
-        .from("league_configs")
-        .select("*")
-        .eq("guild_id", guildId)
-        .single();
-
-    if (error) {
-        console.error(
-            `Error fetching config for guild ${guildId}:`,
-            error.message,
-        );
         return null;
-    }
-    return data;
-}
-
-// --- CACHE SYSTEM ---
-let cachedPlayers = [];
-let cachedLogs = [];
-let cachedIds = []; // To store Sleeper ID mappings
-let lastFetchTime = 0;
-const CACHE_LIFESPAN = 30000;
-// This sets the "start time" to 2 hours ago, so the bot backfills recent trades
-const BACKFILL_MS = 2 * 60 * 60 * 1000;
-const BOT_START_TIME = Date.now() - BACKFILL_MS;
-let processedTxIds = new Set();
-let isFirstRun = true; // NEW: Controls the one-time historical post
-
-// Added this
-let leagueCache = {};
-
-const docCache = new Map();
-
-client.once("ready", async () => {
-    console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
-    const rest = new REST({ version: "10" }).setToken(
-        process.env.DISCORD_TOKEN,
-    );
-
-    global.sleeperCache = new Map();
-    console.log(`🤖 Logged in as ${client.user.tag}!`);
-    // Pass the active client connection into our listening engine loop
-
-    try {
-        // 1. Register Slash Commands
-        await rest.put(Routes.applicationCommands(client.user.id), {
-            body: Array.from(client.commands.values()).map(c => c.data.toJSON())
-        });
-        console.log("✅ Slash Commands Synced");
-
-        // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
-        setTimeout(async () => {
-                    await sendStartupTestMessage();
-
-                    await runScheduledLibrarySync(supabase);
-
-
-                    if (client.ws.status !== 0) {
-                        console.warn(
-                            "⚠️ Discord connection cold. Status:",
-                            client.ws.status,
-                        );
-                    }
-                }, 3000);
-            } catch (err) {
-                console.error("Startup Error:", err);
-            }
-        });
-
-setInterval(async () => {
-    try {
-        const response = await fetch(`http://127.0.0.1:${port}/`);
-        // Only log if it FAILS to keep logs clean
-        if (!response.ok)
-            console.warn("⚠️ Local Heartbeat check returned non-200");
-    } catch (err) {
-        console.error("⚠️ Heartbeat Failed:", err.message);
-    }
-}, 120000);
-
-
-// Cleaned up Test Message Function
-async function sendStartupTestMessage() {
-    try {
-        const channel = await client.channels.fetch("1477399855541518366");
-        if (!channel)
-            return console.error("❌ Test failed: Channel not found.");
-
-        const testEmbed = new EmbedBuilder()
-            .setTitle("🔄 Bot Rebooted")
-            .setDescription(
-                "The **Franchise Pro Bot** has successfully restarted and is reconnecting to Google Sheets.",
-            )
-            .setColor(0x5865f2)
-            .setFields({
-                name: "Status",
-                value: "🟢 Online & Listening",
-                inline: true,
-            })
-            .setTimestamp();
-
-        await channel.send({ embeds: [testEmbed] });
-        console.log("✅ Startup test message sent to Discord.");
-    } catch (err) {
-        console.error("❌ Error sending startup message:", err);
     }
 }
 
@@ -447,6 +317,108 @@ function createPlayerEmbed(pRow) {
             { name: "💀 Dead Cap", value: deadCapStatus, inline: true },
             { name: "📜 Contract Structure", value: structure, inline: false }
         );
+}
+
+// Bind function to client
+client.getSheetData = getSheetData;
+
+// ==========================================
+// 5. EXPRESS MIDDLEWARE & ROUTING
+// ==========================================
+app.use(express.json());
+app.set("getSheetData", getSheetData);
+
+// Basic health check
+app.get("/", (req, res) => {
+    res.status(200).send("Franchise Pro Bot: Standing By.");
+});
+
+// Mounting Router Modules
+const routes = require("./routes");
+const faRouter = require("./routes/fa");
+
+app.use("/", routes(client, getSheetData));
+app.use("/", faRouter);
+
+// ==========================================
+// 6. DISCORD EVENTS & LISTENERS
+// ==========================================
+async function sendStartupTestMessage() {
+    try {
+        const channel = await client.channels.fetch("1477399855541518366");
+        if (!channel) return console.error("❌ Test failed: Channel not found.");
+
+        const testEmbed = new EmbedBuilder()
+            .setTitle("🔄 Bot Rebooted")
+            .setDescription("The **Franchise Pro Bot** has successfully restarted and is reconnecting to Google Sheets.")
+            .setColor(0x5865f2)
+            .setFields({
+                name: "Status",
+                value: "🟢 Online & Listening",
+                inline: true,
+            })
+            .setTimestamp();
+
+        await channel.send({ embeds: [testEmbed] });
+        console.log("✅ Startup test message sent to Discord.");
+    } catch (err) {
+        console.error("❌ Error sending startup message:", err);
+    }
+}
+
+client.once("ready", async () => {
+    console.log(`🚀 FRANCHISE PRO BOT ONLINE: Logged in as ${client.user.tag}`);
+    const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_TOKEN);
+    global.sleeperCache = new Map();
+
+    try {
+        await rest.put(Routes.applicationCommands(client.user.id), {
+            body: Array.from(client.commands.values()).map((c) => c.data.toJSON()),
+        });
+        console.log("✅ Slash Commands Synced");
+
+        setTimeout(async () => {
+            await sendStartupTestMessage();
+            await runScheduledLibrarySync(supabase);
+
+            if (client.ws.status !== 0) {
+                console.warn("⚠️ Discord connection cold. Status:", client.ws.status);
+            }
+        }, 3000);
+    } catch (err) {
+        console.error("Startup Error:", err);
+    }
+});
+
+// Local Heartbeat ping
+setInterval(async () => {
+    try {
+        const response = await fetch(`http://127.0.0.1:${port}/`);
+        if (!response.ok) console.warn("⚠️ Local Heartbeat check returned non-200");
+    } catch (err) {
+        console.error("⚠️ Heartbeat Failed:", err.message);
+    }
+}, 120000);
+
+// Client Error Catchers
+client.on("error", (err) => console.error("❌ Discord client error:", err.message));
+client.on("warn", (msg) => console.warn("⚠️ Discord warning:", msg));
+client.on("shardError", (err) => console.error("❌ Discord shard error:", err.message));
+
+// ==========================================
+// 7. INITIALIZE EXPRESS SERVER & LOGIN
+// ==========================================
+app.listen(port, "0.0.0.0", () => {
+    console.log(`🚀 Keep-alive server listening on port ${port}`);
+});
+
+if (!process.env.DISCORD_TOKEN) {
+    console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
+} else {
+    console.log("🔌 Attempting to connect to Discord...");
+    client.login(process.env.DISCORD_TOKEN)
+        .then(() => console.log("🔓 Token accepted. Gateway connection established."))
+        .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
 }
 
 client.on("interactionCreate", async (interaction) => {
