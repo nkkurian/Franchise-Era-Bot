@@ -288,12 +288,8 @@ async function getSheetData(guildId) {
             }
             const formattedKey = rawKey.replace(/\\n/g, "\n");
 
-            dynamicDoc = new GoogleSpreadsheet(sheetId);
-            await dynamicDoc.useServiceAccountAuth({
-            client_email: process.env.GOOGLE_EMAIL,
-            private_key: formattedKey,
-        });
-        await dynamicDoc.loadInfo();
+            const dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
+            await dynamicDoc.loadInfo();
             
             docCache.set(sheetId, dynamicDoc);
         }
