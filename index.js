@@ -246,6 +246,7 @@ async function getSheetData(guildId) {
     }
     return { players: [], logs: [], idMap: [], doc: null };
 }
+}
 
 app.set("getSheetData", getSheetData); 
 // Mount the router
