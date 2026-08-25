@@ -19,19 +19,14 @@ module.exports = {
         ),
 
     async execute(interaction, supabase, config, getSheetData, getPlayerStats) {
-        console.log("➡️ [1] Salary command triggered by:", interaction.user.tag);
         await interaction.deferReply();
-        console.log("➡️ [2] Reply deferred successfully");
         try {
         const input = interaction.options.getString("player").toLowerCase();
-        console.log("➡️ [3] Searching for input:", input);
         const { players = [], logs = [] } = (await getSheetData(interaction.guild.id)) || {};
             
-            console.log(`➡️ [5] Sheet Data Received | Players: ${players?.length ?? 0}, Logs: ${logs?.length ?? 0}`);
             if (players.length > 0) {
                 const samplePlayer = { ...players[0] };
                 delete samplePlayer.rowRef;
-                console.log("📊 [SHEET SAMPLE PLAYER]:", JSON.stringify(samplePlayer, null, 2));
             } else {
                 console.warn("⚠️ [SHEET DATA WARNING]: `players` array is empty or undefined!");
             }
@@ -51,7 +46,6 @@ module.exports = {
                 isUpdate = false
             ) => {
                 try {
-                    console.log("➡️ [6] Entered sendSalaryResponse for:", playerRow.name);
                     const pName = playerRow.name;
                     const teamAffiliation = playerRow.team || "FA";
 
@@ -77,65 +71,64 @@ module.exports = {
                     const sleeperId = bestMatchPlayer ? (bestMatchPlayer.id || bestMatchPlayer.sleeper_id) : null;
                     const pPos = bestMatchPlayer?.position || playerRow.position || "FA";
 
-                    // 2. Fetch Stats if we have an ID
-                    // // const sleeperLeagueId = config?.sleeper_id;
-                    // // const stats = sleeperId ? await getPlayerStats(sleeperId, sleeperLeagueId) : null;
-                    // // console.log("➡️ [9] Stats returned:", stats ? "Yes" : "No");
-                    // // const displayYear = stats?.displayYear;
-                    // // let statsField = `No live stats available for ${displayYear}.`;
+                    //2. Fetch Stats if we have an ID
+                    const sleeperLeagueId = config?.sleeper_id;
+                    const stats = sleeperId ? await getPlayerStats(sleeperId, sleeperLeagueId) : null;
+                    const displayYear = stats?.displayYear;
+                    let statsField = `No live stats available for ${displayYear}.`;
 
-                    // if (stats) {
-                    //     let s = [];
+                    if (stats) {
+                        let s = [];
 
-                    //     // 🏈 Offensive & Kicker Performance Rows
-                    //     if (stats.pass_yd) s.push(`• **Pass:** ${stats.pass_yd} Yds, ${stats.pass_td || 0} TD`);
-                    //     if (stats.rush_yd) s.push(`• **Rush:** ${stats.rush_yd} Yds, ${stats.rush_td || 0} TD`);
-                    //     if (stats.rec || stats.rec_yd || stats.rec_td) {
-                    //         s.push(`• **Rec:** ${stats.rec || 0} Rec, ${stats.rec_yd || 0} Yds, ${stats.rec_td || 0} TD`);
-                    //     }
-                    //     // 🦶 Kicker Statistics Parsing
-                    //     if (stats.fgm || stats.xpm) {
-                    //         s.push(`• **FG:** ${stats.fgm || 0}/${stats.fga || 0} Made, Long: ${stats.fg_long || 0} Yds`);
-                    //         s.push(`• **XP:** ${stats.xpm || 0}/${stats.xpa || 0} Made`);
-                    //     }
+                        // 🏈 Offensive & Kicker Performance Rows
+                        if (stats.pass_yd) s.push(`• **Pass:** ${stats.pass_yd} Yds, ${stats.pass_td || 0} TD`);
+                        if (stats.rush_yd) s.push(`• **Rush:** ${stats.rush_yd} Yds, ${stats.rush_td || 0} TD`);
+                        if (stats.rec || stats.rec_yd || stats.rec_td) {
+                            s.push(`• **Rec:** ${stats.rec || 0} Rec, ${stats.rec_yd || 0} Yds, ${stats.rec_td || 0} TD`);
+                        }
+                        // 🦶 Kicker Statistics Parsing
+                        if (stats.fgm || stats.xpm) {
+                            s.push(`• **FG:** ${stats.fgm || 0}/${stats.fga || 0} Made, Long: ${stats.fg_long || 0} Yds`);
+                            s.push(`• **XP:** ${stats.xpm || 0}/${stats.xpa || 0} Made`);
+                        }
 
-                    //     // 🎯 IDP / Defensive Positions Array Matching
-                    //     const defensivePositions = [
-                    //         "DE", "DT", "DL", "NT", 
-                    //         "LB", "ILB", "OLB", "MLB", 
-                    //         "CB", "S", "FS", "SS", "DB", 
-                    //         "IDP", "EDGE"
-                    //     ];
-                    //     const isDefensivePlayer = defensivePositions.includes(pPos.toUpperCase());
+                        // 🎯 IDP / Defensive Positions Array Matching
+                        const defensivePositions = [
+                            "DE", "DT", "DL", "NT", 
+                            "LB", "ILB", "OLB", "MLB", 
+                            "CB", "S", "FS", "SS", "DB", 
+                            "IDP", "EDGE"
+                        ];
+                        const isDefensivePlayer = defensivePositions.includes(pPos.toUpperCase());
 
-                    //     if (isDefensivePlayer) {
-                    //         // 1. Total Tackles (Solo + Assisted)
-                    //         const solo = stats.idp_tkl_solo || stats.tkl_solo || 0;
-                    //         const ast = stats.idp_tkl_ast || stats.tkl_ast || 0;
-                    //         const totalTkl = stats.tkl || stats.idp_tkl || (solo + ast);
+                        if (isDefensivePlayer) {
+                            // 1. Total Tackles (Solo + Assisted)
+                            const solo = stats.idp_tkl_solo || stats.tkl_solo || 0;
+                            const ast = stats.idp_tkl_ast || stats.tkl_ast || 0;
+                            const totalTkl = stats.tkl || stats.idp_tkl || (solo + ast);
 
-                    //         // 2. Defensive Metrics
-                    //         const sack = stats.sack || stats.idp_sack || 0;
-                    //         const inter = stats.int || stats.idp_int || 0;
-                    //         const ff = stats.ff || stats.idp_ff || 0;
-                    //         const fr = stats.fr || stats.idp_fr || 0; // Forced Recoveries
-                    //         const pd = stats.pd || stats.idp_pass_def || stats.idp_pd || 0; // Pass Deflections
-                    //         const tfl = stats.tfl || stats.idp_tkl_loss || 0; // Tackles for Loss
+                            // 2. Defensive Metrics
+                            const sack = stats.sack || stats.idp_sack || 0;
+                            const inter = stats.int || stats.idp_int || 0;
+                            const ff = stats.ff || stats.idp_ff || 0;
+                            const fr = stats.fr || stats.idp_fr || 0; // Forced Recoveries
+                            const pd = stats.pd || stats.idp_pass_def || stats.idp_pd || 0; // Pass Deflections
+                            const tfl = stats.tfl || stats.idp_tkl_loss || 0; // Tackles for Loss
 
-                    //         if (totalTkl > 0) s.push(`• **Tackles:** ${totalTkl} (${solo} Solo, ${ast} Ast)`);
-                    //         if (tfl > 0) s.push(`• **Tackles for Loss:** ${tfl}`);
-                    //         if (sack > 0) s.push(`• **Sacks:** ${sack.toFixed(1)}`);
-                    //         if (inter > 0) s.push(`• **INTs:** ${inter}`);
-                    //         if (pd > 0) s.push(`• **Passes Defended:** ${pd}`);
-                    //         if (ff > 0 || fr > 0) s.push(`• **Fumbles:** ${ff} FF, ${fr} FR`);
-                    //     }
+                            if (totalTkl > 0) s.push(`• **Tackles:** ${totalTkl} (${solo} Solo, ${ast} Ast)`);
+                            if (tfl > 0) s.push(`• **Tackles for Loss:** ${tfl}`);
+                            if (sack > 0) s.push(`• **Sacks:** ${sack.toFixed(1)}`);
+                            if (inter > 0) s.push(`• **INTs:** ${inter}`);
+                            if (pd > 0) s.push(`• **Passes Defended:** ${pd}`);
+                            if (ff > 0 || fr > 0) s.push(`• **Fumbles:** ${ff} FF, ${fr} FR`);
+                        }
 
-                    //     // Custom League Score
-                    //     if (stats.leagueScore)
-                    //         s.push(`\n🏆 **League Score: ${stats.leagueScore}**`);
+                        // Custom League Score
+                        if (stats.leagueScore)
+                            s.push(`\n🏆 **League Score: ${stats.leagueScore}**`);
 
-                    //     if (s.length > 0) statsField = s.join("\n");
-                    // }
+                        if (s.length > 0) statsField = s.join("\n");
+                    }
 
             const embed = new EmbedBuilder()
                         .setTitle(`🏈 ${pName} (${pPos})`)
@@ -144,7 +137,8 @@ module.exports = {
                             { name: "📋 Team", value: String(teamAffiliation), inline: true },
                             { name: "💰 Yearly Salary", value: String(yearlySalary), inline: true },
                             { name: "💸 Cap Hit", value: String(capHit), inline: true },
-                            { name: "⏳ Years Left", value: String(yearsLeft), inline: true }
+                            { name: "⏳ Years Left", value: String(yearsLeft), inline: true },
+                            {name: `📈 ${displayYear} Performance`,value: statsField, inline: false, }
                         );
 
                     if (playerNotes && String(playerNotes).trim() !== "") {
@@ -203,14 +197,11 @@ module.exports = {
                         components: components
                     };
 
-                   console.log("➡️ [10] Sending editReply/update...");
 if (isUpdate && targetInteraction.isButton?.()) {
                         await targetInteraction.update(payload);
                     } else {
                         await targetInteraction.editReply(payload);
                     }
-
-                    console.log("✅ [11] Payload delivery confirmed by Discord API!");
                     return;
 
                 } catch (innerErr) {

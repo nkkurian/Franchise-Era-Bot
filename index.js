@@ -31,11 +31,8 @@ const appeals = require("./utils/appeals.js");
 const setupManager = require("./utils/setupManager.js");
 const { runScheduledLibrarySync } = require('./utils/sleeperLibrary.js');
 const faEngine = require("./utils/FreeAgency/faEngine.js");
-// Added this
-const {
-    syncSleeperLibrary,
-    normalizePlayerName,
-} = require("./utils/sleeperLibrary");
+
+const {syncSleeperLibrary, normalizePlayerName} = require("./utils/sleeperLibrary");
 const setupRouter = require("./utils/setupRouter");
 const { google } = require("googleapis");
 const { supabase } = require("./utils/supabaseClient");
