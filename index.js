@@ -48,7 +48,6 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 app.get("/", (req, res) => {
-    console.log(`📡 Ping received from UptimeRobot at ${new Date().toLocaleTimeString()}`);
     res.status(200).send("Franchise Pro Bot: Standing By.");
 });
 
@@ -267,15 +266,12 @@ async function getSheetData(guildId) {
     const sheetId = config.sheet_id;
     const now = Date.now();
 
-    // 2. INCREASE CACHE TTL: 5 Minutes (300,000ms) instead of 30 seconds (30,000ms)
     if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 300000 && leagueCache[sheetId].data?.doc) {
         const ageSeconds = Math.round((now - leagueCache[sheetId].lastFetch) / 1000); // 👈 Define it here!
-        console.log(`⚡ [CACHE HIT] Loaded ${leagueCache[sheetId].data.players.length} players from memory (Cache Age: ${ageSeconds}s)`);
         return leagueCache[sheetId].data;
     }
 
     try {
-    console.log(`🌐 [CACHE MISS] Fetching fresh sheet data from Google API...`);
     let dynamicDoc = docCache.get(sheetId);
 
     // Authenticate ONLY IF we haven't created a doc instance for this sheet yet
@@ -343,8 +339,6 @@ async function getSheetData(guildId) {
 
         // 4. Update cache
         leagueCache[sheetId] = { lastFetch: now, data: freshData };
-        console.log(`✅ [CACHE LOADED] Freshly cached ${processedPlayers.length} players for sheet ${sheetId}`);
-
         return freshData;
 
     } catch (err) {
@@ -1198,7 +1192,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
                 getPlayerStats, 
                 getOwnerIdMap  
             );
-            console.log(`✅ [INTERACTION] Completed /${interaction.commandName}`);
             } catch (cmdErr) {
                 console.error(`Error executing /${interaction.commandName}:`, cmdErr);
             
