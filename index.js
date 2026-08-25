@@ -1181,8 +1181,6 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
-        console.log(`📡 [INTERACTION] Incoming command: /${interaction.commandName} in Guild: ${interaction.guild?.id}`);
-
         try {
             await command.execute(
                 interaction,

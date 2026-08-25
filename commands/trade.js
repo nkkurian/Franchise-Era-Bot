@@ -44,22 +44,20 @@ module.exports = {
                 // Extract the user's custom Supabase layout mappings
                 const mapping = config?.column_mapping || config?.settings || config;
 
-                const getSideData = async (teamName, playersIn) => {
-                    const sh = doc.sheetsByIndex.find((s) =>
-                        s.title.toLowerCase().includes(teamName.toLowerCase()),
-                    );
+                    const getSideData = async (teamName, playersIn) => {
+                        // Search doc.sheetsByIndex array properly by sheet title
+                        const sh = doc.sheetsByIndex ? doc.sheetsByIndex.find((s) =>
+                            s.title.toLowerCase().includes(teamName.toLowerCase())
+                        ) : null;
 
-                    let cap = 0;
-                    if (sh) {
-                        // Pull the dynamic coordinate, defaulting to J5 if unconfigured
-                        const capCellA1 = mapping?.cap_space_cell || "J5";
-                        await sh.loadCells(capCellA1);
+                        let cap = 0;
+                        if (sh) {
+                            const capCellA1 = mapping?.team_cap || "J5";
+                            await sh.loadCells(capCellA1);
 
-                        cap = parseFloat(
-                            (sh.getCellByA1(capCellA1).formattedValue || "0")
-                            .replace(/[$,]/g, "")
-                        ) || 0;
-                    }
+                            const rawCapValue = sh.getCellByA1(capCellA1).formattedValue || sh.getCellByA1(capCellA1).value || "0";
+                            cap = parseFloat(String(rawCapValue).replace(/[$,]/g, "")) || 0;
+                        }
 
                     let totalCapSent = 0;
                     let playerDetails = [];
