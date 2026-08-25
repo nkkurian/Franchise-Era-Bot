@@ -1229,90 +1229,93 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
 
 async function pollAllLeagues() {
-    console.log(`[${new Date().toLocaleTimeString()}] 🔍 Starting global Sleeper poll...`);
+    let currentWeek = 1;
+    let seasonType = "regular";
 
-    let nflWeek = 1;
+    // 1. Dynamic NFL State Check
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000); // 5s limit
+        const timeout = setTimeout(() => controller.abort(), 5000);
         const stateRes = await fetch("https://api.sleeper.app/v1/state/nfl", { signal: controller.signal });
         clearTimeout(timeout);
 
         if (stateRes.ok) {
             const nflState = await stateRes.json();
-            nflWeek = nflState.season_type === "regular" ? nflState.week : 1;
+            currentWeek = nflState.week > 0 ? nflState.week : 1;
+            seasonType = nflState.season_type;
         }
     } catch (err) {
         console.error("⚠️ Failed to fetch dynamic NFL state:", err.message);
     }
 
-    const { data: configs, error } = await supabase.from("league_configs").select("*");
-    if (error || !configs || configs.length === 0) return;
+            const { data: configs, error } = await supabase.from("league_configs").select("*");
+            if (error || !configs || configs.length === 0) return;
 
-    for (const config of configs) {
-        try {
-            if (!config.sleeper_id) continue;
+            // 2. Parallel Processing across Guilds
+            await Promise.allSettled(configs.map(async (config) => {
+                try {
+                    if (!config.sleeper_id) return;
 
-            const guild = client.guilds.cache.get(config.guild_id);
-            if (!guild) continue;
+                    const guild = client.guilds.cache.get(config.guild_id);
+                    if (!guild) return;
 
-            console.log(`📡 Fetching data for Sleeper League ${config.sleeper_id} (Week ${nflWeek})...`);
+                    const targetWeek = (seasonType === "offseason" || seasonType === "pre") ? 1 : currentWeek;
 
-            // Fetch transactions FIRST (Fast Sleeper API call with timeout)
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 5000);
-            const res = await fetch(
-                `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${nflWeek}`,
-                { signal: controller.signal }
-            );
-            clearTimeout(timeout);
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 5000);
+                    const res = await fetch(
+                        `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${targetWeek}`,
+                        { signal: controller.signal }
+                    );
+                    clearTimeout(timeout);
 
-            if (!res.ok) continue;
+                    if (!res.ok) return;
 
-            const allTx = await res.json();
-            if (!Array.isArray(allTx) || allTx.length === 0) continue;
+                    const allTx = await res.json();
+                    if (!Array.isArray(allTx) || allTx.length === 0) return;
 
-            const sortedTx = allTx
-                .filter((tx) => tx.status === "complete")
-                .sort((a, b) => a.status_updated - b.status_updated);
+                    const sortedTx = allTx
+                        .filter((tx) => tx.status === "complete")
+                        .sort((a, b) => a.status_updated - b.status_updated);
 
-            if (sortedTx.length === 0) continue;
+                    if (sortedTx.length === 0) return;
 
             // Handle First Run Initialization
-            if (isFirstRun) {
-                for (const tx of sortedTx) {
-                    processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
+    if (isFirstRun) {
+                    for (const tx of sortedTx) {
+                        processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
+                    }
+                    return; 
                 }
-                console.log(`🔒 Initialized ${sortedTx.length} existing transactions into cache for league ${config.sleeper_id}`);
-                continue; 
+
+                // Identify unprocessed transactions
+                const newTxList = sortedTx.filter(tx => !processedTxIds.has(`${config.sleeper_id}_${tx.transaction_id}`));
+                if (newTxList.length === 0) return; 
+
+                // Fetch Google Sheets and Team Map in PARALLEL
+                console.log(`⚡ New transaction detected! Fetching Sheet Data & Team Map...`);
+                const [{ players, doc }, teamMap] = await Promise.all([
+                    getSheetData(config.guild_id),
+                    getTeamMap(config.sleeper_id)
+                ]);
+
+                const logChannel = await client.channels.fetch(config.log_channel_id).catch(() => null);
+                if (!logChannel) return;
+
+                for (const tx of newTxList) {
+                    const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
+                    await processAndSend(tx, logChannel, players, teamMap, config, doc);
+                    processedTxIds.add(txKey);
+                }
+
+            } catch (err) {
+                console.error(`❌ Error polling league ${config.sleeper_id}:`, err.message);
             }
+        }));
 
-            // Check if there are NEW unprocessed transactions BEFORE fetching heavy Sheet data
-            const newTxList = sortedTx.filter(tx => !processedTxIds.has(`${config.sleeper_id}_${tx.transaction_id}`));
-            if (newTxList.length === 0) continue; // Skip Google Sheets fetch completely!
-
-            // --- HEAVY FETCHES ONLY RUN WHEN A NEW TRANSACTION IS FOUND ---
-            console.log(`⚡ New transaction detected! Fetching Sheet Data & Team Map...`);
-            const { players, doc } = await getSheetData(config.guild_id);
-            const teamMap = await getTeamMap(config.sleeper_id);
-
-            const logChannel = await client.channels.fetch(config.log_channel_id).catch(() => null);
-            if (!logChannel) continue;
-
-            for (const tx of newTxList) {
-                const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
-                console.log(`📤 Sending Transaction ${tx.transaction_id} to #${logChannel.name}...`);
-
-                await processAndSend(tx, logChannel, players, teamMap, config, doc);
-                processedTxIds.add(txKey);
-            }
-
-        } catch (err) {
-            console.error(`❌ Error polling league ${config.sleeper_id}:`, err.message);
-        }
+        isFirstRun = false;
     }
-    isFirstRun = false;
-}
+setInterval(pollAllLeagues, 60000);
 
 
 //Added this
@@ -1325,7 +1328,7 @@ async function getTeamMap(sleeperId) {
         const [uRes, rRes] = await Promise.all([
             fetch(`https://api.sleeper.app/v1/league/${sleeperId}/users`),
             fetch(`https://api.sleeper.app/v1/league/${sleeperId}/rosters`),
-        ]);
+        ])
 
         if (!uRes.ok || !rRes.ok) {
             console.warn(`⚠️ [getTeamMap] Failed to fetch users or rosters for league ${sleeperId}`);
