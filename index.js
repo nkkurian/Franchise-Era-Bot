@@ -43,13 +43,26 @@ const port = process.env.PORT || 10000;
 // Keep-alive server for Render
 const express = require("express");
 const app = express();
+app.use(express.json()); // Essential to read the data sent from Google
 
-// Use Render's environment PORT or default to 10000 (NOT 1000)
-const PORT = process.env.PORT || 10000;
+app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/", (req, res) => {
-    res.status(200).send("Franchise Pro Bot: Standing By.");
+    res.sendFile(path.join(__dirname, "public", "index.html"));
 });
+
+app.get('/api/config', (req, res) => {
+    res.json({
+        supabaseUrl: process.env.SUPABASE_URL,
+        supabaseKey: process.env.SUPABASE_KEY
+    });
+});
+
+const faRouter = require("./routes/fa");
+
+// Use Render's environment PORT or default to 10000 (NOT 1000)
+//const PORT = process.env.PORT || 10000;
+
 
 // Bind explicitly to 0.0.0.0 and PORT
 app.listen(port, "0.0.0.0", () => {
@@ -85,6 +98,8 @@ const client = new Client({
 client.commands = new Collection();
 client.getSheetData = getSheetData;
 
+app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
+
 if (!process.env.DISCORD_TOKEN) {
     console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
 } else {
@@ -114,11 +129,6 @@ for (const file of commandFiles) {
     }
 }
 
-app.use(express.json()); // Essential to read the data sent from Google
-
-app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
-
-const faRouter = require("./routes/fa");
 // Store getSheetData on Express app instance so routes can access it
 app.set("getSheetData", getSheetData); 
 // Mount the router

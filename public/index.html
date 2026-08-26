@@ -3,105 +3,143 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Front Office — Free Agency Hub</title>
+    <title>Front Office Portal – Master Sheet</title>
+    <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-slate-900 text-white min-h-screen font-sans">
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans p-4">
 
-    <!-- Navigation Header -->
-    <nav class="border-b border-slate-800 bg-slate-950 px-6 py-4 flex justify-between items-center">
-        <div class="flex items-center space-x-3">
-            <span class="text-2xl">🏈</span>
-            <h1 class="text-xl font-bold tracking-wide">Front Office Portal</h1>
+    <!-- Header Navigation -->
+    <header class="border-b border-slate-800 pb-4 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+            <span class="text-xs uppercase font-bold tracking-widest text-emerald-400">Fantasy Football Salary Sim</span>
+            <h1 class="text-3xl font-black tracking-tight text-white uppercase">Contract Offers Master Sheet</h1>
         </div>
-        <div id="user-profile" class="text-sm text-slate-400">
-            <!-- Discord user details or login button load here -->
-            <button onclick="loginWithDiscord()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg transition">
-                Login with Discord
-            </button>
+        <div class="flex items-center gap-3">
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span> Live Sync Connected
+            </span>
         </div>
-    </nav>
+    </header>
 
-    <!-- Main Content Container -->
-    <main class="max-w-6xl mx-auto p-6 space-y-6">
+    <!-- Top Dashboard Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
 
-        <!-- Stats Bar -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Bidding Status</p>
-                <p class="text-2xl font-bold text-emerald-400 mt-1">🟢 Open</p>
+        <!-- Left Column: Cap & Teams Overview (1/4 Width) -->
+        <section class="lg:col-span-1 space-y-6">
+            <!-- League Settings Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>⚙️</span> League Settings
+                </h2>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Salary Cap</span>
+                        <span class="font-bold text-emerald-400">$200,000,000</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Max Years</span>
+                        <span class="font-bold">5 Years</span>
+                    </div>
+                    <div class="flex justify-between py-1">
+                        <span class="text-slate-400">Offer Expiration</span>
+                        <span class="font-bold text-amber-400">48 Hours</span>
+                    </div>
+                </div>
             </div>
-            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Your Active Bids</p>
-                <p id="team-bids-count" class="text-2xl font-bold mt-1">-- / 8</p>
+
+            <!-- Teams Cap Space Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <span>👥</span> Teams & Cap Overview
+                </h2>
+                <div class="overflow-x-auto max-h-[500px] overflow-y-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="text-slate-400 bg-slate-950 sticky top-0">
+                            <tr>
+                                <th class="p-2">Team</th>
+                                <th class="p-2">Cap Space</th>
+                                <th class="p-2 text-right">Offers</th>
+                            </tr>
+                        </thead>
+                        <tbody id="teams-table-body" class="divide-y divide-slate-800">
+                            <!-- Dynamically populated -->
+                            <tr>
+                                <td class="p-2 font-medium">Leones De Madrid</td>
+                                <td class="p-2 text-emerald-400 font-bold">$18,450,000</td>
+                                <td class="p-2 text-right">2</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Total League Bids</p>
-                <p id="total-bids-count" class="text-2xl font-bold mt-1">--</p>
+        </section>
+
+        <!-- Right Column: Contract Log & Status (3/4 Width) -->
+        <section class="lg:col-span-3 space-y-6">
+            <!-- Central Log Table -->
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                        <span>📄</span> Contract Offers Log
+                    </h2>
+                    <input type="text" id="search-input" placeholder="Search player or team..." 
+                           class="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-emerald-500 w-64">
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="text-slate-400 bg-slate-950 border-b border-slate-800">
+                            <tr>
+                                <th class="p-3">ID</th>
+                                <th class="p-3">From Team</th>
+                                <th class="p-3">Player</th>
+                                <th class="p-3">Pos</th>
+                                <th class="p-3">Yrs</th>
+                                <th class="p-3">AAV</th>
+                                <th class="p-3">Total</th>
+                                <th class="p-3">Status</th>
+                                <th class="p-3 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="offers-table-body" class="divide-y divide-slate-800">
+                            <!-- Dynamic Supabase content drops here -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
 
-        <!-- Live Bids Table -->
-        <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg">
-            <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
-                <h2 class="text-lg font-semibold">📋 Live League Bid Board</h2>
-                <button onclick="fetchBids()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded transition">
-                    🔄 Refresh
-                </button>
+            <!-- Bottom Stats & Legend -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <!-- Status Breakdown -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Offer Status Summary</h3>
+                    <div class="grid grid-cols-2 gap-3 text-xs">
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-amber-400 font-bold">PENDING</span>
+                            <p id="stat-pending" class="text-2xl font-black mt-1">0</p>
+                        </div>
+                        <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                            <span class="text-emerald-400 font-bold">ACCEPTED</span>
+                            <p id="stat-accepted" class="text-2xl font-black mt-1">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Legend Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 text-xs space-y-2">
+                    <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Admin Actions Legend</h3>
+                    <p><span class="inline-block px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">ACCEPTED</span> Bid officially awarded and locked into roster cap.</p>
+                    <p><span class="inline-block px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold">DECLINED</span> Bid rejected by commish or player agent logic.</p>
+                </div>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-900/50 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
-                            <th class="py-3 px-6">Player</th>
-                            <th class="py-3 px-6">Team</th>
-                            <th class="py-3 px-6">AAV</th>
-                            <th class="py-3 px-6">Years</th>
-                            <th class="py-3 px-6">Total Value</th>
-                        </tr>
-                    </thead>
-                    <tbody id="bids-table-body" class="divide-y divide-slate-700/50 text-sm">
-                        <tr>
-                            <td colspan="5" class="py-6 text-center text-slate-500">Loading live bids...</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </main>
+        </section>
 
-    <script>
-        async function fetchBids() {
-            try {
-                const res = await fetch('/api/fa/bids');
-                const data = await res.json();
-                const tbody = document.getElementById('bids-table-body');
+    </div>
 
-                if (!data.bids || data.bids.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-500">No active bids yet.</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = data.bids.map(b => `
-                    <tr class="hover:bg-slate-700/30 transition">
-                        <td class="py-4 px-6 font-semibold">${b.playerName}</td>
-                        <td class="py-4 px-6 text-slate-300">${b.teamName}</td>
-                        <td class="py-4 px-6 text-emerald-400">$${b.aav}</td>
-                        <td class="py-4 px-6">${b.years} Yr(s)</td>
-                        <td class="py-4 px-6 font-medium text-slate-200">$${b.totalValue}</td>
-                    </tr>
-                `).join('');
-            } catch (err) {
-                console.error("Failed to load bids:", err);
-            }
-        }
-
-        function loginWithDiscord() {
-            window.location.href = '/api/auth/discord';
-        }
-
-        // Auto fetch on load
-        fetchBids();
-    </script>
+    <!-- Frontend Script -->
+    <script src="app.js"></script>
 </body>
 </html>
