@@ -19,7 +19,9 @@ module.exports = {
         ),
 
     async execute(interaction, supabase, config, getSheetData, getPlayerStats) {
-        await interaction.deferReply();
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply();
+        }
         try {
         const input = interaction.options.getString("player").toLowerCase();
         const { players = [], logs = [] } = (await getSheetData(interaction.guild.id)) || {};
