@@ -3,105 +3,134 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Front Office — Free Agency Hub</title>
+    <title>Front Office Portal – Bids & Agents</title>
+    <link rel="icon" href="data:,">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-<body class="bg-slate-900 text-white min-h-screen font-sans">
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans p-6">
 
-    <!-- Navigation Header -->
-    <nav class="border-b border-slate-800 bg-slate-950 px-6 py-4 flex justify-between items-center">
-        <div class="flex items-center space-x-3">
-            <span class="text-2xl">🏈</span>
-            <h1 class="text-xl font-bold tracking-wide">Front Office Portal</h1>
+    <!-- Header Navigation -->
+    <header class="border-b border-slate-800 pb-4 mb-6 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+            <div class="bg-cyan-500/10 border border-cyan-500/30 p-2 rounded-lg text-cyan-400 font-black">F</div>
+            <h1 class="text-xl font-bold tracking-tight text-white">Front Office Portal – Bids & Agents</h1>
         </div>
-        <div id="user-profile" class="text-sm text-slate-400">
-            <!-- Discord user details or login button load here -->
-            <button onclick="loginWithDiscord()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-4 py-2 rounded-lg transition">
-                Login with Discord
-            </button>
+        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span> Live Sync Connected
+        </span>
+    </header>
+
+    <!-- Top Metric Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Pending Bids</span>
+            <p id="metric-pending" class="text-3xl font-black text-amber-400 mt-1">0</p>
         </div>
-    </nav>
+        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Awaiting Agent</span>
+            <p id="metric-awaiting" class="text-3xl font-black text-cyan-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Processed Today</span>
+            <p id="metric-processed" class="text-3xl font-black text-emerald-400 mt-1">0</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Active Value</span>
+            <p id="metric-avg" class="text-3xl font-black text-purple-400 mt-1">$0M</p>
+        </div>
+    </div>
 
-    <!-- Main Content Container -->
-    <main class="max-w-6xl mx-auto p-6 space-y-6">
+    <!-- Main Workspace (Master Log + Audit Side Pane) -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <!-- Stats Bar -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Bidding Status</p>
-                <p class="text-2xl font-bold text-emerald-400 mt-1">🟢 Open</p>
-            </div>
-            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Your Active Bids</p>
-                <p id="team-bids-count" class="text-2xl font-bold mt-1">-- / 8</p>
-            </div>
-            <div class="bg-slate-800 border border-slate-700 p-5 rounded-xl">
-                <p class="text-slate-400 text-sm font-medium">Total League Bids</p>
-                <p id="total-bids-count" class="text-2xl font-bold mt-1">--</p>
+        <!-- Left Master Offers Log (2/3 width) -->
+        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
+            <div>
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider">Master Offers Log</h2>
+                    <input type="text" id="search-input" placeholder="Search player or team..." 
+                           class="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500 w-64">
+                </div>
+
+                <div class="overflow-x-auto max-h-[600px] overflow-y-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="text-slate-400 bg-slate-950 sticky top-0 border-b border-slate-800">
+                            <tr>
+                                <th class="p-3">ID</th>
+                                <th class="p-3">Player</th>
+                                <th class="p-3">From Team</th>
+                                <th class="p-3">Contract</th>
+                                <th class="p-3">Assigned Agent</th>
+                                <th class="p-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="offers-table-body" class="divide-y divide-slate-800/60">
+                            <!-- Dynamic Content -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <!-- Live Bids Table -->
-        <div class="bg-slate-800 border border-slate-700 rounded-xl overflow-hidden shadow-lg">
-            <div class="px-6 py-4 border-b border-slate-700 flex justify-between items-center">
-                <h2 class="text-lg font-semibold">📋 Live League Bid Board</h2>
-                <button onclick="fetchBids()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded transition">
-                    🔄 Refresh
-                </button>
+        <!-- Right Audit & Agent Detail Pane (1/3 width) -->
+        <div id="audit-pane" class="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between space-y-6">
+            <div class="text-center text-slate-500 py-12" id="audit-placeholder">
+                 Select an offer from the table to view details & agent notes.
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-900/50 text-slate-400 text-xs uppercase tracking-wider border-b border-slate-700">
-                            <th class="py-3 px-6">Player</th>
-                            <th class="py-3 px-6">Team</th>
-                            <th class="py-3 px-6">AAV</th>
-                            <th class="py-3 px-6">Years</th>
-                            <th class="py-3 px-6">Total Value</th>
-                        </tr>
-                    </thead>
-                    <tbody id="bids-table-body" class="divide-y divide-slate-700/50 text-sm">
-                        <tr>
-                            <td colspan="5" class="py-6 text-center text-slate-500">Loading live bids...</td>
-                        </tr>
-                    </tbody>
-                </table>
+
+            <div id="audit-content" class="hidden space-y-5">
+                <!-- Audit Header -->
+                <div class="flex justify-between items-start border-b border-slate-800 pb-3">
+                    <div>
+                        <span class="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">Audit & Agent Detail</span>
+                        <h3 id="audit-player-name" class="text-xl font-black text-white mt-0.5">--</h3>
+                        <p id="audit-player-sub" class="text-xs text-slate-400">--</p>
+                    </div>
+                    <span id="audit-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">PENDING</span>
+                </div>
+
+                <!-- Contract Values -->
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <span class="text-slate-400 text-[10px]">Annual Value (AAV)</span>
+                        <p id="audit-aav" class="text-lg font-black text-emerald-400 mt-0.5">$0</p>
+                    </div>
+                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                        <span class="text-slate-400 text-[10px]">Total Contract</span>
+                        <p id="audit-total" class="text-lg font-black text-white mt-0.5">$0</p>
+                    </div>
+                </div>
+
+                <!-- Agent Assignment & Notes Card -->
+                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs space-y-1">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Agent Assignment</span>
+                    <p id="audit-agent" class="font-bold text-cyan-400">--</p>
+                    <p id="audit-notes" class="text-slate-400 text-[11px] pt-1 border-t border-slate-800/80 mt-2">
+                        No custom requirements or notes submitted.
+                    </p>
+                </div>
+
+                <!-- Action Bar -->
+                <div class="space-y-2 border-t border-slate-800 pt-4">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Admin Actions</span>
+                    <button id="btn-approve" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs transition-colors">
+                        Approve & Sign Contract
+                    </button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button id="btn-reject" class="bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/50 font-bold py-2 rounded-lg text-xs transition-colors">
+                            Decline Offer
+                        </button>
+                        <button id="btn-expire" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-lg text-xs transition-colors">
+                            Expire Bid
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-    </main>
 
-    <script>
-        async function fetchBids() {
-            try {
-                const res = await fetch('/api/fa/bids');
-                const data = await res.json();
-                const tbody = document.getElementById('bids-table-body');
+    </div>
 
-                if (!data.bids || data.bids.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="py-6 text-center text-slate-500">No active bids yet.</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = data.bids.map(b => `
-                    <tr class="hover:bg-slate-700/30 transition">
-                        <td class="py-4 px-6 font-semibold">${b.playerName}</td>
-                        <td class="py-4 px-6 text-slate-300">${b.teamName}</td>
-                        <td class="py-4 px-6 text-emerald-400">$${b.aav}</td>
-                        <td class="py-4 px-6">${b.years} Yr(s)</td>
-                        <td class="py-4 px-6 font-medium text-slate-200">$${b.totalValue}</td>
-                    </tr>
-                `).join('');
-            } catch (err) {
-                console.error("Failed to load bids:", err);
-            }
-        }
-
-        function loginWithDiscord() {
-            window.location.href = '/api/auth/discord';
-        }
-
-        // Auto fetch on load
-        fetchBids();
-    </script>
+    <script src="app.js"></script>
 </body>
 </html>

@@ -38,17 +38,176 @@ const { google } = require("googleapis");
 const { supabase } = require("./utils/supabaseClient");
 const fs = require("node:fs");
 const path = require('path');
-const port = process.env.PORT || 10000;
-
-// Keep-alive server for Render
 const express = require("express");
+const port = process.env.PORT || 10000;
+const rawKey = process.env.GOOGLE_KEY || "";
+const formattedKey = rawKey
+    .replace(/^["']|["']$/g, '') 
+    .replace(/\\n/g, '\n');
+
+const serviceAccountAuth = new JWT({
+    email: process.env.GOOGLE_EMAIL,
+    key: formattedKey,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+// Keep-alive server for Render
 const app = express();
 
-// Use Render's environment PORT or default to 10000 (NOT 1000)
-const PORT = process.env.PORT || 10000;
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-app.get("/", (req, res) => {
-    res.status(200).send("Franchise Pro Bot: Standing By.");
+app.get("/api/offers", async (req, res) => {
+    const { data, error } = await supabase
+        .from("contract_offers")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+    if (error) {
+        console.error("❌ Contract offers lookup failed:", error.message);
+        return res.status(502).json({ error: "Contract offers are unavailable." });
+    }
+
+    return res.json({ offers: data || [] });
+});
+
+app.patch("/api/offers/:id/status", async (req, res) => {
+    const allowedStatuses = new Set(["ACCEPTED", "DECLINED", "EXPIRED"]);
+    const status = String(req.body?.status || "").toUpperCase();
+
+    if (!allowedStatuses.has(status)) {
+        return res.status(400).json({ error: "Invalid offer status." });
+    }
+
+    const { data, error } = await supabase
+        .from("contract_offers")
+        .update({ status })
+        .eq("id", req.params.id)
+        .select()
+        .single();
+
+    if (error) {
+        console.error("❌ Contract offer status update failed:", error.message);
+        return res.status(502).json({ error: "Unable to update the offer." });
+    }
+
+    return res.json({ offer: data });
+});
+
+async function getSheetData(guildId) {
+    if (!guildId) return { players: [], logs: [], idMap: [], doc: null };
+
+    // 1. Fetch config from Supabase
+    const { data: config, error } = await supabase
+        .from("league_configs")
+        .select("*")
+        .eq("guild_id", guildId)
+        .single();
+
+    if (error || !config) {
+        console.error("❌ Database Lookup Error:", error?.message || "Server not registered.");
+        return { players: [], logs: [], idMap: [], doc: null };
+    }
+
+    const sheetId = config.sheet_id;
+    const now = Date.now();
+
+    if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 300000 && leagueCache[sheetId].data?.doc) {
+        const ageSeconds = Math.round((now - leagueCache[sheetId].lastFetch) / 1000); // 👈 Define it here!
+        return leagueCache[sheetId].data;
+    }
+
+    try {
+    let dynamicDoc = docCache.get(sheetId);
+
+    // Authenticate ONLY IF we haven't created a doc instance for this sheet yet
+    if (!dynamicDoc) {
+        let rawKey = process.env.GOOGLE_KEY || "";
+        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
+            rawKey = rawKey.slice(1, -1);
+        }
+        const formattedKey = rawKey.replace(/\\n/g, "\n");
+
+        // ✅ FIXED: Reassign outer dynamicDoc instead of declaring a new local constant
+        dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
+        await dynamicDoc.loadInfo();
+
+        docCache.set(sheetId, dynamicDoc);
+    }
+
+    // Removed second duplicate `await dynamicDoc.loadInfo()` call from here
+
+    const pTab = config.tab_players || "PlayerList";
+    const lTab = config.tab_logs || "Transaction Log";
+    const iTab = config.tab_ids || "Sleeper_Players";
+
+        const playerSheet = dynamicDoc.sheetsByTitle[pTab];
+        const logSheet = dynamicDoc.sheetsByTitle[lTab];
+        const idSheet = dynamicDoc.sheetsByTitle[iTab];
+
+        if (!playerSheet) {
+            console.error(`❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`);
+            return { players: [], logs: [], idMap: [], doc: null };
+        }
+
+        // 3. Add timeout wrappers around Google API row requests so sockets cannot hang indefinitely
+        const fetchWithTimeout = (promise, ms = 5000) => 
+            Promise.race([
+                promise, 
+                new Promise((_, reject) => setTimeout(() => reject(new Error("Google Rows Fetch Timeout")), ms))
+            ]).catch(err => {
+                console.warn(`⚠️ Google fetch skipped: ${err.message}`);
+                return [];
+            });
+
+        const [pRows, tRows, idRows] = await Promise.all([
+            fetchWithTimeout(playerSheet.getRows()),
+            logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
+            idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
+        ]);
+
+        const dataMapper = require("./utils/dataMapper.js");
+
+        const processedPlayers = pRows
+            .map((row) => {
+                const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
+                if (!parsed) return null;
+                return { ...parsed, rowRef: row };
+            })
+            .filter(Boolean);
+
+        const freshData = {
+            players: processedPlayers,
+            logs: tRows,
+            idMap: idRows,
+            doc: dynamicDoc,
+        };
+
+        // 4. Update cache
+        leagueCache[sheetId] = { lastFetch: now, data: freshData };
+        return freshData;
+
+    } catch (err) {
+        console.error("❌ Sheet Fetch Error:", err.message);
+
+        // Fallback: If network drops, return existing stale cache instead of failing empty
+        if (leagueCache[sheetId]?.data) {
+            console.log("⚠️ Returning stale cache fallback");
+            return leagueCache[sheetId].data;
+        }
+
+        return { players: [], logs: [], idMap: [], doc: null };
+    }
+}
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.GuildPresences,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
+        GatewayIntentBits.GuildMessageReactions, // <--- CRITICAL for reactions
+    ],
 });
 
 // Bind explicitly to 0.0.0.0 and PORT
@@ -61,29 +220,11 @@ app.listen(port, "0.0.0.0", () => {
         .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
 });
 
-const rawKey = process.env.GOOGLE_KEY || "";
-const formattedKey = rawKey
-    .replace(/^["']|["']$/g, '') 
-    .replace(/\\n/g, '\n');
 
-const serviceAccountAuth = new JWT({
-    email: process.env.GOOGLE_EMAIL,
-    key: formattedKey,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.GuildPresences,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
-        GatewayIntentBits.GuildMessageReactions, // <--- CRITICAL for reactions
-    ],
-});
 
 client.commands = new Collection();
 client.getSheetData = getSheetData;
+client.getTeamMap = getTeamMap;
 
 if (!process.env.DISCORD_TOKEN) {
     console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
@@ -113,8 +254,6 @@ for (const file of commandFiles) {
         );
     }
 }
-
-app.use(express.json()); // Essential to read the data sent from Google
 
 app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
 
@@ -247,112 +386,6 @@ let isFirstRun = true; // NEW: Controls the one-time historical post
 let leagueCache = {};
 
 const docCache = new Map();
-
-async function getSheetData(guildId) {
-    if (!guildId) return { players: [], logs: [], idMap: [], doc: null };
-
-    // 1. Fetch config from Supabase
-    const { data: config, error } = await supabase
-        .from("league_configs")
-        .select("*")
-        .eq("guild_id", guildId)
-        .single();
-
-    if (error || !config) {
-        console.error("❌ Database Lookup Error:", error?.message || "Server not registered.");
-        return { players: [], logs: [], idMap: [], doc: null };
-    }
-
-    const sheetId = config.sheet_id;
-    const now = Date.now();
-
-    if (leagueCache[sheetId] && now - leagueCache[sheetId].lastFetch < 300000 && leagueCache[sheetId].data?.doc) {
-        const ageSeconds = Math.round((now - leagueCache[sheetId].lastFetch) / 1000); // 👈 Define it here!
-        return leagueCache[sheetId].data;
-    }
-
-    try {
-    let dynamicDoc = docCache.get(sheetId);
-
-    // Authenticate ONLY IF we haven't created a doc instance for this sheet yet
-    if (!dynamicDoc) {
-        let rawKey = process.env.GOOGLE_KEY || "";
-        if (rawKey.startsWith('"') && rawKey.endsWith('"')) {
-            rawKey = rawKey.slice(1, -1);
-        }
-        const formattedKey = rawKey.replace(/\\n/g, "\n");
-
-        // ✅ FIXED: Reassign outer dynamicDoc instead of declaring a new local constant
-        dynamicDoc = new GoogleSpreadsheet(sheetId, serviceAccountAuth);
-        await dynamicDoc.loadInfo();
-        
-        docCache.set(sheetId, dynamicDoc);
-    }
-
-    // Removed second duplicate `await dynamicDoc.loadInfo()` call from here
-
-    const pTab = config.tab_players || "PlayerList";
-    const lTab = config.tab_logs || "Transaction Log";
-    const iTab = config.tab_ids || "Sleeper_Players";
-
-        const playerSheet = dynamicDoc.sheetsByTitle[pTab];
-        const logSheet = dynamicDoc.sheetsByTitle[lTab];
-        const idSheet = dynamicDoc.sheetsByTitle[iTab];
-
-        if (!playerSheet) {
-            console.error(`❌ CRITICAL: Players tab ("${pTab}") not found in sheet ${sheetId}`);
-            return { players: [], logs: [], idMap: [], doc: null };
-        }
-
-        // 3. Add timeout wrappers around Google API row requests so sockets cannot hang indefinitely
-        const fetchWithTimeout = (promise, ms = 5000) => 
-            Promise.race([
-                promise, 
-                new Promise((_, reject) => setTimeout(() => reject(new Error("Google Rows Fetch Timeout")), ms))
-            ]).catch(err => {
-                console.warn(`⚠️ Google fetch skipped: ${err.message}`);
-                return [];
-            });
-
-        const [pRows, tRows, idRows] = await Promise.all([
-            fetchWithTimeout(playerSheet.getRows()),
-            logSheet ? fetchWithTimeout(logSheet.getRows()) : [],
-            idSheet ? fetchWithTimeout(idSheet.getRows()) : [],
-        ]);
-
-        const dataMapper = require("./utils/dataMapper.js");
-
-        const processedPlayers = pRows
-            .map((row) => {
-                const parsed = dataMapper.parsePlayerRow(row, config?.column_mapping);
-                if (!parsed) return null;
-                return { ...parsed, rowRef: row };
-            })
-            .filter(Boolean);
-
-        const freshData = {
-            players: processedPlayers,
-            logs: tRows,
-            idMap: idRows,
-            doc: dynamicDoc,
-        };
-
-        // 4. Update cache
-        leagueCache[sheetId] = { lastFetch: now, data: freshData };
-        return freshData;
-
-    } catch (err) {
-        console.error("❌ Sheet Fetch Error:", err.message);
-        
-        // Fallback: If network drops, return existing stale cache instead of failing empty
-        if (leagueCache[sheetId]?.data) {
-            console.log("⚠️ Returning stale cache fallback");
-            return leagueCache[sheetId].data;
-        }
-
-        return { players: [], logs: [], idMap: [], doc: null };
-    }
-}
 
 
 client.once("ready", async () => {
