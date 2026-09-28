@@ -177,11 +177,22 @@ module.exports = {
 
                // 3. Extract formatted text directly out of the grid cells
                let capSpace = "$0.00";
-               try {
-                   capSpace = sheet.getCellByA1(capCellA1).formattedValue || "$0.00";
-               } catch(e) {
-                   console.log("Could not find Cap Cell:", capCellA1);
-               }
+                try {
+                    if (capCellA1) {
+                        const cell = sheet.getCellByA1(capCellA1);
+                        
+                        if (cell.formattedValue) {
+                            capSpace = cell.formattedValue;
+                        } else if (typeof cell.value === 'number') {
+                            // Format raw numbers like 1250000 into $1,250,000
+                            capSpace = `$${cell.value.toLocaleString('en-US')}`;
+                        } else if (cell.value) {
+                            capSpace = String(cell.value);
+                        }
+                    }
+                } catch(e) {
+                    console.log("Could not find Cap Cell:", capCellA1, e.message);
+                }
 
                let extensionsLeft = null;
                try {
