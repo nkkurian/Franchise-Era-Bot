@@ -1301,12 +1301,12 @@ async function pollAllLeagues() {
                         .filter((tx) => tx.status === "complete" || tx.status === "executed")
                         .sort((a, b) => a.status_updated - b.status_updated);
                     
-                    console.log(`[DEBUG] Found ${sortedTx.length} completed/executed txs in week ${targetWeek}`);
+                    console.log(`[DEBUG] Found ${sortedTx.length} completed/executed txs in week ${baseWeek}`);
 
                     if (sortedTx.length === 0) return;
 
                     
-                    console.log(`[DEBUG] Guild: ${config.guild_id} | Week: ${targetWeek} | Fetched ${allTx.length} total txs`);
+                    console.log(`[DEBUG] Guild: ${config.guild_id} | Weeks: [${weeksToScan.join(", ")}] | Fetched ${allTx.length} total txs`);
             // Handle First Run Initialization
                 if (isFirstRun) {
                     // for (const tx of sortedTx) {
