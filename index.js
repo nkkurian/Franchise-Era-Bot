@@ -1309,10 +1309,10 @@ async function pollAllLeagues() {
                     console.log(`[DEBUG] Guild: ${config.guild_id} | Weeks: [${weeksToScan.join(", ")}] | Fetched ${allTx.length} total txs`);
             // Handle First Run Initialization
                 if (isFirstRun) {
-                    // for (const tx of sortedTx) {
-                    //     processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
-                    // }
-                    // return; 
+                    for (const tx of sortedTx) {
+                        processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
+                    }
+                    return; 
                 }
 
                 // Identify unprocessed transactions
@@ -1333,6 +1333,7 @@ async function pollAllLeagues() {
                     const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
                     await processAndSend(tx, logChannel, players, teamMap, config, doc);
                     processedTxIds.add(txKey);
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
                 }
 
             } catch (err) {
