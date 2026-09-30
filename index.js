@@ -1268,21 +1268,32 @@ async function pollAllLeagues() {
                     const guild = client.guilds.cache.get(config.guild_id);
                     if (!guild) return;
 
-                    const targetWeek = (seasonType === "offseason" || seasonType === "pre") ? 1 : currentWeek;
-
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 5000);
-                    const res = await fetch(
-                        `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${targetWeek}`,
-                        { signal: controller.signal }
-                    );
-                    clearTimeout(timeout);
-
-                    if (!res.ok) return;
-
-                    const allTx = await res.json();
+                    const baseWeek = (seasonType === "offseason" || seasonType === "pre") ? 1 : currentWeek;
+                    const weeksToScan = Array.from(new Set([baseWeek, Math.max(1, baseWeek - 1)]));
+                    
+                    let allTx = [];
+                    for (const week of weeksToScan) {
+                        try {
+                            const controller = new AbortController();
+                            const timeout = setTimeout(() => controller.abort(), 5000);
+                            const res = await fetch(
+                                `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${week}`,
+                                { signal: controller.signal }
+                            );
+                            clearTimeout(timeout);
+                    
+                            if (res.ok) {
+                                const txData = await res.json();
+                                if (Array.isArray(txData)) {
+                                    allTx.push(...txData);
+                                }
+                            }
+                        } catch (weekErr) {
+                            console.error(`⚠️ Error fetching week ${week} for league ${config.sleeper_id}:`, weekErr.message);
+                        }
+                    }
                     if (!Array.isArray(allTx) || allTx.length === 0) {
-                        console.log(`[DEBUG] No transactions returned for week ${targetWeek}`);
+                        console.log(`[DEBUG] No transactions returned for weeks [${weeksToScan.join(", ")}]`);
                         return;
                     }
                     
