@@ -8,6 +8,19 @@ const normalizePlayerName = (name) => {
         .trim();
 };
 
+async function retryWithBackoff(fn, retries = 3, delay = 1000) {
+    try {
+        return await fn();
+    } catch (err) {
+        if (retries > 0 && (err.status === 429 || err.message?.includes("429") || err.code === 429)) {
+            console.warn(`⚠️ Google API 429 Rate Limit hit. Retrying in ${delay}ms...`);
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return retryWithBackoff(fn, retries - 1, delay * 2);
+        }
+        throw err;
+    }
+}
+
 function createTransactionActionRow(txn, config) {
     const type = txn.type?.toLowerCase(); // e.g., 'add', 'cut', 'drop', 'out'
     const rules = config?.auto_salary_rules || {};
@@ -240,9 +253,10 @@ async function processAndSend(tx, channel, players, teamMap, config, doc) {
 
             if (sh) {
                 try {
-                    const capCellA1 = mapping?.team_cap || mapping?.cap_space_cell
-                    
-                    await sh.loadCells(capCellA1);
+                    const capCellA1 = mapping?.team_cap || mapping?.cap_space_cell;
+                    if (capCellA1) {
+                        await retryWithBackoff(() => sh.loadCells(capCellA1));
+                    }
 
                     const currentCap = parseFloat(
                         (sh.getCellByA1(capCellA1).formattedValue || "0")
