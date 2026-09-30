@@ -1290,10 +1290,10 @@ async function pollAllLeagues() {
 
             // Handle First Run Initialization
     if (isFirstRun) {
-                    for (const tx of sortedTx) {
-                        processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
-                    }
-                    return; 
+                    // for (const tx of sortedTx) {
+                    //     processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
+                    // }
+                    // return; 
                 }
 
                 // Identify unprocessed transactions
