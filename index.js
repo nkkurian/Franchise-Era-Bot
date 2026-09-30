@@ -1281,16 +1281,23 @@ async function pollAllLeagues() {
                     if (!res.ok) return;
 
                     const allTx = await res.json();
-                    if (!Array.isArray(allTx) || allTx.length === 0) return;
-
+                    if (!Array.isArray(allTx) || allTx.length === 0) {
+                        console.log(`[DEBUG] No transactions returned for week ${targetWeek}`);
+                        return;
+                    }
+                    
                     const sortedTx = allTx
-                        .filter((tx) => tx.status === "complete")
+                        .filter((tx) => tx.status === "complete" || tx.status === "executed")
                         .sort((a, b) => a.status_updated - b.status_updated);
+                    
+                    console.log(`[DEBUG] Found ${sortedTx.length} completed/executed txs in week ${targetWeek}`);
 
                     if (sortedTx.length === 0) return;
 
+                    
+                    console.log(`[DEBUG] Guild: ${config.guild_id} | Week: ${targetWeek} | Fetched ${allTx.length} total txs`);
             // Handle First Run Initialization
-    if (isFirstRun) {
+                if (isFirstRun) {
                     // for (const tx of sortedTx) {
                     //     processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
                     // }
