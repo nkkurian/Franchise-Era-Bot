@@ -315,7 +315,7 @@ if (isUpdate && targetInteraction.isButton?.()) {
                 );
 
                 if (teamSheet) {
-                    const capCellA1 = (config?.column_mapping?.team_cap_space_cell || "F2").trim().toUpperCase();
+                    const capCellA1 = (config?.column_mapping?.team_cap || "F2").trim().toUpperCase();
                     await teamSheet.loadCells(capCellA1);
                     currentCapSpaceRaw = teamSheet.getCellByA1(capCellA1).formattedValue || "$0.00";
                 }
