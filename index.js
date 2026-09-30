@@ -1237,6 +1237,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
 
 async function pollAllLeagues() {
+    console.log("Running PollAllLeagues")
     let currentWeek = 1;
     let seasonType = "regular";
 
