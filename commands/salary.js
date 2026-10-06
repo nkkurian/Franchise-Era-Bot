@@ -19,7 +19,9 @@ module.exports = {
         ),
 
     async execute(interaction, supabase, config, getSheetData, getPlayerStats) {
-        await interaction.deferReply();
+        if (!interaction.deferred && !interaction.replied) {
+            await interaction.deferReply();
+        }
         try {
         const input = interaction.options.getString("player").toLowerCase();
         const { players = [], logs = [] } = (await getSheetData(interaction.guild.id)) || {};
@@ -313,7 +315,7 @@ if (isUpdate && targetInteraction.isButton?.()) {
                 );
 
                 if (teamSheet) {
-                    const capCellA1 = (config?.column_mapping?.team_cap_space_cell || "F2").trim().toUpperCase();
+                    const capCellA1 = (config?.column_mapping?.team_cap || "F2").trim().toUpperCase();
                     await teamSheet.loadCells(capCellA1);
                     currentCapSpaceRaw = teamSheet.getCellByA1(capCellA1).formattedValue || "$0.00";
                 }

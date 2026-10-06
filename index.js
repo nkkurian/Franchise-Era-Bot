@@ -52,6 +52,7 @@ const serviceAccountAuth = new JWT({
 });
 // Keep-alive server for Render
 const app = express();
+app.use(express.json()); // Essential to read the data sent from Google
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
@@ -210,6 +211,19 @@ const client = new Client({
     ],
 });
 
+app.get('/api/config', (req, res) => {
+    res.json({
+        supabaseUrl: process.env.SUPABASE_URL,
+        supabaseKey: process.env.SUPABASE_KEY
+    });
+});
+
+const faRouter = require("./routes/fa");
+
+// Use Render's environment PORT or default to 10000 (NOT 1000)
+//const PORT = process.env.PORT || 10000;
+
+
 // Bind explicitly to 0.0.0.0 and PORT
 app.listen(port, "0.0.0.0", () => {
     console.log(`🚀 Keep-alive server listening on port ${port}`);
@@ -225,6 +239,8 @@ app.listen(port, "0.0.0.0", () => {
 client.commands = new Collection();
 client.getSheetData = getSheetData;
 client.getTeamMap = getTeamMap;
+
+app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
 
 if (!process.env.DISCORD_TOKEN) {
     console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
@@ -258,6 +274,7 @@ for (const file of commandFiles) {
 app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
 
 const faRouter = require("./routes/fa");
+
 // Store getSheetData on Express app instance so routes can access it
 app.set("getSheetData", getSheetData); 
 // Mount the router
@@ -1260,6 +1277,7 @@ if (interaction.customId === "setup_confirm_save_roles") {
 
 
 async function pollAllLeagues() {
+    console.log("Running PollAllLeagues")
     let currentWeek = 1;
     let seasonType = "regular";
 
@@ -1290,29 +1308,47 @@ async function pollAllLeagues() {
                     const guild = client.guilds.cache.get(config.guild_id);
                     if (!guild) return;
 
-                    const targetWeek = (seasonType === "offseason" || seasonType === "pre") ? 1 : currentWeek;
-
-                    const controller = new AbortController();
-                    const timeout = setTimeout(() => controller.abort(), 5000);
-                    const res = await fetch(
-                        `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${targetWeek}`,
-                        { signal: controller.signal }
-                    );
-                    clearTimeout(timeout);
-
-                    if (!res.ok) return;
-
-                    const allTx = await res.json();
-                    if (!Array.isArray(allTx) || allTx.length === 0) return;
-
+                    const baseWeek = (seasonType === "offseason" || seasonType === "pre") ? 1 : currentWeek;
+                    const weeksToScan = Array.from(new Set([baseWeek, Math.max(1, baseWeek - 1)]));
+                    
+                    let allTx = [];
+                    for (const week of weeksToScan) {
+                        try {
+                            const controller = new AbortController();
+                            const timeout = setTimeout(() => controller.abort(), 5000);
+                            const res = await fetch(
+                                `https://api.sleeper.app/v1/league/${config.sleeper_id}/transactions/${week}`,
+                                { signal: controller.signal }
+                            );
+                            clearTimeout(timeout);
+                    
+                            if (res.ok) {
+                                const txData = await res.json();
+                                if (Array.isArray(txData)) {
+                                    allTx.push(...txData);
+                                }
+                            }
+                        } catch (weekErr) {
+                            console.error(`⚠️ Error fetching week ${week} for league ${config.sleeper_id}:`, weekErr.message);
+                        }
+                    }
+                    if (!Array.isArray(allTx) || allTx.length === 0) {
+                        console.log(`[DEBUG] No transactions returned for weeks [${weeksToScan.join(", ")}]`);
+                        return;
+                    }
+                    
                     const sortedTx = allTx
-                        .filter((tx) => tx.status === "complete")
+                        .filter((tx) => tx.status === "complete" || tx.status === "executed")
                         .sort((a, b) => a.status_updated - b.status_updated);
+                    
+                    console.log(`[DEBUG] Found ${sortedTx.length} completed/executed txs in week ${baseWeek}`);
 
                     if (sortedTx.length === 0) return;
 
+                    
+                    console.log(`[DEBUG] Guild: ${config.guild_id} | Weeks: [${weeksToScan.join(", ")}] | Fetched ${allTx.length} total txs`);
             // Handle First Run Initialization
-    if (isFirstRun) {
+                if (isFirstRun) {
                     for (const tx of sortedTx) {
                         processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
                     }
@@ -1337,6 +1373,7 @@ async function pollAllLeagues() {
                     const txKey = `${config.sleeper_id}_${tx.transaction_id}`;
                     await processAndSend(tx, logChannel, players, teamMap, config, doc);
                     processedTxIds.add(txKey);
+                    await new Promise((resolve) => setTimeout(resolve, 1000));
                 }
 
             } catch (err) {
