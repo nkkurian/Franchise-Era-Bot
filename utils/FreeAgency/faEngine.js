@@ -8,7 +8,7 @@ const {
     TextInputStyle,
     StringSelectMenuBuilder
 } = require("discord.js");
-const { recordBidInSheet, fetchTeamBids, fetchTotalBidsCount, removeBidFromSheet } = require("./googleSheet.js");
+const { recordBidInSheet, fetchTeamBids, fetchTotalBidsCount, removeBidFromSheet } = require("./bidsService.js");
 /**
  * Render the main FA Hub view inside the Franchise Portal
  */
@@ -234,10 +234,10 @@ async function handleBidSubmission(interaction, supabase) {
         .maybeSingle();
     
 
-    if (!config || !config.fa_enabled || !config.fa_sheet_id || !config.fa_sheet_tab) {
-        console.error(`[FA CONFIG ERROR] Incomplete config for Guild ${guildId}:`, config);
+    if (!config || !config.fa_enabled) {
+        console.error(`[FA CONFIG ERROR] Free agency disabled for Guild ${guildId}`);
         return await interaction.editReply({
-            content: "❌ **Free Agency Not Configured:** Free agency bidding is either disabled or the Google Sheet hasn't been set up yet."
+            content: "❌ **Free Agency Disabled:** Free agency bidding is currently turned off."
         });
     }
 
@@ -352,8 +352,11 @@ async function showMyBids(interaction, supabase) {
         .eq("guild_id", interaction.guild.id)
         .maybeSingle();
 
-    if (!config?.fa_sheet_id || !config?.fa_sheet_tab) {
-        return await interaction.editReply({ content: "❌ Free Agency sheet configuration missing." });
+    if (!config || !config.fa_enabled) {
+        console.error(`[FA CONFIG ERROR] Free agency disabled for Guild ${guildId}`);
+        return await interaction.editReply({
+            content: "❌ **Free Agency Disabled:** Free agency bidding is currently turned off."
+        });
     }
 
     // 2. Resolve Team Name from Discord Roles
@@ -418,8 +421,12 @@ async function handleWithdrawBid(interaction, supabase) {
         .eq("guild_id", interaction.guild.id)
         .maybeSingle();
 
-    if (!config?.fa_sheet_id || !config?.fa_sheet_tab) {
-        return await interaction.editReply({ content: "❌ Free Agency sheet configuration missing." });
+    
+    if (!config || !config.fa_enabled) {
+        console.error(`[FA CONFIG ERROR] Free agency disabled for Guild ${guildId}`);
+        return await interaction.editReply({
+            content: "❌ **Free Agency Disabled:** Free agency bidding is currently turned off."
+        });
     }
 
     // 2. Resolve Team Name from Roles

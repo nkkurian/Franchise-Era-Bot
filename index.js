@@ -1517,3 +1517,4 @@ process.on("unhandledRejection", (reason, promise) => {
 process.on("uncaughtException", (err) => {
     console.error("🚫 Uncaught Exception:", err);
 });
+require('dotenv').config();
