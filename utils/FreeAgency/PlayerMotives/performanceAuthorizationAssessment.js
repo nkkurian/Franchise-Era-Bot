@@ -22,6 +22,9 @@ const {
  * the prerequisites for a future performance-based
  * salary adjustment.
  *
+ * Only verified signed league contracts count
+ * toward the minimum contract threshold.
+ *
  * This function does NOT authorize an adjustment.
  * It does NOT calculate or modify salaries.
  */
@@ -29,7 +32,8 @@ async function assessPerformanceAdjustmentReadiness({
     playerId,
     position,
     leagueId,
-    contracts
+    contracts,
+    verificationEvidence = {}
 }) {
     if (playerId == null || String(playerId) === "") {
         throw new Error("Player ID is required.");
@@ -56,9 +60,13 @@ async function assessPerformanceAdjustmentReadiness({
             position: normalizePosition(contract.position)
         }));
 
+    // Missing verification evidence fails closed:
+    // unverified contracts cannot count toward
+    // performance-readiness requirements.
     const positionMarket = calculatePositionMarket(
         normalizedContracts,
-        normalizedPosition
+        normalizedPosition,
+        verificationEvidence
     );
 
     const contractBaselineEligible =

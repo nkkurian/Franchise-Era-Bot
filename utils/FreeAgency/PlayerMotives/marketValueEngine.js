@@ -1,7 +1,12 @@
 
+"use strict";
+
+const {
+    validateSignedContract
+} = require("./signedContractValidator");
+
 const MINIMUM_SALARY = 1_200_000;
 
-// Convert spreadsheet salaries into dollar amounts.
 function parseSalary(value) {
     if (typeof value === "number") {
         return Number.isFinite(value) ? value : NaN;
@@ -34,11 +39,9 @@ function median(values) {
     const sorted = [...values].sort((a, b) => a - b);
     const middle = Math.floor(sorted.length / 2);
 
-    if (sorted.length % 2 === 1) {
-        return sorted[middle];
-    }
-
-    return (sorted[middle - 1] + sorted[middle]) / 2;
+    return sorted.length % 2 === 1
+        ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 function getConfidence(sampleSize) {
@@ -49,19 +52,29 @@ function getConfidence(sampleSize) {
 }
 
 /**
- * Expected player data:
+ * Calculate a position's salary market using only contracts
+ * verified against Player List and Sleeper roster evidence.
+ *
+ * Expected verificationEvidence:
  * {
- *   name: "A.J. Brown",
- *   position: "WR",
- *   contractLength: 4,
- *   yearsRemaining: 4,
- *   totalValue: 76000000,
- *   aav: 19000000
+ *   rosterMembershipByPlayerId: {
+ *     "12345": {
+ *       sleeperRosterPlayerIds: ["12345", ...],
+ *       rosterTeam: "Dallas Cowboys"
+ *     }
+ *   }
  * }
  *
- * Salary values are in dollars.
+ * A caller cannot bypass validation by setting signed: true.
+ * Missing verification evidence excludes the contract.
+ *
+ * No API calls or live writes occur here.
  */
-function calculatePositionMarket(players, position) {
+function calculatePositionMarket(
+    players,
+    position,
+    verificationEvidence = {}
+) {
     if (!Array.isArray(players)) {
         throw new Error("Players must be an array.");
     }
@@ -74,42 +87,67 @@ function calculatePositionMarket(players, position) {
         throw new Error("Position is required.");
     }
 
-    const contracts = players
-        .filter((player) => {
-            if (!player) return false;
+    const evidence =
+        verificationEvidence &&
+        typeof verificationEvidence === "object"
+            ? verificationEvidence.rosterMembershipByPlayerId
+            : null;
 
-            const playerPosition = String(player.position || "")
-                .trim()
-                .toUpperCase();
+    const contracts = [];
+    const rejectedContracts = [];
 
-            if (playerPosition !== normalizedPosition) return false;
+    for (const player of players) {
+        if (!player) continue;
 
-            const totalValue = parseSalary(player.totalValue);
-            const aav = parseSalary(player.aav);
-            const length = Number(player.contractLength);
-            const remaining = Number(player.yearsRemaining);
+        const playerPosition = String(player.position || "")
+            .trim()
+            .toUpperCase();
 
-            return (
-                Number.isFinite(totalValue) &&
-                totalValue > 0 &&
-                Number.isFinite(aav) &&
-                aav >= MINIMUM_SALARY &&
-                Number.isInteger(length) &&
-                length > 0 &&
-                Number.isInteger(remaining) &&
-                remaining > 0
-            );
-        })
-        .map((player) => parseSalary(player.aav));
+        if (playerPosition !== normalizedPosition) continue;
+
+        const playerId = String(player.playerId ?? "").trim();
+
+        const rosterEvidence =
+            evidence &&
+            typeof evidence === "object" &&
+            Object.prototype.hasOwnProperty.call(evidence, playerId)
+                ? evidence[playerId]
+                : null;
+
+        const result = validateSignedContract({
+            contract: player,
+            sleeperRosterPlayerIds:
+                rosterEvidence?.sleeperRosterPlayerIds,
+            rosterTeam: rosterEvidence?.rosterTeam
+        });
+
+        if (!result.valid) {
+            rejectedContracts.push({
+                playerId: playerId || null,
+                reasons: result.reasons
+            });
+            continue;
+        }
+
+        contracts.push(
+            parseSalary(result.normalizedContract.aav)
+        );
+    }
 
     const sampleSize = contracts.length;
 
+    const common = {
+        position: normalizedPosition,
+        minimumSalary: MINIMUM_SALARY,
+        sampleSize,
+        rejectedContractCount: rejectedContracts.length,
+        rejectedContracts
+    };
+
     if (sampleSize === 0) {
         return {
-            position: normalizedPosition,
+            ...common,
             marketValue: MINIMUM_SALARY,
-            minimumSalary: MINIMUM_SALARY,
-            sampleSize: 0,
             confidence: "NO_DATA",
             lowestContract: null,
             highestContract: null,
@@ -117,24 +155,23 @@ function calculatePositionMarket(players, position) {
         };
     }
 
-    const marketValue = Math.max(
-        MINIMUM_SALARY,
-        median(contracts)
-    );
-
     return {
-        position: normalizedPosition,
-        marketValue,
-        minimumSalary: MINIMUM_SALARY,
-        sampleSize,
+        ...common,
+        marketValue: Math.max(
+            MINIMUM_SALARY,
+            median(contracts)
+        ),
         confidence: getConfidence(sampleSize),
         lowestContract: Math.min(...contracts),
         highestContract: Math.max(...contracts),
-        source: "SIGNED_LEAGUE_CONTRACTS"
+        source: "VERIFIED_SIGNED_LEAGUE_CONTRACTS"
     };
 }
 
-function calculateAllPositionMarkets(players) {
+function calculateAllPositionMarkets(
+    players,
+    verificationEvidence = {}
+) {
     if (!Array.isArray(players)) {
         throw new Error("Players must be an array.");
     }
@@ -144,7 +181,9 @@ function calculateAllPositionMarkets(players) {
             players
                 .filter(Boolean)
                 .map((player) =>
-                    String(player.position || "").trim().toUpperCase()
+                    String(player.position || "")
+                        .trim()
+                        .toUpperCase()
                 )
                 .filter(Boolean)
         )
@@ -153,7 +192,11 @@ function calculateAllPositionMarkets(players) {
     const markets = {};
 
     for (const position of positions) {
-        markets[position] = calculatePositionMarket(players, position);
+        markets[position] = calculatePositionMarket(
+            players,
+            position,
+            verificationEvidence
+        );
     }
 
     return markets;

@@ -10,7 +10,7 @@ const {
     normalizePosition
 } = require("./positionRankingEngine");
 
-// Minimum valid signed contracts required before
+// Minimum verified signed contracts required before
 // performance adjustments can be considered.
 const MINIMUM_MARKET_CONTRACTS = 5;
 
@@ -40,7 +40,9 @@ function getPerformanceMultiplier(percentile) {
 /**
  * Calculate a provisional annual salary.
  *
- * Signed contracts establish the positional market.
+ * Verified signed contracts establish the positional
+ * market. Missing verification evidence results in
+ * the league-minimum fallback.
  *
  * Rankings cannot currently activate performance
  * adjustments, regardless of their supplied scope.
@@ -49,7 +51,8 @@ function calculateIndividualMarketValue({
     playerId,
     position,
     contracts,
-    rankings
+    rankings,
+    verificationEvidence = {}
 }) {
     if (!playerId) {
         throw new Error("Player ID is required.");
@@ -78,7 +81,8 @@ function calculateIndividualMarketValue({
 
     const positionMarket = calculatePositionMarket(
         normalizedContracts,
-        normalizedPosition
+        normalizedPosition,
+        verificationEvidence
     );
 
     // Contract-baseline eligibility is informational.
@@ -88,8 +92,8 @@ function calculateIndividualMarketValue({
         MINIMUM_MARKET_CONTRACTS;
 
     // SECURITY LOCK:
-    // Caller-provided rankings cannot authorize
-    // performance-based salary adjustments.
+    // Caller-provided rankings and verification evidence
+    // cannot authorize performance-based adjustments.
     const performanceMultiplier = 1;
 
     const suggestedAAV = Math.max(
