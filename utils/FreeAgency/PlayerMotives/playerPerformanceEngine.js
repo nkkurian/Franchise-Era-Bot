@@ -86,6 +86,7 @@ function evaluatePlayerPerformance({
     let weightedPPG = 0;
     let usedWeight = 0;
     let seasonsUsed = 0;
+    let totalGamesPlayed = 0;
     const seasonResults = [];
 
     orderedSeasons.forEach((season, index) => {
@@ -114,6 +115,7 @@ function evaluatePlayerPerformance({
         weightedPPG += pointsPerGame * weight;
         usedWeight += weight;
         seasonsUsed++;
+        totalGamesPlayed += gamesPlayed;
 
         seasonResults.push({
             year: Number(season.year),
@@ -130,6 +132,7 @@ function evaluatePlayerPerformance({
             position: normalizedPosition,
             status: "NO_DATA",
             seasonsUsed: 0,
+            totalGamesPlayed: 0,
             weightedFantasyPoints: null,
             weightedPointsPerGame: null,
             seasonResults: []
@@ -143,6 +146,7 @@ function evaluatePlayerPerformance({
         position: normalizedPosition,
         status: seasonsUsed === 3 ? "COMPLETE" : "LIMITED_DATA",
         seasonsUsed,
+        totalGamesPlayed,
         weightedFantasyPoints: Number(
             (weightedPoints / usedWeight).toFixed(2)
         ),

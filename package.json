@@ -13,7 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.3",
+    "@supabase/supabase-js": "2.112.0",
     "agent-twitter-client": "^0.0.18",
     "axios": "^1.17.0",
     "cheerio": "^1.2.0",

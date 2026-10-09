@@ -39,19 +39,14 @@ function normalizePosition(position) {
 /**
  * Rank players within their position group.
  *
- * Expected player format:
+ * Higher weighted fantasy PPG means better performance.
  *
- * {
- *   playerId: "4046",
- *   position: "QB",
- *   weightedPointsPerGame: 19.79,
- *   seasonsUsed: 3
- * }
+ * Players with missing or invalid performance data
+ * are excluded from the rankings.
  *
- * Higher PPG means better performance.
+ * Negative fantasy PPG is valid and is NOT excluded.
  *
- * Players with missing performance data are excluded
- * from the rankings, not treated as zero-point players.
+ * Rankings are relative only to the supplied player pool.
  */
 function rankPlayersByPosition(players) {
     if (!Array.isArray(players)) {
@@ -61,7 +56,9 @@ function rankPlayersByPosition(players) {
     const groups = new Map();
 
     for (const player of players) {
-        if (!player || !player.playerId) continue;
+        if (!player || !player.playerId) {
+            continue;
+        }
 
         const position = normalizePosition(player.position);
         const ppg = player.weightedPointsPerGame;
@@ -69,8 +66,7 @@ function rankPlayersByPosition(players) {
         if (
             !position ||
             typeof ppg !== "number" ||
-            !Number.isFinite(ppg) ||
-            ppg < 0
+            !Number.isFinite(ppg)
         ) {
             continue;
         }
@@ -83,7 +79,33 @@ function rankPlayersByPosition(players) {
             playerId: String(player.playerId),
             position,
             weightedPointsPerGame: ppg,
-            seasonsUsed: player.seasonsUsed ?? 0
+
+            // Performance history
+            seasonsUsed: player.seasonsUsed ?? 0,
+            totalGamesPlayed: player.totalGamesPlayed ?? 0,
+
+            // Performance confidence
+            confidenceScore: player.confidenceScore ?? 0,
+            confidenceLevel:
+                player.confidenceLevel ?? "NO_DATA",
+
+            // Recency confidence
+            weightedGames: player.weightedGames ?? 0,
+            recencyScore: player.recencyScore ?? 0,
+
+            // Free Agency eligibility
+            eligibleForFreeAgency:
+                player.eligibleForFreeAgency ?? true,
+
+            // Performance-history classification
+            playerRole: player.playerRole ?? "UNPROVEN",
+            roleSource:
+                player.roleSource ??
+                "FANTASY_PERFORMANCE_HISTORY",
+            nflDepthChartRole:
+                player.nflDepthChartRole ?? null,
+            salaryAdjustment:
+                player.salaryAdjustment ?? null
         });
     }
 

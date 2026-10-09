@@ -7,19 +7,18 @@ const {
 } = require("./marketValueEngine");
 
 const {
-    normalizePosition,
-    getPlayerPositionRanking
+    normalizePosition
 } = require("./positionRankingEngine");
 
+// Minimum valid signed contracts required before
+// performance adjustments can be considered.
+const MINIMUM_MARKET_CONTRACTS = 5;
+
 /**
- * Initial salary adjustment curve.
+ * Proposed performance adjustment curve.
  *
- * These are proposed fantasy-league tuning values,
- * not NFL salary rules.
- *
- * 0th percentile   = 60% of positional market
- * 50th percentile  = 100% of positional market
- * 100th percentile = 160% of positional market
+ * Retained for future use.
+ * Currently NOT applied to salaries.
  */
 function getPerformanceMultiplier(percentile) {
     if (
@@ -39,17 +38,18 @@ function getPerformanceMultiplier(percentile) {
 }
 
 /**
- * Calculate one player's suggested annual salary.
+ * Calculate a provisional annual salary.
  *
- * contracts: signed league contracts from Player List
- * rankings: results from rankPlayersByPosition()
+ * Signed contracts establish the positional market.
+ *
+ * Rankings cannot currently activate performance
+ * adjustments, regardless of their supplied scope.
  */
 function calculateIndividualMarketValue({
     playerId,
     position,
     contracts,
     rankings
-
 }) {
     if (!playerId) {
         throw new Error("Player ID is required.");
@@ -69,84 +69,76 @@ function calculateIndividualMarketValue({
         throw new Error("Position is required.");
     }
 
-    // Match signed contracts to the same position groups
-    // used by the performance ranking engine.
-
-const normalizedContracts = contracts.filter(Boolean).map(contract => {
-    const contractYear = Number(contract.contractYear);
-
-    const canAdjustForCapGrowth =
-        Number.isInteger(contractYear) &&
-        contractYear >= 2026 &&
-        contractYear <= valuationYear;
-
-    return {
-        ...contract,
-        position: normalizePosition(contract.position),
-        aav: canAdjustForCapGrowth
-            ? adjustSalaryForCapGrowth(
-                Number(contract.aav),
-                contractYear,
-                valuationYear
-            )
-            : contract.aav
-    };
-});
+    const normalizedContracts = contracts
+        .filter(Boolean)
+        .map(contract => ({
+            ...contract,
+            position: normalizePosition(contract.position)
+        }));
 
     const positionMarket = calculatePositionMarket(
         normalizedContracts,
         normalizedPosition
     );
 
-    const ranking = getPlayerPositionRanking(
-        rankings,
-        playerId
-    );
+    // Contract-baseline eligibility is informational.
+    // It does NOT authorize a salary adjustment.
+    const contractBaselineEligible =
+        positionMarket.sampleSize >=
+        MINIMUM_MARKET_CONTRACTS;
 
-    const validRanking =
-        ranking &&
-        ranking.position === normalizedPosition &&
-        ranking.rankingStatus === "RANKED" &&
-        ranking.percentile !== null;
-
-    // Without a usable performance comparison, return
-    // the positional median as a provisional estimate.
-    const multiplier = validRanking
-        ? getPerformanceMultiplier(ranking.percentile)
-        : 1;
+    // SECURITY LOCK:
+    // Caller-provided rankings cannot authorize
+    // performance-based salary adjustments.
+    const performanceMultiplier = 1;
 
     const suggestedAAV = Math.max(
         MINIMUM_SALARY,
         Math.round(
-            (positionMarket.marketValue * multiplier) / 100_000
+            (
+                positionMarket.marketValue *
+                performanceMultiplier
+            ) / 100_000
         ) * 100_000
     );
 
     return {
         playerId: String(playerId),
         position: normalizedPosition,
-        positionMarketValue: positionMarket.marketValue,
+
+        positionMarketValue:
+            positionMarket.marketValue,
+
         suggestedAAV,
         minimumSalary: MINIMUM_SALARY,
-        performancePercentile: validRanking
-            ? ranking.percentile
-            : null,
-        performanceMultiplier: Number(multiplier.toFixed(3)),
-        positionRank: validRanking ? ranking.rank : null,
-        positionPlayerCount: validRanking
-            ? ranking.positionPlayerCount
-            : null,
-        marketConfidence: positionMarket.confidence,
-        marketSampleSize: positionMarket.sampleSize,
-        valuationStatus:
-            !validRanking || positionMarket.sampleSize === 0
-                ? "PROVISIONAL"
-                : "ESTIMATED",
+
+        performancePercentile: null,
+        performanceMultiplier,
+
+        positionRank: null,
+        positionPlayerCount: null,
+
+        marketConfidence:
+            positionMarket.confidence,
+
+        marketSampleSize:
+            positionMarket.sampleSize,
+
+        minimumMarketContracts:
+            MINIMUM_MARKET_CONTRACTS,
+
+        contractBaselineEligible,
+
+        valuationStatus: "PROVISIONAL",
+
+        performanceAdjustmentAuthorized: false,
+
         signed: false
     };
 }
 
 module.exports = {
+    MINIMUM_MARKET_CONTRACTS,
     getPerformanceMultiplier,
     calculateIndividualMarketValue
 };
