@@ -525,6 +525,10 @@ module.exports = {
 
         const row = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
+                .setCustomId("nav_channels_dashboard")
+                .setLabel("📢 Team Channels")
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
                 .setCustomId("setup_sleeper_btn")
                 .setLabel("Edit ID")
                 .setStyle(ButtonStyle.Primary),
@@ -921,6 +925,323 @@ if (config?.sleeper_id) {
             embeds: [embed],
             components: discordMenuRows
         });
+    },
+
+    async sendChannelsDashboard(interaction, supabase) {
+        if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+
+        const { data: config } = await supabase
+            .from("league_configs")
+            .select("sleeper_team_channels")
+            .eq("guild_id", interaction.guild.id)
+            .single();
+
+        const currentChannels = config?.sleeper_team_channels || {};
+        const totalTeams = Object.keys(currentChannels).length;
+        const assignedCount = Object.values(currentChannels).filter(t => t.channelId).length;
+
+        const embed = new EmbedBuilder()
+            .setTitle("📢 Team Channel Configuration")
+            .setDescription("Choose how you want to manage your franchise-to-text channel mappings.")
+            .setColor(0x00acee)
+            .addFields(
+                { name: "Current Status", value: totalTeams > 0 
+                    ? `📊 **${assignedCount} / ${totalTeams}** teams have assigned Discord channels.`
+                    : "⚪ No channel configurations saved yet. Run an Auto Sync to begin!" }
+            );
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("setup_sync_team_channels")
+                .setLabel("🚀 Auto Sync Channels")
+                .setStyle(ButtonStyle.Primary),
+            new ButtonBuilder()
+                .setCustomId("nav_manual_channels")
+                .setLabel("🔧 Manual Mapping")
+                .setStyle(ButtonStyle.Secondary),
+            new ButtonBuilder()
+                .setCustomId("nav_main")
+                .setLabel("Back")
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        await interaction.editReply({ embeds: [embed], components: [row] });
+    },
+    
+    async syncSleeperTeamChannels(interaction, supabase) {
+        const { data: config } = await supabase
+            .from("league_configs")
+            .select("sleeper_id")
+            .eq("guild_id", interaction.guild.id)
+            .single();
+
+        if (!config?.sleeper_id) {
+            return await interaction.reply({ content: "❌ Please configure a valid **League ID** first.", ephemeral: true });
+        }
+
+        if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+
+        let page = 0;
+        if (interaction.customId && interaction.customId.includes("page_")) {
+            page = parseInt(interaction.customId.split("page_")[1]) || 0;
+        }
+
+        try {
+            const [usersRes, rostersRes] = await Promise.all([
+                fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/users`),
+                fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/rosters`)
+            ]);
+
+            const sleeperUsers = await usersRes.json();
+            const sleeperRosters = await rostersRes.json();
+
+            if (!sleeperUsers || !sleeperRosters) {
+                return await interaction.followUp({ content: "❌ Failed to grab active league records from Sleeper.", ephemeral: true });
+            }
+
+            const primaryOwnerIds = new Set(sleeperRosters.map(roster => roster.owner_id).filter(Boolean));
+            const primaryUsers = sleeperUsers.filter(user => primaryOwnerIds.has(user.user_id));
+
+            // Fetch all text channels from the current server
+            const serverChannels = await interaction.guild.channels.fetch();
+            const textChannels = serverChannels.filter(c => c && c.isTextBased() && !c.isThread());
+
+            const matchedTeams = [];
+            const unmatchedTeams = [];
+            const finalMappingPayload = {};
+            const cleanStr = (str) => String(str).toLowerCase().replace(/[^a-z0-9]/g, '').trim();
+
+            primaryUsers.forEach(user => {
+                const username = user.display_name || "Unknown Manager";
+                const officialTeamName = user.metadata?.team_name || `${username}'s Team`;
+
+                const cleanTeamKey = cleanStr(officialTeamName);
+                const cleanUserKey = cleanStr(username);
+
+                // Match against channel name
+                const matchingChannel = textChannels.find(channel => {
+                    const cleanChannelName = cleanStr(channel.name);
+                    return cleanChannelName === cleanTeamKey || cleanChannelName === cleanUserKey;
+                });
+
+                if (matchingChannel) {
+                    finalMappingPayload[user.user_id] = { teamName: officialTeamName, channelId: matchingChannel.id, channelName: matchingChannel.name };
+                    matchedTeams.push(`🟢 **${officialTeamName}** ➔ <#${matchingChannel.id}>`);
+                } else {
+                    finalMappingPayload[user.user_id] = { teamName: officialTeamName, channelId: null, channelName: null };
+                    unmatchedTeams.push(`⚪ **${officialTeamName}** ➔ *(Unmatched)*`);
+                }
+            });
+
+            global.pendingDashboardChannels = global.pendingDashboardChannels || {};
+            global.pendingDashboardChannels[interaction.guild.id] = finalMappingPayload;
+
+            const combinedAuditLines = [...matchedTeams, ...unmatchedTeams];
+            const itemsPerPage = 12;
+            const totalPages = Math.ceil(combinedAuditLines.length / itemsPerPage);
+            const startOffset = page * itemsPerPage;
+            const displayLines = combinedAuditLines.slice(startOffset, startOffset + itemsPerPage);
+
+            const auditEmbed = new EmbedBuilder()
+                .setTitle("🏈 Team Channel Synchronization Audit")
+                .setDescription(
+                    `Pulled **${primaryUsers.length}** primary franchises.\n` +
+                    `🟢 Auto-matched text channels are grouped at the top.\n\n` +
+                    `📖 **Page ${page + 1} of ${totalPages}**\n` +
+                    `--------------------------------------\n` +
+                    displayLines.join('\n')
+                )
+                .setColor(0xf39c12)
+                .addFields(
+                    { name: "🔗 Auto-Matched", value: `**${matchedTeams.length}** Channels`, inline: true },
+                    { name: "❌ Unmatched", value: `**${unmatchedTeams.length}** Teams`, inline: true }
+                )
+                .setFooter({ text: `Total Tracked Records: ${combinedAuditLines.length}` });
+
+            const confirmationButtons = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`setup_sync_team_channels_page_${page - 1}`)
+                    .setLabel("◀️ Prev")
+                    .setStyle(ButtonStyle.Primary)
+                    .setDisabled(page === 0),
+                new ButtonBuilder()
+                    .setCustomId(`setup_sync_team_channels_page_${page + 1}`)
+                    .setLabel("Next ▶️")
+                    .setStyle(ButtonStyle.Primary)
+                    .setDisabled(page >= totalPages - 1),
+                new ButtonBuilder()
+                    .setCustomId("setup_confirm_save_channels")
+                    .setLabel("Save Team Channels")
+                    .setStyle(ButtonStyle.Success),
+                new ButtonBuilder()
+                    .setCustomId("nav_channels_dashboard")
+                    .setLabel("Discard")
+                    .setStyle(ButtonStyle.Danger)
+            );
+
+            await interaction.editReply({ embeds: [auditEmbed], components: [confirmationButtons] });
+
+        } catch (err) {
+            console.error("Channel sync error:", err);
+            return await interaction.followUp({ content: "❌ Error connecting to Sleeper or fetching channels.", ephemeral: true });
+        }
+    },
+
+    async handleConfirmSaveChannels(interaction, supabase) {
+        const guildId = interaction.guild.id;
+        const payload = global.pendingDashboardChannels?.[guildId];
+
+        if (!payload) {
+            return await interaction.reply({ content: "❌ Sync session expired. Please hit sync channels again.", ephemeral: true });
+        }
+
+        await interaction.deferUpdate();
+
+        try {
+            const { data: config } = await supabase
+                .from("league_configs")
+                .select("*")
+                .eq("guild_id", guildId)
+                .single();
+
+            const updatedConfig = {
+                ...(config || {}),
+                guild_id: guildId,
+                sleeper_team_channels: payload
+            };
+
+            const { error } = await supabase
+                .from("league_configs")
+                .upsert(updatedConfig);
+
+            if (error) throw error;
+
+            delete global.pendingDashboardChannels[guildId];
+
+            return await this.sendChannelsDashboard(interaction, supabase);
+
+        } catch (saveError) {
+            console.error("🚨 DATABASE COMMIT ERROR:", saveError);
+            return await interaction.followUp({ content: `❌ Error writing channels to database: ${saveError.message}`, ephemeral: true });
+        }
+    },
+
+    async sendManualChannelMappingMenu(interaction, supabase) {
+        if (!interaction.deferred && !interaction.replied) await interaction.deferUpdate();
+
+        let page = 0;
+        if (interaction.customId && interaction.customId.includes("page_")) {
+            page = parseInt(interaction.customId.split("page_")[1]) || 0;
+        }
+
+        const { data: config } = await supabase
+            .from("league_configs")
+            .select("sleeper_id, sleeper_team_channels")
+            .eq("guild_id", interaction.guild.id)
+            .single();
+
+        if (!config?.sleeper_id) {
+            return await interaction.followUp({ content: "❌ Please configure a valid **League ID** first under Sleeper Settings.", ephemeral: true });
+        }
+
+        const storedChannels = config?.sleeper_team_channels || {};
+        let currentChannels = {};
+
+        if (config?.sleeper_id) {
+            try {
+                const [usersRes, rostersRes] = await Promise.all([
+                    fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/users`),
+                    fetch(`https://api.sleeper.app/v1/league/${config.sleeper_id}/rosters`)
+                ]);
+                const sleeperUsers = await usersRes.json();
+                const sleeperRosters = await rostersRes.json();
+
+                if (sleeperUsers && sleeperRosters) {
+                    const primaryOwnerIds = new Set(sleeperRosters.map(r => r.owner_id).filter(Boolean));
+                    const primaryUsers = sleeperUsers.filter(u => primaryOwnerIds.has(u.user_id));
+
+                    primaryUsers.forEach(user => {
+                        const username = user.display_name || "Unknown Manager";
+                        const officialTeamName = user.metadata?.team_name || `${username}'s Team`;
+                        const existing = storedChannels[user.user_id] || {};
+
+                        currentChannels[user.user_id] = {
+                            teamName: officialTeamName,
+                            channelId: existing.channelId || null,
+                            channelName: existing.channelName || null
+                        };
+                    });
+                }
+            } catch (apiErr) {
+                console.error("🚨 Background API Fetch failed, falling back to cached DB:", apiErr);
+                currentChannels = storedChannels;
+            }
+        }
+
+        const selectMenuOptions = [];
+        const layoutOverviewLines = [];
+
+        for (const [userId, data] of Object.entries(currentChannels)) {
+            selectMenuOptions.push({
+                label: data.teamName.substring(0, 25),
+                description: data.channelId ? `Linked: #${data.channelName}` : "No channel identity linked.",
+                value: userId
+            });
+
+            if (data.channelId) {
+                layoutOverviewLines.push(`🟢 **${data.teamName}** ➔ <#${data.channelId}>`);
+            } else {
+                layoutOverviewLines.push(`⚪ **${data.teamName}** ➔ *(No Channel)*`);
+            }
+        }
+
+        if (selectMenuOptions.length === 0) {
+            return await interaction.followUp({ content: "⚠️ No franchise data could be compiled. Verify your League ID.", ephemeral: true });
+        }
+
+        const maxPerPage = 20;
+        const totalPages = Math.ceil(selectMenuOptions.length / maxPerPage);
+        const startOffset = page * maxPerPage;
+
+        const pageOptions = selectMenuOptions.slice(startOffset, startOffset + maxPerPage);
+        const pageDisplayLines = layoutOverviewLines.slice(startOffset, startOffset + maxPerPage);
+
+        const embed = new EmbedBuilder()
+            .setTitle("🛠️ Manual Team Channel Overrides & Map Summary")
+            .setDescription(
+                `Select a franchise spot from the dropdown below to set its channel binding.\n\n` +
+                `📊 **Current Server Mapping Summary (Page ${page + 1}/${totalPages}):**\n` +
+                `--------------------------------------------------\n` +
+                pageDisplayLines.join("\n")
+            )
+            .setColor(0x9b59b6)
+            .setFooter({ text: `Franchise Total: ${selectMenuOptions.length} | Page View Bounds: [${startOffset + 1} - ${Math.min(startOffset + maxPerPage, selectMenuOptions.length)}]` });
+
+        const menuRow = new ActionRowBuilder().addComponents(
+            new StringSelectMenuBuilder()
+                .setCustomId("setup_select_manual_team_channel")
+                .setPlaceholder(`Choose a team to change configuration bounds...`)
+                .addOptions(pageOptions)
+        );
+
+        const navRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId(`nav_manual_channels_page_${page - 1}`)
+                .setLabel("◀️ Prev")
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(page === 0),
+            new ButtonBuilder()
+                .setCustomId(`nav_manual_channels_page_${page + 1}`)
+                .setLabel("Next ▶️")
+                .setStyle(ButtonStyle.Primary)
+                .setDisabled(page >= totalPages - 1),
+            new ButtonBuilder()
+                .setCustomId("nav_channels_dashboard")
+                .setLabel("Back")
+                .setStyle(ButtonStyle.Secondary)
+        );
+
+        await interaction.editReply({ embeds: [embed], components: [navRow, menuRow] });
     },
 
     // 🆕 ADMIN SELECTION SUB-MENU (UPDATED TO INCLUDE LOGS CHANNEL)
