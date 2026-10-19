@@ -217,9 +217,6 @@ app.get('/api/config', (req, res) => {
         supabaseKey: process.env.SUPABASE_KEY
     });
 });
-
-const faRouter = require("./routes/fa");
-
 // Use Render's environment PORT or default to 10000 (NOT 1000)
 //const PORT = process.env.PORT || 10000;
 
@@ -674,29 +671,24 @@ client.on("interactionCreate", async (interaction) => {
         }
     }
 
-    const isSetupComponent =
-        interaction.customId &&
-        interaction.customId.startsWith("setup_") &&
-        ![
-            "setup_sheets_btn",
-            "setup_map_cols_btn",
-            "setup_sleeper_btn",
-            "setup_sync_team_roles",
-            "setup_confirm_save_roles",
-            "setup_select_admin_role",
-            "setup_log_channel",
-            "setup_trade_channel", 
-            "setup_trade_role", 
-            "setup_appeals_votes_btn", 
-            "setup_appeals_votes_modal", 
-            "setup_appeals_channel",
-            "setup_vault_config_btn",   
-            "setup_select_audit_ping_role",
-            "setup_vault_pass_modal",
-        ].includes(interaction.customId) &&
-    !interaction.customId.startsWith("setup_sync_team_roles") && 
-    !interaction.customId.startsWith("nav_") &&
-    !interaction.customId.includes("roles_page_");
+        const isSetupComponent =
+            interaction.customId &&
+            (interaction.customId.startsWith("setup_") || interaction.customId.startsWith("nav_")) &&
+            ![
+                "setup_sheets_btn",
+                "setup_map_cols_btn",
+                "setup_sleeper_btn",
+                "setup_select_admin_role",
+                "setup_log_channel",
+                "setup_trade_channel", 
+                "setup_trade_role", 
+                "setup_appeals_votes_btn", 
+                "setup_appeals_votes_modal", 
+                "setup_appeals_channel",
+                "setup_vault_config_btn",   
+                "setup_select_audit_ping_role",
+                "setup_vault_pass_modal",
+            ].includes(interaction.customId);
 
 if (isSetupComponent) {
     return await setupRouter.handleMenus(interaction, supabase);
