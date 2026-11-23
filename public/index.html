@@ -1,133 +1,747 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Front Office Portal – Bids & Agents</title>
-    <link rel="icon" href="data:,">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-</head>
-<body class="bg-slate-950 text-slate-100 min-h-screen font-sans p-6">
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Front Office Portal – Bids & Agents</title>
+        <link rel="icon" href="data:,">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    </head>
+    <body class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col lg:flex-row items-stretch">
 
-    <!-- Header Navigation -->
-    <header class="border-b border-slate-800 pb-4 mb-6 flex justify-between items-center">
-        <div class="flex items-center gap-3">
-            <div class="bg-cyan-500/10 border border-cyan-500/30 p-2 rounded-lg text-cyan-400 font-black">F</div>
-            <h1 class="text-xl font-bold tracking-tight text-white">Front Office Portal – Bids & Agents</h1>
-        </div>
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-            <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span> Live Sync Connected
-        </span>
-    </header>
-
-    <!-- Top Metric Cards -->
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Pending Bids</span>
-            <p id="metric-pending" class="text-3xl font-black text-amber-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Awaiting Agent</span>
-            <p id="metric-awaiting" class="text-3xl font-black text-cyan-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Processed Today</span>
-            <p id="metric-processed" class="text-3xl font-black text-emerald-400 mt-1">0</p>
-        </div>
-        <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
-            <span class="text-xs text-slate-400 font-bold uppercase tracking-wider">Total Active Value</span>
-            <p id="metric-avg" class="text-3xl font-black text-purple-400 mt-1">$0M</p>
+        <!-- Mobile Top Header Bar -->
+        <div class="lg:hidden bg-slate-900 border-b border-slate-800 p-4 flex justify-between items-center z-40 sticky top-0 shrink-0">
+            <div class="flex items-center gap-3">
+                <div class="bg-cyan-500/10 border border-cyan-500/30 px-2.5 py-1 rounded-lg text-cyan-400 font-black text-base">F</div>
+                <div>
+                    <h1 class="text-xs font-bold text-white leading-tight">Front Office Portal</h1>
+                    <p class="text-[9px] text-slate-400">Commissioner View</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <div id="userProfileMobile" class="hidden flex items-center gap-2">
+                    <img id="userAvatarMobile" src="" alt="Avatar" class="w-7 h-7 rounded-full border border-cyan-500/40">
+                </div>
+            <button id="mobileMenuBtn" type="button" class="text-slate-400 hover:text-white text-xl p-1 focus:outline-none">
+                ☰
+            </button>
         </div>
     </div>
 
-    <!-- Main Workspace (Master Log + Audit Side Pane) -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        <!-- Left Master Offers Log (2/3 width) -->
-        <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
-            <div>
-                <div class="flex justify-between items-center mb-4">
-                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider">Master Offers Log</h2>
-                    <input type="text" id="search-input" placeholder="Search player or team..." 
-                           class="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500 w-64">
+        <!-- Mobile Backdrop Overlay -->
+        <div id="mobileBackdrop" class="fixed inset-0 bg-slate-950/80 z-40 hidden lg:hidden"></div>
+    
+        <!-- Sidebar Navigation -->
+            <aside id="sidebarNav" class="fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col justify-between shrink-0 transform -translate-x-full lg:translate-x-0 lg:static transition-transform duration-200 ease-in-out min-h-screen lg:min-h-full self-stretch">
+            <div class="space-y-6">
+                <!-- Header Logo -->
+                <div class="flex items-center gap-3 border-b border-slate-800 pb-4">
+                    <div class="bg-cyan-500/10 border border-cyan-500/30 px-3 py-1.5 rounded-lg text-cyan-400 font-black text-lg">F</div>
+                    <div>
+                        <h1 class="text-sm font-bold text-white leading-tight">Front Office Portal</h1>
+                        <p class="text-[10px] text-slate-400">Commissioner View</p>
+                    </div>
                 </div>
 
-                <table class="w-full text-left border-collapse">
-                  <thead>
-                    <tr class="bg-slate-900 text-slate-400 text-xs uppercase font-semibold">
-                      <th class="px-4 py-3">Date/Time</th>
-                      <th class="px-4 py-3">Team</th>
-                      <th class="px-4 py-3">Player Name</th>
-                      <th class="px-4 py-3">AAV</th>
-                      <th class="px-4 py-3">Length</th>
-                      <th class="px-4 py-3">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody id="offers-table-body">
-                            <!-- Dynamic Content -->
-                        </tbody>
-                    </table>
-                </div>
-        </div>
+                <!-- Nav Links -->
+                <nav class="space-y-3 text-xs">
+                    <!-- 1. Top Section -->
+                    <div class="space-y-1">
+                        <button id="nav-team-view" data-view="view-team-view" class="nav-item w-full flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 text-left transition-colors">
+                            <span>🛡️</span> Team Cap Summaries
+                        </button>
+                        <button id="nav-my-team" data-view="view-my-team" class="nav-item w-full flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 text-left transition-colors">
+                            <span>👥</span> My Team
+                        </button>
+                    </div>
 
-        <!-- Right Audit & Agent Detail Pane (1/3 width) -->
-        <div id="audit-pane" class="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between space-y-6">
-            <div class="text-center text-slate-500 py-12" id="audit-placeholder">
-                 Select an offer from the table to view details & agent notes.
+                    <!-- 2. Free Agency Group -->
+                    <div class="pt-2 space-y-1 border-t border-slate-800/60">
+                        <span class="px-3 text-[10px] uppercase font-bold text-cyan-400 tracking-wider block mb-1">Free Agency</span>
+                        <button id="nav-submit-bid" onclick="switchTab('submit-bid')" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-medium text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 transition-all">
+                            <span>✍️</span>
+                            <span>Submit Bid</span>
+                        </button>
+                        <button id="nav-settings" data-view="view-settings" class="nav-item w-full flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 text-left transition-colors">
+                            <span>⚙️</span> FA Settings
+                        </button>
+                        <button id="nav-master-log" data-view="view-master-log" class="nav-item active-nav w-full flex items-center gap-2 px-3 py-2 rounded-lg font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-left">
+                            <span>📋</span> Master Offers Log
+                        </button>
+                        <button id="nav-my-team-fa" data-view="view-my-team-fa" class="nav-item w-full flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 text-left transition-colors">
+                            <span>⚡</span> My Team FA
+                        </button>
+                    </div>
+                </nav>
             </div>
 
-            <div id="audit-content" class="hidden space-y-5">
-                <!-- Audit Header -->
-                <div class="flex justify-between items-start border-b border-slate-800 pb-3">
+            <div class="pt-4 border-t border-slate-800 text-[11px] text-slate-500">
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse"></span> Live Sync Connected
+                </span>
+            </div>
+        </aside>
+    
+        <!-- Main Content Area -->
+        <main class="flex-1 p-6 space-y-6 overflow-y-auto">
+
+            <!-- Main Content Top Header -->
+            <div class="flex justify-end items-center pb-4 border-b border-slate-800/80 mb-6">
+
+                <!-- Auth / Profile Top Right Widget -->
+                <div id="authProfileContainer" class="relative">
+                    <!-- Unauthenticated Button (Default) -->
+                    <button id="topAuthBtn" onclick="loginWithDiscord()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg transition-all">
+                        <svg class="w-4 h-4 fill-current" viewBox="0 0 127.14 96.36">
+                            <path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,0,72.37,72.37,0,0,0,45.64,8.07,108.53,108.53,0,0,0,8.2,35.43,108.43,108.43,0,0,0,0,84.15a105.73,105.73,0,0,0,32.19,16.2,77.7,77.7,0,0,0,6.89-11.11,68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a74.57,74.57,0,0,0,64.44,0c.87.68,1.76,1.36,2.67,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,127.14,84.15,108.2,108.2,0,0,0,118.94,35.43,108.53,108.53,0,0,0,107.7,8.07ZM42.45,65.69C36.42,65.69,31.4,60.19,31.4,53.46s4.88-12.23,11.05-12.23C48.6,41.23,53.6,46.77,53.5,53.46,53.5,60.19,48.6,65.69,42.45,65.69Zm42.24,0c-6,0-11.05-5.5-11.05-12.23s4.88-12.23,11.05-12.23c6.17,0,11.17,5.54,11.05,12.23C95.74,60.19,90.86,65.69,84.69,65.69Z"/>
+                        </svg>
+                        <span>Login</span>
+                    </button>
+
+                    <!-- Authenticated Profile Trigger Button (Hidden by default) -->
+                    <button id="userProfileCard" type="button" class="hidden flex items-center gap-3 bg-slate-900 hover:bg-slate-800/80 border border-slate-800 rounded-xl px-3 py-1.5 shadow-md transition-colors cursor-pointer">
+                        <img id="userAvatar" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Profile" class="w-8 h-8 rounded-full border-2 border-cyan-500/50">
+                        <div class="text-left">
+                            <div id="userDiscordName" class="text-xs font-bold text-white leading-tight">--</div>
+                            <div id="userTeamLabel" class="text-[10px] text-cyan-400 font-semibold leading-tight">--</div>
+                        </div>
+                        <svg class="w-3.5 h-3.5 text-slate-400 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                        </svg>
+                    </button>
+
+                    <!-- Profile Dropdown Menu -->
+                    <div id="profileDropdownMenu" class="hidden absolute right-0 mt-2 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl py-1.5 z-50 text-xs">
+                        <button id="changeLeagueMenuBtn" type="button" class="w-full text-left px-4 py-2 text-slate-300 hover:bg-slate-800 hover:text-cyan-400 font-medium flex items-center gap-2 transition-colors">
+                            <span>🏆</span> Change League
+                        </button>
+                        <div class="border-t border-slate-800 my-1"></div>
+                        <button id="logoutBtn" type="button" class="w-full text-left px-4 py-2 text-rose-400 hover:bg-slate-800 font-semibold flex items-center gap-2 transition-colors">
+                            <span>🚪</span> Logout
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+    
+            <!-- Top Metric Cards (Free Agency Specific) -->
+            <div id="fa-metrics-row" class="hidden grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Total Bids Submitted</span>
+                    <p id="metric-total" class="text-3xl font-black text-white mt-1">0</p>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Pending Bids</span>
+                    <p id="metric-pending" class="text-3xl font-black text-amber-400 mt-1">0</p>
+                </div>
+                <div class="bg-slate-900 border border-slate-800 p-4 rounded-xl">
+                    <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Awaiting Agent</span>
+                    <p id="metric-awaiting" class="text-3xl font-black text-cyan-400 mt-1">0</p>
+                </div>
+            </div>
+    
+            <!-- TAB 1: Master Offers Workspace -->
+                <section id="view-master-log" class="portal-view hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left Master Offers Log (2/3 width) -->
+                <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col justify-between">
                     <div>
-                        <span class="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">Audit & Agent Detail</span>
-                        <h3 id="audit-player-name" class="text-xl font-black text-white mt-0.5">--</h3>
-                        <p id="audit-player-sub" class="text-xs text-slate-400">--</p>
+                        <div class="flex justify-between items-center mb-4">
+                            <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider">Master Offers Log</h2>
+                            <input type="text" id="search-input" placeholder="Search player or team..." 
+                                   class="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:border-cyan-500 w-64 text-slate-200">
+                        </div>
+    
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-900 text-slate-400 text-xs uppercase font-semibold border-b border-slate-800">
+                                        <th class="px-4 py-3">Date/Time</th>
+                                        <th class="px-4 py-3">Team</th>
+                                        <th class="px-4 py-3">Player Name</th>
+                                        <th class="px-4 py-3">AAV</th>
+                                        <th class="px-4 py-3">Length</th>
+                                        <th class="px-4 py-3">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="offers-table-body">
+                                    <!-- Dynamic Content -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <span id="audit-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">PENDING</span>
+                </div>
+    
+                <!-- Right Audit & Agent Detail Pane (1/3 width) -->
+                <div id="audit-pane" class="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col justify-between space-y-6">
+                    <div class="text-center text-slate-500 py-12" id="audit-placeholder">
+                         Select an offer from the table to view details &amp; agent notes.
+                    </div>
+    
+                    <div id="audit-content" class="hidden space-y-5">
+                        <div class="flex justify-between items-start border-b border-slate-800 pb-3">
+                            <div>
+                                <span class="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">Audit &amp; Agent Detail</span>
+                                <h3 id="audit-player-name" class="text-xl font-black text-white mt-0.5">--</h3>
+                                <p id="audit-player-sub" class="text-xs text-slate-400">--</p>
+                            </div>
+                            <span id="audit-status-badge" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">PENDING</span>
+                        </div>
+    
+                        <div class="grid grid-cols-2 gap-3 text-xs">
+                            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                <span class="text-slate-400 text-[10px]">Annual Value (AAV)</span>
+                                <p id="audit-aav" class="text-lg font-black text-emerald-400 mt-0.5">$0</p>
+                            </div>
+                            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                <span class="text-slate-400 text-[10px]">Total Contract</span>
+                                <p id="audit-total" class="text-lg font-black text-white mt-0.5">$0</p>
+                            </div>
+                        </div>
+    
+                        <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs space-y-1">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Agent Assignment</span>
+                            <p id="audit-agent" class="font-bold text-cyan-400">--</p>
+                            <p id="audit-notes" class="text-slate-400 text-[11px] pt-1 border-t border-slate-800/80 mt-2">
+                                No custom requirements or notes submitted.
+                            </p>
+                        </div>
+    
+                        <div class="space-y-2 border-t border-slate-800 pt-4">
+                            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Admin Actions</span>
+                            <button id="btn-approve" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs transition-colors">
+                                Approve &amp; Sign Contract
+                            </button>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button id="btn-reject" class="bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/50 font-bold py-2 rounded-lg text-xs transition-colors">
+                                    Decline Offer
+                                </button>
+                                <button id="btn-expire" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-lg text-xs transition-colors">
+                                    Expire Bid
+                                </button>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 pt-1">
+                                    <button id="btn-message-team" class="bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/20 font-bold py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5">
+                                        💬 Message Team
+                                    </button>
+                                    <button id="btn-top-offers" class="bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/20 font-bold py-2 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5">
+                                        ⭐ Top Offers
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: Submit Free Agency Bid View -->
+            <section id="view-submit-bid" class="portal-view hidden grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                    <!-- Left 2 Columns: Contract Offer Form -->
+                    <div class="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-5">
+                        <div class="flex justify-between items-center border-b border-slate-800 pb-4">
+                            <div class="flex items-center gap-2.5">
+                                <span id="faBiddingStatusBadge" class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
+                                    <span id="faBiddingStatusDot" class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                    <span id="faBiddingStatusText">Bidding Open</span>
+                                </span>
+                                <h2 class="text-base font-extrabold text-white tracking-tight">Free Agency Portal</h2>
+                            </div>
+                            <span class="text-[10px] font-bold uppercase tracking-widest text-slate-500">Franchise Pro</span>
+                        </div>
+
+                        <!-- Shown only when FA Bidding is Closed -->
+                        <div id="faClosedBanner" class="hidden bg-rose-500/10 border border-rose-500/30 rounded-xl p-4 flex items-center gap-3">
+                            <span class="text-lg">🔒</span>
+                            <div>
+                                <div class="text-xs font-extrabold uppercase tracking-wider text-rose-400">FA Bidding Not Open</div>
+                                <p class="text-[11px] text-slate-300 mt-0.5">Free agency bidding is currently closed.</p>
+                            </div>
+                        </div>
+
+                    <form id="faSubmitBidForm" class="space-y-4">
+                        <div class="text-[11px] font-bold uppercase tracking-wider text-cyan-400">Contract Offer Details</div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Target Player Name</label>
+                            <input id="bidPlayerName" type="text" required placeholder="e.g. Colston Loveland" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Base Salary / AAV ($)</label>
+                                <input id="bidBaseSalary" type="text" required placeholder="e.g. 12.5M or 12500000" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Contract Duration</label>
+                                <select id="bidYears" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-500">
+                                    <option value="1">1 Year</option>
+                                    <option value="2">2 Years</option>
+                                    <option value="3">3 Years</option>
+                                    <option value="4">4 Years</option>
+                                    <option value="5">5 Years</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Guaranteed Money ($)</label>
+                                <input id="bidGuaranteed" type="text" placeholder="e.g. 5M" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-semibold text-slate-300 mb-1.5">Signing Bonus ($)</label>
+                                <input id="bidSigningBonus" type="text" placeholder="e.g. 2M" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1.5">Notes / Message to Agent</label>
+                            <textarea id="bidNotes" rows="3" placeholder="e.g. Starting role guaranteed..." class="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500"></textarea>
+                        </div>
+
+                        <div id="bidSubmitFeedback" class="hidden text-xs font-semibold px-3.5 py-2.5 rounded-xl"></div>
+
+                        <button id="submitFaOfferBtn" type="submit" class="w-full bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white font-bold text-xs py-3 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer">
+                            <span>⚡</span>
+                            <span>Submit Free Agency Offer</span>
+                        </button>
+                    </form>
                 </div>
 
-                <!-- Contract Values -->
-                <div class="grid grid-cols-2 gap-3 text-xs">
-                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                        <span class="text-slate-400 text-[10px]">Annual Value (AAV)</span>
-                        <p id="audit-aav" class="text-lg font-black text-emerald-400 mt-0.5">$0</p>
-                    </div>
-                    <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
-                        <span class="text-slate-400 text-[10px]">Total Contract</span>
-                        <p id="audit-total" class="text-lg font-black text-white mt-0.5">$0</p>
-                    </div>
-                </div>
+                <!-- Right Column: Franchise Identity & Live Cap Preview -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col justify-between space-y-5">
+                    <div class="space-y-4">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Franchise Identity</div>
+                                <h3 id="bidIdentityTeamName" class="text-xl font-black text-white mt-0.5">Not Linked</h3>
+                            </div>
+                            <span id="bidIdentityStatusBadge" class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">
+                                Guest
+                            </span>
+                        </div>
 
-                <!-- Agent Assignment & Notes Card -->
-                <div class="bg-slate-950 border border-slate-800 rounded-lg p-3 text-xs space-y-1">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Agent Assignment</span>
-                    <p id="audit-agent" class="font-bold text-cyan-400">--</p>
-                    <p id="audit-notes" class="text-slate-400 text-[11px] pt-1 border-t border-slate-800/80 mt-2">
-                        No custom requirements or notes submitted.
+                        <div class="bg-slate-950 border border-slate-800/90 rounded-xl p-4 grid grid-cols-3 gap-2">
+                            <div>
+                                <div class="text-[9px] font-bold uppercase text-slate-400">Cap Available</div>
+                                <div id="bidCapAvailable" class="text-xs font-black font-mono text-emerald-400 mt-1">$0.00</div>
+                            </div>
+                            <div>
+                                <div class="text-[9px] font-bold uppercase text-slate-400">Projected Cap</div>
+                                <div id="bidProjectedCap" class="text-xs font-black font-mono text-cyan-400 mt-1">$0.00</div>
+                            </div>
+                            <div>
+                                <div class="text-[9px] font-bold uppercase text-slate-400">Active Bids</div>
+                                <div id="bidActiveCount" class="text-xs font-black text-purple-400 mt-1">0 Bids</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-950 border border-slate-800/90 rounded-xl p-4 space-y-3">
+                            <div class="grid grid-cols-2 gap-2 border-b border-slate-800 pb-3">
+                                <div>
+                                    <div class="text-[9px] font-bold uppercase text-slate-400">Target Player</div>
+                                    <div id="bidPreviewPlayer" class="text-xs font-bold text-white mt-1 truncate">Select Player</div>
+                                </div>
+                                <div>
+                                    <div class="text-[9px] font-bold uppercase text-slate-400">Offer AAV</div>
+                                    <div id="bidPreviewAav" class="text-xs font-black font-mono text-emerald-400 mt-1">$0.00</div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="text-[9px] font-bold uppercase text-slate-400">Cap Space After Deal</div>
+                                <div id="bidPreviewCapAfter" class="text-sm font-black font-mono text-amber-400 mt-1">$0.00</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="text-[11px] text-slate-500 leading-relaxed">
+                        Offers update live in the Master Offers Log and notify the league agent channel upon submission.
                     </p>
                 </div>
 
-                <!-- Action Bar -->
-                <div class="space-y-2 border-t border-slate-800 pt-4">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Admin Actions</span>
-                    <button id="btn-approve" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-lg text-xs transition-colors">
-                        Approve & Sign Contract
-                    </button>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button id="btn-reject" class="bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/50 font-bold py-2 rounded-lg text-xs transition-colors">
-                            Decline Offer
-                        </button>
-                        <button id="btn-expire" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-2 rounded-lg text-xs transition-colors">
-                            Expire Bid
+            </section>
+    
+            <!-- TAB 2: Team Cap Summaries View (Public League Overview) -->
+            <section id="view-team-view" class="portal-view bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-5">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-4">
+                    <div>
+                        <h2 id="league-cap-title" class="text-sm font-bold text-white uppercase tracking-wider">League Financials</h2>
+                    </div>
+                    <select id="cap-sort-select" class="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                        <option value="cap-desc">Sort: Most Cap Space</option>
+                        <option value="cap-asc">Sort: Least Cap Space</option>
+                        <option value="name-asc">Sort: Team Name (A–Z)</option>
+                    </select>
+                </div>
+
+                <div id="team-summary-grid" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 text-xs">
+                    <p class="text-slate-500 col-span-full py-6 text-center">Loading live team cap data from Google Sheets...</p>
+                </div>
+            </section>
+    
+            <!-- TAB 3: FA Settings Panel View -->
+            <section id="view-settings" class="portal-view hidden bg-slate-900 border border-slate-800 rounded-xl p-6 max-w-xl space-y-6">
+                <div class="border-b border-slate-800 pb-3">
+                    <h2 class="text-sm font-bold text-white uppercase tracking-wider">Free Agency &amp; Portal Settings</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Configure league-wide Free Agency rules.</p>
+                </div>
+
+                <!-- League FA Rules (Saved to Supabase league_configs) -->
+                <form id="faSettingsForm" class="space-y-4 text-xs">
+                    <div>
+                        <div class="flex justify-between items-center mb-1.5">
+                            <label for="setting-max-bids" class="block text-slate-200 font-semibold">
+                                Max Active Bids Per Team
+                            </label>
+                        </div>
+                        <input type="number" id="setting-max-bids" min="1" step="1"
+                               placeholder="Leave empty for unlimited bids"
+                               class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-cyan-500" />
+                        <p class="text-[11px] text-slate-400 mt-1.5">
+                            Caps how many simultaneous <span class="text-amber-400 font-semibold">PENDING</span> bids a franchise can hold. Leave blank to disable.
+                        </p>
+                    </div>
+
+                    <div id="faSettingsFeedback" class="hidden text-xs font-semibold px-3 py-2 rounded-lg"></div>
+
+                    <div class="pt-1">
+                        <button type="submit" id="saveFaSettingsBtn" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-2 rounded-lg transition-colors">
+                            Save FA Settings
                         </button>
                     </div>
+                </form>
+            </section>
+                
+
+            <!-- TAB: My Team View -->
+            <section id="view-my-team" class="portal-view hidden">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl p-8 sm:p-12 text-center max-w-lg mx-auto space-y-3 mt-6 sm:mt-12">
+                    <div class="text-4xl">🚧</div>
+                    <h2 class="text-lg font-bold text-white">My Team Dashboard</h2>
+                    <p class="text-xs text-slate-400">Work being done! Roster overview, contract extensions, and team metrics will be available here soon.</p>
+                </div>
+            </section>
+
+            <!-- TAB: My Team FA View -->
+            <section id="view-my-team-fa" class="portal-view hidden space-y-6">
+                <!-- Header & Summary KPI Cards -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-5">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h2 id="my-fa-team-title" class="text-base font-extrabold text-white tracking-tight">My Team Free Agency</h2>
+                                <span id="my-fa-status-pill" class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                                    Active Tracker
+                                </span>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-0.5">Bids submitted by your team. </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="my-fa-status-filter" class="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                <option value="ALL">All Statuses</option>
+                                <option value="PENDING">Pending</option>
+                                <option value="ACCEPTED">Accepted / Signed</option>
+                                <option value="DECLINED">Declined</option>
+                                <option value="OUTBID">Outbid / Expired</option>
+                            </select>
+                            <button id="refresh-my-fa-btn" type="button" class="bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs px-3 py-1.5 rounded-lg transition-colors">
+                                ↻ Refresh
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- KPI Strip -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+                            <span class="text-[10px] font-bold uppercase text-slate-400">Pending Bids</span>
+                            <p id="my-fa-pending-count" class="text-lg font-black text-amber-400 mt-1">0</p>
+                        </div>
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+                            <span class="text-[10px] font-bold uppercase text-slate-400">Pending AAV Committed</span>
+                            <p id="my-fa-pending-aav" class="text-lg font-black font-mono text-cyan-400 mt-1">$0</p>
+                        </div>
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+                            <span class="text-[10px] font-bold uppercase text-slate-400">Signed Deals</span>
+                            <p id="my-fa-signed-count" class="text-lg font-black text-emerald-400 mt-1">0</p>
+                        </div>
+                        <div class="bg-slate-950 border border-slate-800 rounded-xl p-3.5">
+                            <span class="text-[10px] font-bold uppercase text-slate-400">Available Cap Space</span>
+                            <p id="my-fa-cap-space" class="text-lg font-black font-mono text-white mt-1">$0</p>
+                        </div>
+                    </div>
+
+                    <!-- Team Offers Table -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-950/70 text-slate-400 text-[11px] uppercase font-semibold border-b border-slate-800">
+                                    <th class="px-4 py-3">Submitted</th>
+                                    <th class="px-4 py-3">Player</th>
+                                    <th class="px-4 py-3">AAV</th>
+                                    <th class="px-4 py-3">Years</th>
+                                    <th class="px-4 py-3">Total Value</th>
+                                    <th class="px-4 py-3">Guarantees / Notes</th>
+                                    <th class="px-4 py-3">Status</th>
+                                    <th class="px-4 py-3 text-right">ACTIONS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="my-team-fa-tbody" class="divide-y divide-slate-800/70 text-xs">
+                                <tr>
+                                    <td colspan="8" class="px-4 py-8 text-center text-slate-500">
+                                        Loading your franchise's free agency offers...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+    
+            <!-- Modal Container (Tailwind Glassmorphic Backdrop) -->
+            <div id="bidModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center z-50 hidden p-4">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+                        <h3 class="text-sm font-bold text-white flex items-center gap-2">
+                            🏈 Submit Free Agency Offer
+                        </h3>
+                        <button id="closeBidModalBtn" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+                    </div>
+    
+                    <form id="webBidForm" class="space-y-4 text-xs">
+                        <div>
+                            <label for="webTeamName" class="block text-slate-300 font-medium mb-1">Your Team Name</label>
+                            <input type="text" id="webTeamName" placeholder="e.g. Urumqi Uncs" required 
+                                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                        </div>
+    
+                        <div>
+                            <label for="webPlayerName" class="block text-slate-300 font-medium mb-1">Player Name</label>
+                            <input type="text" id="webPlayerName" placeholder="e.g. Patrick Mahomes" required 
+                                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                        </div>
+    
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <label for="webPos" class="block text-slate-300 font-medium mb-1">Position</label>
+                                <select id="webPos" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-2 text-slate-100 focus:outline-none focus:border-cyan-500">
+                                    <option value="QB">QB</option>
+                                    <option value="RB">RB</option>
+                                    <option value="WR">WR</option>
+                                    <option value="TE">TE</option>
+                                    <option value="K">K</option>
+                                    <option value="DEF">DEF</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="webAAV" class="block text-slate-300 font-medium mb-1">AAV ($)</label>
+                                <input type="text" id="webAAV" placeholder="e.g. 15M" required 
+                                       class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                            </div>
+                            <div>
+                                <label for="webYears" class="block text-slate-300 font-medium mb-1">Years</label>
+                                <input type="number" id="webYears" min="1" max="7" value="3" required 
+                                       class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                            </div>
+                        </div>
+    
+                        <div>
+                            <label for="webBonuses" class="block text-slate-300 font-medium mb-1">Guarantees & Bonuses (Optional)</label>
+                            <input type="text" id="webBonuses" placeholder="e.g. $5M GTD" 
+                                   class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                        </div>
+    
+                        <div>
+                            <label for="webNotes" class="block text-slate-300 font-medium mb-1">Notes / Message (Optional)</label>
+                            <textarea id="webNotes" rows="2" placeholder="e.g. Starting role guaranteed." 
+                                      class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500"></textarea>
+                        </div>
+    
+                        <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" id="cancelBidBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-lg transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-2 rounded-lg transition-colors">
+                                Submit Offer
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
-        </div>
 
-    </div>
-    <script src="app.js"></script>
-</body>
-</html>
+            <!-- Custom Message Team Modal -->
+            <div id="messageTeamModal" class="fixed inset-0 bg-slate-950/40 flex items-center justify-center z-50 hidden p-4">
+                <div class="bg-slate-900/95 border border-slate-700/80 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-slate-100">
+                    <!-- Header -->
+                    <div class="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+                        <div>
+                            <span class="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">Commissioner Direct Line</span>
+                            <h3 id="msgModalTeamName" class="text-base font-bold text-white flex items-center gap-2 mt-0.5">
+                                💬 Direct Alert to: Franchise
+                            </h3>
+                        </div>
+                        <button id="closeMsgModalBtn" type="button" class="text-slate-400 hover:text-white text-xl leading-none">&times;</button>
+                    </div>
+
+                    <form id="messageTeamForm" class="space-y-4 text-xs">
+                        <!-- Context & Contract Values Grid -->
+                        <div class="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3 space-y-2">
+                            <div>
+                                <span class="text-[10px] uppercase font-semibold text-slate-400">Target Player</span>
+                                <input type="text" id="msgModalPlayer" readonly class="w-full bg-transparent font-bold text-sm text-cyan-300 outline-none cursor-default">
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/60">
+                                <div>
+                                    <span class="text-[10px] text-slate-400 block font-medium">AAV</span>
+                                    <span id="msgModalAav" class="font-bold text-emerald-400 text-xs">$0 / yr</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-slate-400 block font-medium">Length</span>
+                                    <span id="msgModalYears" class="font-bold text-slate-200 text-xs">0 yrs</span>
+                                </div>
+                                <div>
+                                    <span class="text-[10px] text-slate-400 block font-medium">Total Value</span>
+                                    <span id="msgModalTotal" class="font-bold text-cyan-400 text-xs">$0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Message Input -->
+                        <div>
+                            <label for="msgModalText" class="block text-slate-300 font-medium mb-1">Custom Message / Alert</label>
+                            <textarea id="msgModalText" rows="4" placeholder="Enter custom message or requirements for this franchise..." required
+                                      class="w-full bg-slate-950 border border-slate-700/80 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500 placeholder:text-slate-600"></textarea>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                            <button type="button" id="cancelMsgBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold px-4 py-2 rounded-lg transition-colors">
+                                Cancel
+                            </button>
+                            <button type="submit" class="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-2 rounded-lg transition-colors flex items-center gap-1.5">
+                                <span>Send Discord Alert</span> 🚀
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Revise Offer Modal -->
+            <div id="reviseOfferModal" class="fixed inset-0 z-50 hidden bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-5">
+                    <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                        <div>
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Revise Contract Offer</h3>
+                            <p id="reviseModalPlayer" class="text-xs text-cyan-400 font-semibold mt-0.5">Player Name</p>
+                        </div>
+                        <button type="button" onclick="closeReviseOfferModal()" class="text-slate-400 hover:text-white text-lg leading-none">&times;</button>
+                    </div>
+
+                    <form id="reviseOfferForm" class="space-y-4 text-xs">
+                        <input type="hidden" id="reviseOfferId" />
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">Base Salary / AAV ($)</label>
+                                <input type="text" id="reviseOfferAav" required placeholder="e.g. 14M or 14000000"
+                                       class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">Years</label>
+                                <select id="reviseOfferYears" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500">
+                                    <option value="1">1 Year</option>
+                                    <option value="2">2 Years</option>
+                                    <option value="3">3 Years</option>
+                                    <option value="4">4 Years</option>
+                                    <option value="5">5 Years</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">Guaranteed ($)</label>
+                                <input type="text" id="reviseOfferGuaranteed" placeholder="e.g. 5M"
+                                       class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                            </div>
+                            <div>
+                                <label class="block text-slate-400 font-semibold mb-1">Signing Bonus ($)</label>
+                                <input type="text" id="reviseOfferBonus" placeholder="e.g. 2M"
+                                       class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-slate-400 font-semibold mb-1">Notes / Pitch</label>
+                            <textarea id="reviseOfferNotes" rows="2" placeholder="Optional message to agent..."
+                                      class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500"></textarea>
+                        </div>
+
+                        <div id="reviseOfferFeedback" class="hidden text-xs font-semibold px-3 py-2 rounded-lg"></div>
+
+                        <div class="flex justify-end gap-2 pt-2 border-t border-slate-800">
+                            <button type="button" onclick="closeReviseOfferModal()" class="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold">
+                                Cancel
+                            </button>
+                            <button type="submit" id="saveRevisedOfferBtn" class="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold">
+                                Save Revised Offer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+    
+        </main>
+    
+        <script src="app.js"></script>
+
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const sidebar = document.getElementById("sidebarNav");
+                const mobileMenuBtn = document.getElementById("mobileMenuBtn");
+                const mobileBackdrop = document.getElementById("mobileBackdrop");
+                const navButtons = document.querySelectorAll(".nav-item");
+                const views = document.querySelectorAll(".portal-view");
+
+                const openMobile = () => {
+                    sidebar?.classList.remove("-translate-x-full");
+                    mobileBackdrop?.classList.remove("hidden");
+                };
+                const closeMobile = () => {
+                    sidebar?.classList.add("-translate-x-full");
+                    mobileBackdrop?.classList.add("hidden");
+                };
+
+                mobileMenuBtn?.addEventListener("click", openMobile);
+                mobileBackdrop?.addEventListener("click", closeMobile);
+
+                navButtons.forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        const targetViewId = btn.getAttribute("data-view");
+                        if (!targetViewId) return;
+
+                        views.forEach(view => {
+                            if (view.id === targetViewId) {
+                                view.classList.remove("hidden");
+                            } else {
+                                view.classList.add("hidden");
+                            }
+                        });
+
+                        navButtons.forEach(b => {
+                            if (b === btn) {
+                                b.className = "nav-item active-nav w-full flex items-center gap-2 px-3 py-2 rounded-lg font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-left";
+                            } else {
+                                b.className = "nav-item w-full flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-slate-400 hover:text-white hover:bg-slate-800 text-left transition-colors";
+                            }
+                        });
+
+                        closeMobile();
+                    });
+                });
+            });
+        </script>
+    </body>
+    </html>

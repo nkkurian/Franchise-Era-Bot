@@ -31,6 +31,7 @@ const appeals = require("./utils/appeals.js");
 const setupManager = require("./utils/setupManager.js");
 const { runScheduledLibrarySync } = require('./utils/sleeperLibrary.js');
 const faEngine = require("./utils/FreeAgency/faEngine.js");
+const { syncGuildTeamLinks } = require("./utils/syncGuildMembers");
 
 const {syncSleeperLibrary, normalizePlayerName} = require("./utils/sleeperLibrary");
 const setupRouter = require("./utils/setupRouter");
@@ -39,7 +40,7 @@ const { supabase } = require("./utils/supabaseClient");
 const fs = require("node:fs");
 const path = require('path');
 const express = require("express");
-const port = process.env.PORT || 10000;
+const port = process.env.PORT || 5000;
 const rawKey = process.env.GOOGLE_KEY || "";
 const formattedKey = rawKey
     .replace(/^["']|["']$/g, '') 
@@ -52,9 +53,23 @@ const serviceAccountAuth = new JWT({
 });
 // Keep-alive server for Render
 const app = express();
-app.use(express.json()); // Essential to read the data sent from Google
+app.use((req, res, next) => {
 
+    // Track if the request hangs or takes too long
+    const timeout = setTimeout(() => {
+        if (!res.headersSent) {
+            console.warn(`⏳ [HANGING WARNING] Request to ${req.url} has been pending for over 5 seconds!`);
+        }
+    }, 5000);
+
+    res.on("finish", () => clearTimeout(timeout));
+    res.on("close", () => clearTimeout(timeout));
+
+    next();
+});
 app.use(express.json());
+
+app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/api/offers", async (req, res) => {
@@ -93,6 +108,8 @@ app.patch("/api/offers/:id/status", async (req, res) => {
 
     return res.json({ offer: data });
 });
+app.set('trust proxy', true);
+
 
 async function getSheetData(guildId) {
     if (!guildId) return { players: [], logs: [], idMap: [], doc: null };
@@ -206,38 +223,73 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.GuildPresences,
         GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.MessageContent, // <--- CRITICAL for reading Sleeper messages
-        GatewayIntentBits.GuildMessageReactions, // <--- CRITICAL for reactions
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions, 
     ],
 });
+
+app.set("discordClient", client);
 
 app.get('/api/config', (req, res) => {
     res.json({
         supabaseUrl: process.env.SUPABASE_URL,
-        supabaseKey: process.env.SUPABASE_KEY
+        supabaseKey: process.env.SUPABASE_KEY, 
+        clientId: process.env.CLIENT_ID || process.env.DISCORD_CLIENT_ID || ""
     });
 });
-// Use Render's environment PORT or default to 10000 (NOT 1000)
-//const PORT = process.env.PORT || 10000;
 
 
-// Bind explicitly to 0.0.0.0 and PORT
-app.listen(port, "0.0.0.0", () => {
-    console.log(`🚀 Keep-alive server listening on port ${port}`);
-    
-    console.log("🔌 Attempting to connect to Discord...");
-    client.login(process.env.DISCORD_TOKEN)
-        .then(() => console.log("🔓 Token accepted. Establishing gateway connection..."))
-        .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
-});
+async function getTeamMap(sleeperId) {
+    if (!sleeperId) {
+        console.warn("⚠️ [getTeamMap] Skipped: No Sleeper League ID configured.");
+        return {};
+    }
+    try {
+        const [uRes, rRes] = await Promise.all([
+            fetch(`https://api.sleeper.app/v1/league/${sleeperId}/users`),
+            fetch(`https://api.sleeper.app/v1/league/${sleeperId}/rosters`),
+        ])
 
+        if (!uRes.ok || !rRes.ok) {
+            console.warn(`⚠️ [getTeamMap] Failed to fetch users or rosters for league ${sleeperId}`);
+            return {};
+        }
 
+        const users = await uRes.json();
+        const rosters = await rRes.json();
+
+        let map = {};
+        if (Array.isArray(rosters) && Array.isArray(users)) {
+            rosters.forEach((r) => {
+                const user = users.find((u) => u.user_id === r.owner_id);
+                map[r.roster_id] =
+                    user?.metadata?.team_name ||
+                    user?.display_name ||
+                    `Team ${r.roster_id}`;
+            });
+        }
+        return map;
+    } catch (e) {
+        console.error("Team Map Error:", e.message);
+        return {};
+    }
+}
 
 client.commands = new Collection();
 client.getSheetData = getSheetData;
 client.getTeamMap = getTeamMap;
 
-app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
+app.get("/auth-test", (req, res) => {
+    res.send("✅ Auth route engine is reachable!");
+});
+
+app.locals.getSheetData = getSheetData;
+
+const faRouter = require("./routes/fa");
+app.set("getSheetData", getSheetData); 
+app.use("/", faRouter);
+
+app.use("/", routes(client, getSheetData));
 
 if (!process.env.DISCORD_TOKEN) {
     console.error("🚨 CRITICAL: DISCORD_TOKEN variable is completely missing or undefined!");
@@ -268,14 +320,6 @@ for (const file of commandFiles) {
     }
 }
 
-app.use("/", routes(client, getSheetData)); // for extension and fa reports sent to teams.
-
-const faRouter = require("./routes/fa");
-
-// Store getSheetData on Express app instance so routes can access it
-app.set("getSheetData", getSheetData); 
-// Mount the router
-app.use("/", faRouter);
 
 //Added this
 async function getPlayerStats(playerSleeperId, leagueSleeperId) {
@@ -419,7 +463,7 @@ client.once("ready", async () => {
         });
         console.log("✅ Slash Commands Synced");
 
-        // 2. Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
+        // Delay Startup Tasks to avoid Discord Rate Limits (429 errors)
         setTimeout(async () => {
                     await sendStartupTestMessage();
 
@@ -1325,7 +1369,6 @@ async function pollAllLeagues() {
                         }
                     }
                     if (!Array.isArray(allTx) || allTx.length === 0) {
-                        console.log(`[DEBUG] No transactions returned for weeks [${weeksToScan.join(", ")}]`);
                         return;
                     }
                     
@@ -1333,13 +1376,9 @@ async function pollAllLeagues() {
                         .filter((tx) => tx.status === "complete" || tx.status === "executed")
                         .sort((a, b) => a.status_updated - b.status_updated);
                     
-                    console.log(`[DEBUG] Found ${sortedTx.length} completed/executed txs in week ${baseWeek}`);
-
                     if (sortedTx.length === 0) return;
 
-                    
-                    console.log(`[DEBUG] Guild: ${config.guild_id} | Weeks: [${weeksToScan.join(", ")}] | Fetched ${allTx.length} total txs`);
-            // Handle First Run Initialization
+                                // Handle First Run Initialization
                 if (isFirstRun) {
                     for (const tx of sortedTx) {
                         processedTxIds.add(`${config.sleeper_id}_${tx.transaction_id}`);
@@ -1378,48 +1417,15 @@ async function pollAllLeagues() {
 setInterval(pollAllLeagues, 60000);
 
 
-//Added this
-async function getTeamMap(sleeperId) {
-    if (!sleeperId) {
-        console.warn("⚠️ [getTeamMap] Skipped: No Sleeper League ID configured.");
-        return {};
-    }
-    try {
-        const [uRes, rRes] = await Promise.all([
-            fetch(`https://api.sleeper.app/v1/league/${sleeperId}/users`),
-            fetch(`https://api.sleeper.app/v1/league/${sleeperId}/rosters`),
-        ])
-
-        if (!uRes.ok || !rRes.ok) {
-            console.warn(`⚠️ [getTeamMap] Failed to fetch users or rosters for league ${sleeperId}`);
-            return {};
-        }
-
-        const users = await uRes.json();
-        const rosters = await rRes.json();
-
-        let map = {};
-        if (Array.isArray(rosters) && Array.isArray(users)) {
-            rosters.forEach((r) => {
-                const user = users.find((u) => u.user_id === r.owner_id);
-                map[r.roster_id] =
-                    user?.metadata?.team_name ||
-                    user?.display_name ||
-                    `Team ${r.roster_id}`;
-            });
-        }
-        return map;
-    } catch (e) {
-        console.error("Team Map Error:", e.message);
-        return {};
-    }
-}
-
 //Added argument
 
 client.on("messageCreate", async (message) => {
     await vault.handleVaultTrigger(message);
 });
+
+cron.schedule("0 0,12 * * *", async () => {
+    await syncGuildTeamLinks(client, supabase);
+}); 
 
 //cron.schedule('* * * * *', async () => { <- use for testing ONLY
 // ==========================================
@@ -1481,7 +1487,7 @@ cron.schedule("30 12 * * 0", async () => {
     }
 });
 
-// 🗓️ Every Tuesday at 4:00 AM (Refreshes the player database after Monday Night Football)
+// Every Tuesday at 4:00 AM (Refreshes the player database after Monday Night Football)
 cron.schedule("0 4 * * 2", async () => {
     console.log("⏳ Running Scheduled Weekly Sleeper Database Sync & Cache Reload...");
     try {
@@ -1500,6 +1506,17 @@ if (processedTxIds.size > 1000) {
     processedTxIds.clear(); // Clear old IDs so memory stays low
 }
 
+
+// Bind explicitly to 0.0.0.0 and PORT
+app.listen(port, "0.0.0.0", () => {
+    console.log(`🚀 Keep-alive server listening on port ${port}`);
+
+    console.log("🔌 Attempting to connect to Discord...");
+    client.login(process.env.DISCORD_TOKEN)
+        .then(() => console.log("🔓 Token accepted. Establishing gateway connection..."))
+        .catch((err) => console.error("❌ LOGIN FAILED IMMEDIATELY:", err.message));
+});
+
 // Catch unhandled promise rejections (The most common silent killer)
 process.on("unhandledRejection", (reason, promise) => {
     console.error("⚠️ Unhandled Rejection at:", promise, "reason:", reason);
@@ -1509,4 +1526,3 @@ process.on("unhandledRejection", (reason, promise) => {
 process.on("uncaughtException", (err) => {
     console.error("🚫 Uncaught Exception:", err);
 });
-require('dotenv').config();

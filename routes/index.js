@@ -1,18 +1,14 @@
 const express = require('express');
 const router = express.Router();
 
-// Import individual report files
 const faReport = require('./fa-report');
 const extReport = require('./ext-report');
 const capReport = require('./cap-report');
 
-// const capReport = require('./cap-report'); // Add this later!
-
 module.exports = (client, doc) => {
-    // Tell the router to use these files
-    router.use('/', faReport(client, doc));
-    router.use('/', extReport(client, doc));
-    router.use('/', capReport(client, doc));
+    router.use('/reports/fa', faReport(client, doc));
+    router.use('/reports/ext', extReport(client, doc));
+    router.use('/reports/cap', capReport(client, doc));
 
     return router;
 };

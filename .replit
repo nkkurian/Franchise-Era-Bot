@@ -1,4 +1,4 @@
-modules = ["nodejs-18"]
+modules = ["nodejs-18", "python-base-3.13"]
 
 [nix]
 channel = "stable-25_05"
@@ -7,7 +7,7 @@ channel = "stable-25_05"
 expertMode = true
 
 [[ports]]
-localPort = 1000
+localPort = 5000
 externalPort = 80
 
 [[ports]]

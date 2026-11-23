@@ -8,7 +8,7 @@ const {
     TextInputStyle,
     StringSelectMenuBuilder
 } = require("discord.js");
-const { recordBidInSheet, fetchTeamBids, fetchTotalBidsCount, removeBidFromSheet } = require("./bidsService.js");
+const { recordBidInSheet, fetchTeamBids, fetchTotalBidsCount, removeBid } = require("./bidsService.js");
 /**
  * Render the main FA Hub view inside the Franchise Portal
  */
@@ -79,9 +79,10 @@ async function buildFAHubPayload(interaction, supabase) {
     let totalSubmittedBids = 0;
 
     try {
-        const teamBids = await fetchTeamBids(config.fa_sheet_id, config.fa_sheet_tab, teamName);
+        const guildId = interaction.guild?.id || config.guild_id;
+        const teamBids = await fetchTeamBids(guildId, teamName);
         teamBidsCount = teamBids ? teamBids.length : 0;
-        totalSubmittedBids = await fetchTotalBidsCount(config.fa_sheet_id, config.fa_sheet_tab);
+        totalSubmittedBids = await fetchTotalBidsCount(guildId);
     } catch (err) {
         console.error("[FA HUB ERROR] Failed to fetch bid counts:", err);
     }
@@ -338,21 +339,22 @@ async function handleBidSubmission(interaction, supabase) {
         });
     }
 }
-
-/**
- * Show list of active bids submitted by the clicking GM
- */
+//Show list of active bids submitted by the clicking GM
 async function showMyBids(interaction, supabase) {
-    await interaction.deferReply({ flags: [64] });
+    const guildId = interaction.guild?.id;
 
-    // 1. Fetch Config INCLUDING sleeper_team_roles
+    if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ flags: [64] });
+    }
+
+    // Explicitly query fa_enabled and configuration
     const { data: config } = await supabase
         .from("league_configs")
-        .select("fa_sheet_id, fa_sheet_tab, sleeper_team_roles")
-        .eq("guild_id", interaction.guild.id)
+        .select("fa_enabled, sleeper_team_roles, fa_sheet_id, fa_sheet_tab")
+        .eq("guild_id", String(guildId))
         .maybeSingle();
 
-    if (!config || !config.fa_enabled) {
+    if (!config || config.fa_enabled === false) {
         console.error(`[FA CONFIG ERROR] Free agency disabled for Guild ${guildId}`);
         return await interaction.editReply({
             content: "❌ **Free Agency Disabled:** Free agency bidding is currently turned off."
@@ -364,7 +366,7 @@ async function showMyBids(interaction, supabase) {
 
     // 3. Fetch Bids for the matched Team Name
     try {
-        const bids = await fetchTeamBids(config.fa_sheet_id, config.fa_sheet_tab, teamName);
+        const bids = await fetchTeamBids(guildId, teamName);
 
         if (!bids || bids.length === 0) {
             return await interaction.editReply({ content: `📋 **${teamName}** currently has no active free agency bids.` });
@@ -410,19 +412,22 @@ async function showMyBids(interaction, supabase) {
 }
 
 async function handleWithdrawBid(interaction, supabase) {
-    await interaction.deferReply({ flags: [64] });
+    const guildId = interaction.guild?.id;
+
+    if (!interaction.deferred && !interaction.replied) {
+        await interaction.deferReply({ flags: [64] });
+    }
 
     const selectedPlayer = interaction.values[0].replace("withdraw_", "");
 
-    // 1. Fetch Config (including log_channel_id & team roles)
+    // Include fa_enabled in select!
     const { data: config } = await supabase
         .from("league_configs")
-        .select("fa_sheet_id, fa_sheet_tab, log_channel_id, sleeper_team_roles")
-        .eq("guild_id", interaction.guild.id)
+        .select("log_channel_id, fa_enabled, sleeper_team_roles")
+        .eq("guild_id", String(guildId))
         .maybeSingle();
 
-    
-    if (!config || !config.fa_enabled) {
+    if (!config || config.fa_enabled === false) {
         console.error(`[FA CONFIG ERROR] Free agency disabled for Guild ${guildId}`);
         return await interaction.editReply({
             content: "❌ **Free Agency Disabled:** Free agency bidding is currently turned off."
@@ -433,7 +438,7 @@ async function handleWithdrawBid(interaction, supabase) {
     const teamName = resolveTeamName(interaction.member, interaction.user, config);
 
     // 3. Delete Row from Google Sheets
-    const result = await removeBidFromSheet(config.fa_sheet_id, config.fa_sheet_tab, teamName, selectedPlayer);
+    const result = await removeBid(guildId, teamName, selectedPlayer);
 
     if (!result.success) {
         return await interaction.editReply({ 

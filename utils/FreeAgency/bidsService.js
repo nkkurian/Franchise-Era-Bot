@@ -15,7 +15,15 @@ function parseSalaryInput(val) {
  * Single source of truth: Upsert bid directly into Supabase (contract_offers)
  */
 async function recordBid(guildId, teamName, bidData) {
-    const { playerName, aav, years, bonuses, notes, pos } = bidData;
+    const { playerName, aav, years, bonuses, notes, pos } = bidData || {};
+
+    // Safely normalize strings before calling .trim()
+    const cleanPlayerName = (playerName || '').trim();
+    const cleanTeamName = (teamName || '').trim();
+
+    if (!cleanPlayerName || !cleanTeamName) {
+        throw new Error("Missing required fields: playerName or teamName is undefined or empty.");
+    }
 
     const parsedAav = parseSalaryInput(aav);
     const parsedYears = parseInt(years, 10) || 1;
@@ -25,8 +33,8 @@ async function recordBid(guildId, teamName, bidData) {
     const { data: existingBids, error: fetchErr } = await supabase
         .from('contract_offers')
         .select('id')
-        .ilike('to_player', playerName.trim())
-        .ilike('from_team', teamName.trim())
+        .ilike('to_player', cleanPlayerName)
+        .ilike('from_team', cleanTeamName)
         .eq('guild_id', String(guildId))
         .eq('status', 'PENDING');
 
@@ -35,8 +43,8 @@ async function recordBid(guildId, teamName, bidData) {
     let actionTaken = 'inserted';
     const offerPayload = {
         guild_id: String(guildId),
-        from_team: teamName.trim(),
-        to_player: playerName.trim(),
+        from_team: cleanTeamName,
+        to_player: cleanPlayerName,
         pos: pos || 'N/A',
         years: parsedYears,
         aav: parsedAav,
@@ -101,7 +109,7 @@ async function fetchTeamBids(guildId, teamName) {
         totalValue: Number(row.total_value) || 0,
         bonuses: row.bonuses || "N/A",
         notes: row.notes || "None"
-    }));
+    }));fffff
 }
 
 /**
