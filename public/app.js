@@ -1683,6 +1683,35 @@ async function initAgentSettingsUI() {
             });
         }
 
+        // Populate Agent Workload Bar
+        const workloadBar = $("agentWorkloadBar");
+        if (workloadBar) {
+            const players = data.playerAgents || [];
+            const agents = data.agents || [];
+            if (agents.length === 0) {
+                workloadBar.innerHTML = `<span class="text-[11px] text-slate-500">Select an Agent Role to view agent workloads.</span>`;
+            } else {
+                const counts = {};
+                agents.forEach(a => {
+                    counts[a.discordId] = { username: a.username, playerCount: 0, offerCount: 0 };
+                });
+
+                players.forEach(p => {
+                    if (p.agentDiscordId && counts[p.agentDiscordId]) {
+                        counts[p.agentDiscordId].playerCount += 1;
+                        counts[p.agentDiscordId].offerCount += Number(p.offerCount || p.bidCount || 1);
+                    }
+                });
+
+                workloadBar.innerHTML = Object.values(counts).map(a => `
+                    <div class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] flex items-center gap-1.5">
+                        <span class="font-bold text-cyan-400">@${escapeHtml(a.username)}</span>
+                        <span class="text-slate-300">${a.playerCount} ${a.playerCount === 1 ? "player" : "players"}</span>
+                    </div>
+                `).join("");
+            }
+        }
+
         // Populate Per-Player Manual Assignment rows
         const playerList = $("agentPlayerAssignList");
         if (playerList) {
@@ -1702,6 +1731,25 @@ async function initAgentSettingsUI() {
                 players.forEach(p => {
                     const sel = playerList.querySelector(`select[data-player-agent="${CSS.escape(p.playerName)}"]`);
                     if (sel && p.agentDiscordId) sel.value = p.agentDiscordId;
+                });
+                playerList.querySelectorAll("select[data-player-agent]").forEach(sel => {
+                    sel.addEventListener("change", () => {
+                        const liveCounts = {};
+                        (data.agents || []).forEach(a => {
+                            liveCounts[a.discordId] = { username: a.username, playerCount: 0 };
+                        });
+                        playerList.querySelectorAll("select[data-player-agent]").forEach(s => {
+                            if (s.value && liveCounts[s.value]) liveCounts[s.value].playerCount += 1;
+                        });
+                        if (workloadBar) {
+                            workloadBar.innerHTML = Object.values(liveCounts).map(a => `
+                                <div class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[11px] flex items-center gap-1.5">
+                                    <span class="font-bold text-cyan-400">@${escapeHtml(a.username)}</span>
+                                    <span class="text-slate-300">${a.playerCount} ${a.playerCount === 1 ? "player" : "players"}</span>
+                                </div>
+                            `).join("");
+                        }
+                    });
                 });
             }
         }
@@ -1790,6 +1838,7 @@ async function runAutoAssignAgents() {
         }
     }
 }
+
 
 
 initializeApp();
