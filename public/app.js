@@ -5,6 +5,8 @@ let isLeagueFaOpen = true;
 let selectedOffer = null;
 let pinnedOfferId = null;
 let topOfferIds = new Set();
+let masterLogMode = "agent"; 
+let isUserCommish = false;
 
 // Utility Helpers
 const $ = (id) => document.getElementById(id);
@@ -161,7 +163,7 @@ function switchTab(activeTab) {
 
         if (activeTab === 'team-view') renderTeamSummaries();
         if (activeTab === 'submit-bid') initSubmitBidView();
-        if (activeTab === 'settings') initFaSettingsView();
+        if (activeTab === 'settings') initFaSettingsView(); initAgentSettingsUI();
         if (activeTab === 'my-team-fa') renderMyTeamFa(); 
 }
 
@@ -188,13 +190,20 @@ function renderGroupedOffers(offersToRender) {
     const container = $("offers-table-body");
     if (!container) return;
 
-    if (!offersToRender || offersToRender.length === 0) {
-        container.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-500">No active offers found.</td></tr>`;
+    const visibleOffers = getVisibleMasterOffers(offersToRender);
+
+    if (!visibleOffers || visibleOffers.length === 0) {
+        const emptyMsg = masterLogMode === "agent"
+            ? "No offers currently assigned to you (or hidden due to a team bid conflict)."
+            : masterLogMode === "unassigned"
+            ? "No unassigned offers found."
+            : "No active offers found.";
+        container.innerHTML = `<tr><td colspan="6" class="p-6 text-center text-slate-500">${emptyMsg}</td></tr>`;
         return;
     }
 
     // Group bids by Player Name
-    const grouped = offersToRender.reduce((acc, offer) => {
+    const grouped = visibleOffers.reduce((acc, offer) => {
         const player = offer.player_name || offer.to_player || offer.player || "Unknown Player";
         if (!acc[player]) acc[player] = [];
         acc[player].push(offer);
@@ -1541,5 +1550,246 @@ document.getElementById("reviseOfferForm")?.addEventListener("submit", async (e)
         }
     }
 });
+
+
+function switchMasterLogMode(mode) {
+    masterLogMode = mode;
+
+    const tabs = {
+        agent: $("tabAgentOffers"),
+        unassigned: $("tabUnassignedOffers"),
+        all: $("tabAllOffers")
+    };
+
+    const activeClasses = ["bg-cyan-500/15", "text-cyan-400", "border", "border-cyan-500/30"];
+    const inactiveClasses = ["text-slate-400", "hover:text-white", "hover:bg-slate-800"];
+
+    Object.entries(tabs).forEach(([key, el]) => {
+        if (!el) return;
+        if (key === mode) {
+            el.classList.add(...activeClasses);
+            el.classList.remove(...inactiveClasses);
+        } else {
+            el.classList.remove(...activeClasses);
+            el.classList.add(...inactiveClasses);
+        }
+    });
+
+    const searchInput = $("search-input");
+    if (searchInput && searchInput.value.trim()) {
+        searchInput.dispatchEvent(new Event("input"));
+    } else {
+        renderGroupedOffers(offers);
+    }
+}
+
+function getVisibleMasterOffers(allOffers) {
+    const list = Array.isArray(allOffers) ? allOffers : [];
+
+    // 1. ALL OFFERS
+    if (masterLogMode === "all") {
+        return list;
+    }
+
+    // 2. UNASSIGNED OFFERS (No agent assigned yet)
+    if (masterLogMode === "unassigned") {
+        return list.filter(o => {
+            const agentId = String(o.agent_discord_id || o.agentDiscordId || "").trim();
+            const agentLabel = String(o.agent_assigned || o.agentAssigned || "").trim();
+            return !agentId && (!agentLabel || agentLabel === "@Commissioner" || agentLabel === "--");
+        });
+    }
+
+    // 3. AGENT OFFERS (Default: only players assigned to logged-in user, excluding own team's targets)
+    const session = typeof getStoredUserSession === "function" ? getStoredUserSession() : null;
+    const myDiscordId = String(session?.discordId || session?.id || "").trim();
+    const myTeam = String(session?.teamName || "").toLowerCase().trim();
+
+    if (!myDiscordId) return [];
+
+    // Find every player where the logged-in user's own franchise has an offer
+    const myBiddedPlayers = new Set();
+    if (myTeam) {
+        list.forEach(o => {
+            const team = String(o.from_team || o.team_name || o.team || "").toLowerCase().trim();
+            const player = String(o.to_player || o.player_name || o.playerName || "").toLowerCase().trim();
+            if (team && player && team === myTeam) {
+                myBiddedPlayers.add(player);
+            }
+        });
+    }
+
+    return list.filter(o => {
+        const assignedId = String(o.agent_discord_id || o.agentDiscordId || "").trim();
+        const player = String(o.to_player || o.player_name || o.playerName || "").toLowerCase().trim();
+        if (!assignedId || assignedId !== myDiscordId) return false;
+        if (player && myBiddedPlayers.has(player)) return false;
+        return true;
+    });
+}
+
+const AGENT_POSITIONS = ["QB", "RB", "WR", "TE", "K", "DEF", "DL", "LB", "DB", "IDP"];
+function toggleAgentModePanels() {
+    const mode = $("setting-agent-mode")?.value || "manual";
+    const posPanel = $("agentPositionPanel");
+    if (posPanel) {
+        if (mode === "position") posPanel.classList.remove("hidden");
+        else posPanel.classList.add("hidden");
+    }
+}
+
+async function initAgentSettingsUI() {
+    const session = typeof getStoredUserSession === "function" ? getStoredUserSession() : null;
+    const guildId = session?.guildId || localStorage.getItem(SESSION_KEY_LEAGUE) || "";
+    if (!guildId) return;
+
+    try {
+        const res = await fetch(`/api/league/agents?guildId=${encodeURIComponent(guildId)}`);
+        const data = await res.json();
+        if (!res.ok || !data.success) return;
+
+        const roleSelect = $("setting-agent-role");
+        if (roleSelect) {
+            roleSelect.innerHTML = `<option value="">Select Discord Role...</option>` +
+                (data.roles || []).map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.name)}</option>`).join("");
+            roleSelect.value = data.agentRoleId || "";
+        }
+
+        const modeSelect = $("setting-agent-mode");
+        if (modeSelect) {
+            modeSelect.value = data.agentAssignmentMode || "manual";
+            toggleAgentModePanels();
+        }
+
+        const agentOptionsHtml = `<option value="">Unassigned</option>` +
+            (data.agents || []).map(a => `<option value="${escapeHtml(a.discordId)}" data-name="${escapeHtml(a.username)}">@${escapeHtml(a.username)}</option>`).join("");
+
+        // Populate Position -> Agent dropdowns
+        const posGrid = $("agentPositionGrid");
+        if (posGrid) {
+            const savedPosMap = data.agentPositionMap || {};
+            posGrid.innerHTML = AGENT_POSITIONS.map(pos => `
+                <div class="bg-slate-900 border border-slate-800 rounded-lg p-2">
+                    <label class="block text-[10px] font-bold text-slate-400 mb-1">${pos}</label>
+                    <select data-pos-agent="${pos}" class="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-100">
+                        ${agentOptionsHtml}
+                    </select>
+                </div>
+            `).join("");
+
+            AGENT_POSITIONS.forEach(pos => {
+                const sel = posGrid.querySelector(`select[data-pos-agent="${pos}"]`);
+                if (sel && savedPosMap[pos]) sel.value = savedPosMap[pos];
+            });
+        }
+
+        // Populate Per-Player Manual Assignment rows
+        const playerList = $("agentPlayerAssignList");
+        if (playerList) {
+            const players = data.playerAgents || [];
+            if (players.length === 0) {
+                playerList.innerHTML = `<p class="text-[11px] text-slate-500">No active players with bids yet.</p>`;
+            } else {
+                playerList.innerHTML = players.map(p => `
+                    <div class="flex items-center justify-between gap-2 bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5">
+                        <span class="font-semibold text-slate-200 truncate">${escapeHtml(p.playerName)}</span>
+                        <select data-player-agent="${escapeHtml(p.playerName)}" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-100 max-w-[160px]">
+                            ${agentOptionsHtml}
+                        </select>
+                    </div>
+                `).join("");
+
+                players.forEach(p => {
+                    const sel = playerList.querySelector(`select[data-player-agent="${CSS.escape(p.playerName)}"]`);
+                    if (sel && p.agentDiscordId) sel.value = p.agentDiscordId;
+                });
+            }
+        }
+    } catch (err) {
+        console.error("Failed to load agent settings UI:", err);
+    }
+}
+
+async function saveAgentSettings() {
+    const session = typeof getStoredUserSession === "function" ? getStoredUserSession() : null;
+    const guildId = session?.guildId || localStorage.getItem(SESSION_KEY_LEAGUE) || "";
+    const feedback = $("agentSettingsFeedback");
+    if (!guildId) return;
+
+    const agentRoleId = $("setting-agent-role")?.value || "";
+    const agentAssignmentMode = $("setting-agent-mode")?.value || "manual";
+
+    const agentPositionMap = {};
+    document.querySelectorAll("select[data-pos-agent]").forEach(sel => {
+        if (sel.value) agentPositionMap[sel.dataset.posAgent] = sel.value;
+    });
+
+    const manualAssignments = [];
+    document.querySelectorAll("select[data-player-agent]").forEach(sel => {
+        const selectedOpt = sel.options[sel.selectedIndex];
+        const username = selectedOpt?.dataset?.name || "";
+        manualAssignments.push({
+            playerName: sel.dataset.playerAgent,
+            agentDiscordId: sel.value || null,
+            agentAssigned: sel.value && username ? `@${username}` : "@Commissioner"
+        });
+    });
+
+    try {
+        const res = await fetch("/api/league/agent-settings", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ guildId, agentRoleId, agentAssignmentMode, agentPositionMap, manualAssignments })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || "Failed to save agent settings.");
+
+        if (feedback) {
+            feedback.textContent = "✅ Agent settings & player assignments saved!";
+            feedback.className = "text-xs font-semibold px-3 py-2 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30";
+            feedback.classList.remove("hidden");
+        }
+        await initAgentSettingsUI();
+        if (typeof loadOffers === "function") await loadOffers();
+    } catch (err) {
+        if (feedback) {
+            feedback.textContent = `✕ ${err.message}`;
+            feedback.className = "text-xs font-semibold px-3 py-2 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30";
+            feedback.classList.remove("hidden");
+        }
+    }
+}
+
+async function runAutoAssignAgents() {
+    const session = typeof getStoredUserSession === "function" ? getStoredUserSession() : null;
+    const guildId = session?.guildId || localStorage.getItem(SESSION_KEY_LEAGUE) || "";
+    const feedback = $("agentSettingsFeedback");
+    if (!guildId) return;
+
+    try {
+        const res = await fetch("/api/league/assign-agents", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ guildId })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.error || "Auto-assign failed.");
+
+        if (feedback) {
+            feedback.textContent = `⚡ Auto-assigned ${data.assignedCount} unassigned player(s)!`;
+            feedback.className = "text-xs font-semibold px-3 py-2 rounded-lg bg-cyan-500/15 text-cyan-400 border border-cyan-500/30";
+            feedback.classList.remove("hidden");
+        }
+        await initAgentSettingsUI();
+        if (typeof loadOffers === "function") await loadOffers();
+    } catch (err) {
+        if (feedback) {
+            feedback.textContent = `✕ ${err.message}`;
+            feedback.className = "text-xs font-semibold px-3 py-2 rounded-lg bg-rose-500/15 text-rose-400 border border-rose-500/30";
+            feedback.classList.remove("hidden");
+        }
+    }
+}
+
 
 initializeApp();

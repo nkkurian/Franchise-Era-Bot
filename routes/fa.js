@@ -21,50 +21,185 @@ router.post("/api/offers", async (req, res) => {
         let config = null;
         if (guildId) {
             const { data } = await supabase
-                .from("league_configs")
-                .select("guild_id, fa_enabled")
-                .eq("guild_id", guildId)
-                .limit(1)
-                .maybeSingle();
-            config = data;
-        }
+                    .from("league_configs")
+                    .select("guild_id, fa_enabled, max_bids_per_team, agent_role_id, agent_assignment_mode, agent_position_map, log_channel_id")
+                    .eq("guild_id", guildId)
+                    .limit(1)
+                    .maybeSingle();
+                config = data;
+            }
 
+            if (!config) {
+                return res.status(500).json({ error: "League configuration not found in Supabase." });
+            }
 
-        if (!config) {
-            return res.status(500).json({ error: "League configuration not found in Supabase." });
-        }
-
-        if (config.fa_enabled === false) {
-            return res.status(403).json({ error: "Free Agency bidding is currently closed." });
-        }
+            if (config.fa_enabled === false) {
+                return res.status(403).json({ error: "Free Agency bidding is currently closed." });
+            }
 
         const maxBidsLimit = Number(config.max_bids_per_team);
         if (Number.isFinite(maxBidsLimit) && maxBidsLimit > 0) {
-            const { count: activeBidCount, error: countErr } = await supabase
+            const { data: existingPending } = await supabase
                 .from("contract_offers")
-                .select("*", { count: "exact", head: true })
+                .select("id")
                 .eq("guild_id", config.guild_id)
                 .ilike("from_team", teamName.trim())
-                .eq("status", "PENDING");
+                .ilike("to_player", playerName.trim())
+                .eq("status", "PENDING")
+                .limit(1);
 
-            if (!countErr && (activeBidCount || 0) >= maxBidsLimit) {
-                return res.status(400).json({
-                    error: `Bid limit reached (${activeBidCount}/${maxBidsLimit} active bids). Wait for a pending offer to resolve before submitting another.`
-                });
+            const isRevisingExistingBid = existingPending && existingPending.length > 0;
+
+            if (!isRevisingExistingBid) {
+                const { count: activeBidCount, error: countErr } = await supabase
+                    .from("contract_offers")
+                    .select("*", { count: "exact", head: true })
+                    .eq("guild_id", config.guild_id)
+                    .ilike("from_team", teamName.trim())
+                    .eq("status", "PENDING");
+
+                if (!countErr && (activeBidCount || 0) >= maxBidsLimit) {
+                    return res.status(400).json({
+                        error: `Bid limit reached (${activeBidCount}/${maxBidsLimit} active bids). Wait for a pending offer to resolve before submitting another.`
+                    });
+                }
             }
         }
 
-        // Delegate directly to Supabase via bidsService
-        const result = await recordBid(config.guild_id, teamName, {
-            playerName,
-            aav,
-            years,
-            bonuses,
-            notes,
-            pos
+            // Delegate directly to Supabase via bidsService
+            const result = await recordBid(config.guild_id, teamName, {
+                playerName,
+                aav,
+                years,
+                bonuses,
+                notes,
+                pos
+            });
+
+            // Inherit or auto-assign agent across all offers for this player (excluding self-bid conflicts)
+            const cleanPlayer = playerName.trim();
+            const { data: existingPlayerOffers } = await supabase
+                .from("contract_offers")
+                .select("*")
+                .eq("guild_id", config.guild_id)
+                .ilike("to_player", cleanPlayer);
+
+        const bidders = new Set(
+            (existingPlayerOffers || [])
+                .filter(o => String(o.status || "PENDING").toUpperCase() !== "WITHDRAWN")
+                .map(o => String(o.from_team || "").toLowerCase().trim())
+                .filter(Boolean)
+        );
+            bidders.add(teamName.toLowerCase().trim());
+
+            const existingAssigned = (existingPlayerOffers || []).find(o => o.agent_discord_id);
+            let targetAgentLabel = existingAssigned?.agent_assigned || "@Commissioner";
+            let targetAgentId = existingAssigned?.agent_discord_id || null;
+
+            // Check if existing agent now has a self-bid conflict via user_team_links
+            if (targetAgentId) {
+                const { data: agentLink } = await supabase
+                    .from("user_team_links")
+                    .select("team_name")
+                    .eq("guild_id", config.guild_id)
+                    .eq("discord_id", targetAgentId)
+                    .maybeSingle();
+
+                if (agentLink?.team_name && bidders.has(String(agentLink.team_name).toLowerCase().trim())) {
+                    targetAgentLabel = "@Commissioner";
+                    targetAgentId = null;
+                }
+            }
+
+            // Auto-assign if unassigned and mode is 'random' or 'position'
+            const mode = config.agent_assignment_mode || "manual";
+            if (!targetAgentId && config.agent_role_id && (mode === "random" || mode === "position")) {
+                const client = getDiscordClient(req);
+                const guild = client?.guilds?.cache?.get(config.guild_id);
+                if (guild) {
+                    await guild.members.fetch().catch(() => {});
+                    const { data: allLinks } = await supabase
+                        .from("user_team_links")
+                        .select("discord_id, team_name")
+                        .eq("guild_id", config.guild_id);
+
+                    const teamByDiscordId = {};
+                    (allLinks || []).forEach(l => {
+                        if (l.discord_id && l.team_name) {
+                            teamByDiscordId[String(l.discord_id)] = String(l.team_name).toLowerCase().trim();
+                        }
+                    });
+
+                    const conflictFreeAgents = guild.members.cache
+                        .filter(m => !m.user.bot && m.roles.cache.has(config.agent_role_id))
+                        .map(m => ({ discordId: m.user.id, username: m.displayName || m.user.username }))
+                        .filter(a => !teamByDiscordId[a.discordId] || !bidders.has(teamByDiscordId[a.discordId]));
+
+                    const existingPos = (existingPlayerOffers || []).find(o => o.position || o.pos);
+                    const effectivePos = String(pos || existingPos?.position || existingPos?.pos || "").trim();
+
+                    let picked = null;
+                    if (mode === "position" && effectivePos) {
+                        const mappedId = resolvePositionAgentId(config.agent_position_map || {}, effectivePos);
+                        picked = conflictFreeAgents.find(a => a.discordId === mappedId) || null;
+                    } else if (mode === "random" && conflictFreeAgents.length > 0) {
+                        picked = conflictFreeAgents[Math.floor(Math.random() * conflictFreeAgents.length)];
+                    }
+
+                    if (picked) {
+                        targetAgentLabel = `@${picked.username}`;
+                        targetAgentId = picked.discordId;
+                    }
+                }
+            }
+
+            await supabase
+                .from("contract_offers")
+                .update({ agent_assigned: targetAgentLabel, agent_discord_id: targetAgentId })
+                .eq("guild_id", config.guild_id)
+                .ilike("to_player", cleanPlayer);
+
+        try {
+                const logChannelId = config.log_channel_id;
+                if (logChannelId) {
+                    const client = getDiscordClient(req);
+                    const logChannel =
+                        client?.channels?.cache?.get(logChannelId) ||
+                        (await client?.channels?.fetch(logChannelId).catch(() => null));
+
+                    if (logChannel && typeof logChannel.send === "function") {
+                        const isRevised = result.action === "updated";
+                        const agentMention = targetAgentId ? `<@${targetAgentId}>` : (targetAgentLabel || "@Commissioner");
+
+                        await logChannel.send({
+                            embeds: [
+                                {
+                                    color: isRevised ? 0xf59e0b : 0x06b6d4,
+                                    title: isRevised ? "📝 Free Agency Offer Revised" : "📩 New Free Agency Offer Submitted",
+                                    description: `**${teamName.trim()}** has ${isRevised ? "updated their contract offer for" : "submitted a contract offer to"} **${cleanPlayer}**.`,
+                                    fields: [
+                                        { name: "Franchise", value: teamName.trim(), inline: true },
+                                        { name: "Target Player", value: cleanPlayer, inline: true },
+                                        { name: "Assigned Agent", value: agentMention, inline: true }
+                                    ],
+                                    footer: { text: "Contract terms are confidential • View details in the Master Offers Log" },
+                                    timestamp: new Date().toISOString()
+                                }
+                            ]
+                        });
+                    }
+                }
+            } catch (logErr) {
+                console.warn("⚠️ Failed to send FA log channel notification:", logErr.message);
+            }
+
+            return res.json({
+            success: true, 
+            action: result.action, 
+            activeBidsCount: result.teamBidCount 
         });
 
-        return res.json({ 
+            return res.json({
             success: true, 
             action: result.action, 
             activeBidsCount: result.teamBidCount 
@@ -1289,17 +1424,25 @@ router.patch("/api/offers/:id", async (req, res) => {
         }
 
         const totalValue = parsedAav * parsedYears;
+        const gtdNum = Number(guaranteed) || 0;
+        const bonusNum = Number(bonuses) || 0;
+        const bonusParts = [];
+        if (gtdNum > 0) bonusParts.push(`$${gtdNum.toLocaleString("en-US")} GTD`);
+        if (bonusNum > 0) bonusParts.push(`$${bonusNum.toLocaleString("en-US")} Signing Bonus`);
+
+        const updatePayload = {
+            aav: parsedAav,
+            years: parsedYears,
+            notes: notes !== undefined ? String(notes).trim() : existing.notes
+        };
+
+        if ("bonuses" in existing) {
+            updatePayload.bonuses = bonusParts.length > 0 ? bonusParts.join(" • ") : null;
+        }
+
         const { data: updated, error: updateErr } = await supabase
             .from("contract_offers")
-            .update({
-                aav: parsedAav,
-                years: parsedYears,
-                total_value: totalValue,
-                guaranteed: Number(guaranteed) || 0,
-                bonuses: Number(bonuses) || 0,
-                notes: notes !== undefined ? String(notes).trim() : existing.notes,
-                updated_at: new Date().toISOString()
-            })
+            .update(updatePayload)
             .eq("id", offerId)
             .select()
             .single();
@@ -1359,6 +1502,254 @@ router.delete("/api/offers/:id", async (req, res) => {
     } catch (err) {
         console.error("❌ Exception withdrawing offer:", err);
         return res.status(500).json({ error: "Server error withdrawing offer." });
+    }
+});
+
+
+function getDiscordClient(req) {
+    if (req?.app?.get("discordClient")) return req.app.get("discordClient");
+    if (req?.app?.get("client")) return req.app.get("client");
+    if (global.discordClient) return global.discordClient;
+    if (global.client) return global.client;
+    try {
+        const idx = require("../index");
+        return idx?.client || idx?.discordClient || null;
+    } catch {
+        return null;
+    }
+}
+
+const DEF_TO_IDP_GROUP = {
+    DE: "DL", DT: "DL", DL: "DL",
+    ILB: "LB", OLB: "LB", LB: "LB",
+    CB: "DB", S: "DB", FS: "DB", SS: "DB", DB: "DB",
+    IDP: "IDP"
+};
+
+function resolvePositionAgentId(posMap, rawPos) {
+    const cleanPos = String(rawPos || "").toUpperCase().trim();
+    if (!cleanPos) return null;
+    if (posMap[cleanPos]) return posMap[cleanPos];
+    const normalized = DEF_TO_IDP_GROUP[cleanPos];
+    if (normalized && posMap[normalized]) return posMap[normalized];
+    if (normalized && posMap["IDP"]) return posMap["IDP"];
+    return null;
+}
+
+// GET /api/league/agents?guildId=...
+router.get("/api/league/agents", async (req, res) => {
+    try {
+        const guildId = (req.query.guildId || "").trim();
+        if (!guildId) return res.status(400).json({ error: "guildId is required." });
+
+        const [{ data: cfg }, { data: offerRows }] = await Promise.all([
+            supabase
+                .from("league_configs")
+                .select("agent_role_id, agent_assignment_mode, agent_position_map")
+                .eq("guild_id", guildId)
+                .maybeSingle(),
+            supabase
+                .from("contract_offers")
+                .select("to_player, agent_assigned, agent_discord_id")
+                .eq("guild_id", guildId)
+        ]);
+
+        const client = getDiscordClient(req);
+        const guild = client?.guilds?.cache?.get(guildId);
+        let roles = [];
+        let agents = [];
+
+        if (guild) {
+            roles = guild.roles.cache
+                .filter(r => !r.managed && r.name !== "@everyone")
+                .sort((a, b) => b.position - a.position)
+                .map(r => ({ id: r.id, name: r.name, color: r.hexColor }));
+
+            if (cfg?.agent_role_id) {
+                await guild.members.fetch().catch(() => {});
+                agents = guild.members.cache
+                    .filter(m => !m.user.bot && m.roles.cache.has(cfg.agent_role_id))
+                    .map(m => ({
+                        discordId: m.user.id,
+                        username: m.displayName || m.user.username,
+                        tag: m.user.username
+                    }));
+            }
+        }
+
+        const playerAgents = {};
+        (offerRows || []).forEach(row => {
+            const pName = String(row.to_player || "").trim();
+            if (!pName) return;
+            if (!playerAgents[pName]) {
+                playerAgents[pName] = {
+                    playerName: pName,
+                    agentAssigned: row.agent_assigned || "@Commissioner",
+                    agentDiscordId: row.agent_discord_id || ""
+                };
+            } else if (row.agent_discord_id && !playerAgents[pName].agentDiscordId) {
+                playerAgents[pName].agentAssigned = row.agent_assigned || "@Commissioner";
+                playerAgents[pName].agentDiscordId = row.agent_discord_id;
+            }
+        });
+
+        return res.json({
+            success: true,
+            roles,
+            agents,
+            agentRoleId: cfg?.agent_role_id || "",
+            agentAssignmentMode: cfg?.agent_assignment_mode || "manual",
+            agentPositionMap: cfg?.agent_position_map || {},
+            playerAgents: Object.values(playerAgents)
+        });
+    } catch (err) {
+        console.error("❌ Error loading league agents:", err);
+        return res.status(500).json({ error: "Failed to load league agents." });
+    }
+});
+
+// POST /api/league/agent-settings — Saves config + applies manual per-player assignments
+router.post("/api/league/agent-settings", async (req, res) => {
+    try {
+        const { guildId, agentRoleId, agentAssignmentMode, agentPositionMap, manualAssignments } = req.body;
+        if (!guildId) return res.status(400).json({ error: "guildId is required." });
+
+        const { error: cfgErr } = await supabase
+            .from("league_configs")
+            .upsert({
+                guild_id: guildId,
+                agent_role_id: agentRoleId || null,
+                agent_assignment_mode: agentAssignmentMode || "manual",
+                agent_position_map: agentPositionMap || {}
+            }, { onConflict: "guild_id" });
+
+        if (cfgErr) {
+            console.error("❌ Error saving agent settings:", cfgErr);
+            return res.status(500).json({ error: "Failed to save agent settings." });
+        }
+
+        if (Array.isArray(manualAssignments)) {
+            for (const item of manualAssignments) {
+                if (!item?.playerName) continue;
+                await supabase
+                    .from("contract_offers")
+                    .update({
+                        agent_assigned: item.agentAssigned || "@Commissioner",
+                        agent_discord_id: item.agentDiscordId || null
+                    })
+                    .eq("guild_id", guildId)
+                    .eq("to_player", item.playerName);
+            }
+        }
+
+        return res.json({ success: true });
+    } catch (err) {
+        console.error("❌ Exception saving agent settings:", err);
+        return res.status(500).json({ error: "Server error saving agent settings." });
+    }
+});
+
+// POST /api/league/assign-agents — Auto-assigns unassigned players (Random or By Position)
+router.post("/api/league/assign-agents", async (req, res) => {
+    try {
+        const { guildId } = req.body;
+        if (!guildId) return res.status(400).json({ error: "guildId is required." });
+
+        const { data: cfg } = await supabase
+            .from("league_configs")
+            .select("agent_role_id, agent_assignment_mode, agent_position_map")
+            .eq("guild_id", guildId)
+            .maybeSingle();
+
+        const client = getDiscordClient(req);
+        const guild = client?.guilds?.cache?.get(guildId);
+        if (!guild || !cfg?.agent_role_id) {
+            return res.status(400).json({ error: "Select and save an Agent Discord Role first." });
+        }
+
+        await guild.members.fetch().catch(() => {});
+        const eligibleAgents = guild.members.cache
+            .filter(m => !m.user.bot && m.roles.cache.has(cfg.agent_role_id))
+            .map(m => ({
+                discordId: m.user.id,
+                username: m.displayName || m.user.username
+            }));
+
+        if (eligibleAgents.length === 0) {
+            return res.status(400).json({ error: "No members found with the selected Agent role." });
+        }
+
+        const [{ data: allOffers }, { data: teamLinks }] = await Promise.all([
+            supabase
+                .from("contract_offers")
+                .select("*")
+                .eq("guild_id", guildId),
+            supabase
+                .from("user_team_links")
+                .select("discord_id, team_name")
+                .eq("guild_id", guildId)
+        ]);
+
+        const teamByDiscordId = {};
+        (teamLinks || []).forEach(link => {
+            if (link.discord_id && link.team_name) {
+                teamByDiscordId[String(link.discord_id)] = String(link.team_name).toLowerCase().trim();
+            }
+        });
+
+        const playerGroups = {};
+        (allOffers || []).forEach(o => {
+            const pName = String(o.to_player || "").trim();
+            if (!pName) return;
+            const rawPos = o.position || o.pos || "";
+            if (!playerGroups[pName]) {
+                playerGroups[pName] = {
+                    bidders: new Set(),
+                    position: rawPos ? String(rawPos).toUpperCase().trim() : "",
+                    alreadyAssigned: Boolean(o.agent_discord_id)
+                };
+            }
+            if (o.from_team) playerGroups[pName].bidders.add(String(o.from_team).toLowerCase().trim());
+            if (o.agent_discord_id) playerGroups[pName].alreadyAssigned = true;
+        });
+
+        const mode = cfg.agent_assignment_mode || "manual";
+        const posMap = cfg.agent_position_map || {};
+        let assignedCount = 0;
+
+        for (const [playerName, info] of Object.entries(playerGroups)) {
+            if (info.alreadyAssigned) continue;
+
+            const conflictFree = eligibleAgents.filter(agent => {
+                const agentTeam = teamByDiscordId[agent.discordId];
+                return !agentTeam || !info.bidders.has(agentTeam);
+            });
+
+            let chosen = null;
+            if (mode === "position") {
+                const mappedId = resolvePositionAgentId(posMap, info.position);
+                chosen = conflictFree.find(a => a.discordId === mappedId) || null;
+            } else if (mode === "random" && conflictFree.length > 0) {
+                chosen = conflictFree[Math.floor(Math.random() * conflictFree.length)];
+            }
+
+            if (chosen) {
+                await supabase
+                    .from("contract_offers")
+                    .update({
+                        agent_assigned: `@${chosen.username}`,
+                        agent_discord_id: chosen.discordId
+                    })
+                    .eq("guild_id", guildId)
+                    .eq("to_player", playerName);
+                assignedCount++;
+            }
+        }
+
+        return res.json({ success: true, assignedCount });
+    } catch (err) {
+        console.error("❌ Error auto-assigning agents:", err);
+        return res.status(500).json({ error: "Failed to auto-assign agents." });
     }
 });
 
